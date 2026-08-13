@@ -18,7 +18,7 @@ export const SYMBOLS = [
   { key: "GBPJPY", label: "ポンド円",   yahoo: "GBPJPY=X", decimals: 3 },
   { key: "EURUSD", label: "ユーロドル", yahoo: "EURUSD=X", decimals: 5 },
   { key: "GBPUSD", label: "ポンドドル", yahoo: "GBPUSD=X", decimals: 5 },
-  { key: "GOLD",   label: "ゴールド",   yahoo: "GC=F",     decimals: 2 },
+  { key: "GOLD",   label: "ゴールド",   yahoo: "XAUUSD",   decimals: 2 },
 ];
 
 export const SYMBOL_KEYS = SYMBOLS.map((s) => s.key);
