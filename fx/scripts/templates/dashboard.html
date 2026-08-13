@@ -250,7 +250,7 @@ const symBox = document.getElementById("syms");
 SYMS.forEach((s, i) => {
   const b = document.createElement("button");
   b.className = "chip" + (i === 0 ? " on" : ""); b.textContent = s.label;
-  b.onclick = () => { curKey = s.key; symBox.querySelectorAll(".chip").forEach(x => x.classList.remove("on")); b.classList.add("on"); renderAll(); };
+  b.onclick = () => { curKey = s.key; symBox.querySelectorAll(".chip").forEach(x => x.classList.remove("on")); b.classList.add("on"); applySymbolDefaults(); renderAll(); };
   symBox.appendChild(b);
 });
 const perBox = document.getElementById("periods");
@@ -263,6 +263,18 @@ PERIODS.forEach(p => {
 ["f-dow", "f-wom", "f-mon"].forEach(id => document.getElementById(id).onchange = renderStats);
 document.getElementById("openin").oninput = renderRange;
 document.getElementById("datein").onchange = renderDay;
+
+// 初期デフォルト: 予想レンジの始値 = 最新営業日（＝その朝）の始値、日付検索 = 当日の日付
+function applySymbolDefaults() {
+  const rows = CACHE[curKey];
+  if (rows.length) document.getElementById("openin").value = rows[rows.length - 1].o;
+}
+function todayISO() {
+  const d = new Date(), p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+document.getElementById("datein").value = todayISO();
+applySymbolDefaults();
 renderAll();
 </script>
 </body>
