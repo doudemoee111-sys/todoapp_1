@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FX/ゴールド 統計分析ダッシュボード</title>
+<style>
+:root{
+  --bg:#f6f4ef;--surface:#fff;--surface-2:#efece3;--ink:#1c1f24;--ink-muted:#5d616a;--ink-faint:#8a8d94;
+  --border:#e1ddd0;--accent:#9c6c28;--accent-ink:#fff;--accent-soft:#f1e6d2;
+  --chart-grid:#d9d3c4;--chart-axis:#8a8d94;--chart-up:#2f7a52;--chart-down:#c14953;
+  --bar:#9c6c28;--bar2:#5b7596;color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#15181d;--surface:#1c2027;--surface-2:#21262e;--ink:#e8e6df;--ink-muted:#9da1a9;--ink-faint:#6c7078;
+  --border:#2b3038;--accent:#d9a24e;--accent-ink:#1b1408;--accent-soft:#2c2314;
+  --chart-grid:#333a44;--chart-axis:#6c7078;--chart-up:#5fbf8c;--chart-down:#e0707a;
+  --bar:#d9a24e;--bar2:#7fa0c4;color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#15181d;--surface:#1c2027;--surface-2:#21262e;--ink:#e8e6df;--ink-muted:#9da1a9;--ink-faint:#6c7078;
+  --border:#2b3038;--accent:#d9a24e;--accent-ink:#1b1408;--accent-soft:#2c2314;
+  --chart-grid:#333a44;--chart-axis:#6c7078;--chart-up:#5fbf8c;--chart-down:#e0707a;
+  --bar:#d9a24e;--bar2:#7fa0c4;color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,"Segoe UI","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;line-height:1.6}
+.wrap{max-width:1040px;margin:0 auto;padding:28px 20px 70px}
+h1{font-size:22px;font-weight:800;margin:0 0 4px}
+.sub{color:var(--ink-muted);font-size:13px;margin:0 0 20px}
+h2{font-size:16px;font-weight:800;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+h2::before{content:"";width:4px;height:16px;background:var(--accent);border-radius:2px}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.row .lbl{font-size:12px;font-weight:700;color:var(--ink-muted);align-self:center;margin-right:2px}
+button.chip{border:1px solid var(--border);background:var(--surface);color:var(--ink);
+  padding:5px 12px;border-radius:999px;font-size:12.5px;cursor:pointer;font-weight:600}
+button.chip:hover{border-color:var(--accent)}
+button.chip.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;
+  box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px rgba(0,0,0,.05);margin:14px 0;position:relative}
+.chart-box{position:relative;height:400px}
+canvas{width:100%;height:100%;display:block}
+.tt{position:absolute;pointer-events:none;opacity:0;transition:opacity .08s;background:var(--surface);
+  border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;
+  box-shadow:0 6px 20px rgba(0,0,0,.18);display:flex;flex-direction:column;gap:1px;z-index:5;min-width:150px}
+.tt b{margin-bottom:3px}.tt em{font-style:normal;font-variant-numeric:tabular-nums;font-weight:700;float:right}
+select,input[type=number],input[type=date]{font:inherit;padding:5px 8px;border:1px solid var(--border);
+  border-radius:7px;background:var(--surface);color:var(--ink)}
+.grid{display:grid;gap:14px}
+@media(min-width:760px){.grid.two{grid-template-columns:1fr 1fr}}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:6px}
+.stat{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.stat .k{font-size:11.5px;color:var(--ink-muted);font-weight:600}
+.stat .v{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:2px}
+.stat .u{font-size:11px;color:var(--ink-faint)}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--border);text-align:right;font-variant-numeric:tabular-nums}
+th:first-child,td:first-child{text-align:left}
+thead th{background:var(--surface-2);color:var(--ink-muted);font-size:11.5px;font-weight:700}
+.hint{font-size:12px;color:var(--ink-muted);margin:4px 0 0}
+.season{display:grid;gap:16px}
+@media(min-width:720px){.season{grid-template-columns:1fr 1fr}}
+.bars{display:flex;align-items:flex-end;gap:6px;height:140px;margin-top:8px;border-bottom:1px solid var(--border);padding-bottom:2px}
+.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
+.bar{width:70%;border-radius:3px 3px 0 0;min-height:2px;background:var(--bar)}
+.bar.neg{background:var(--chart-down)}.bar.pos{background:var(--chart-up)}
+.bar-lab{font-size:10.5px;color:var(--ink-muted);margin-top:4px}
+.bar-val{font-size:9.5px;color:var(--ink-faint);margin-bottom:2px;font-variant-numeric:tabular-nums}
+.season h3{font-size:13px;margin:0;font-weight:700}
+.dayout{font-size:13px;margin-top:8px}.dayout b{font-variant-numeric:tabular-nums}
+.foot{color:var(--ink-faint);font-size:11.5px;margin-top:22px}
+.warn{font-size:11.5px;color:var(--ink-faint);margin-top:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📊 FX/ゴールド 統計分析ダッシュボード</h1>
+  <p class="sub">Excelの「集計用」シート相当。ローソク足・統計・予想レンジ・季節性が通貨ペアと連動します（土日は集計から除外）。</p>
+
+  <div class="row" id="syms"><span class="lbl">通貨ペア</span></div>
+
+  <div class="card">
+    <div class="row" id="periods"><span class="lbl">期間</span></div>
+    <div class="chart-box"><canvas id="cv"></canvas><div class="tt" id="tt"></div></div>
+  </div>
+
+  <div class="card">
+    <h2>統計値</h2>
+    <div class="row">
+      <span class="lbl">曜日</span>
+      <select id="f-dow"><option value="">全て</option><option>月</option><option>火</option><option>水</option><option>木</option><option>金</option></select>
+      <span class="lbl">第N週</span>
+      <select id="f-wom"><option value="">全て</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
+      <span class="lbl">月</span>
+      <select id="f-mon"><option value="">全て</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option></select>
+    </div>
+    <div class="stat-grid" id="stats"></div>
+    <p class="warn" id="statwarn"></p>
+  </div>
+
+  <div class="grid two">
+    <div class="card">
+      <h2>本日の予想レンジ</h2>
+      <p class="hint">始値を入力すると、上のフィルタ条件の過去統計から予想高値・安値を表示します。</p>
+      <div class="row"><span class="lbl">始値</span><input type="number" id="openin" step="any" placeholder="例 150.00" style="width:140px"></div>
+      <table id="rangetbl"><thead><tr><th>水準</th><th>予想安値</th><th>予想高値</th><th>想定幅</th></tr></thead><tbody></tbody></table>
+      <p class="warn">過去の値動きに基づく参考値です。将来のレートを保証するものではありません。</p>
+    </div>
+    <div class="card">
+      <h2>日付検索</h2>
+      <p class="hint">日付を選ぶとその日の値を表示します。</p>
+      <div class="row"><input type="date" id="datein"></div>
+      <div class="dayout" id="dayout">—</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>季節性グラフ</h2>
+    <div class="season">
+      <div><h3>曜日別 平均値幅（高値−安値）</h3><div class="bars" id="s-dow-hl"></div></div>
+      <div><h3>曜日別 平均騰落（終値−始値）</h3><div class="bars" id="s-dow-oc"></div></div>
+      <div><h3>月別 平均値幅（高値−安値）</h3><div class="bars" id="s-mon-hl"></div></div>
+      <div><h3>月別 平均騰落（終値−始値）</h3><div class="bars" id="s-mon-oc"></div></div>
+    </div>
+  </div>
+
+  <p class="foot" id="foot"></p>
+</div>
+
+<script>
+const RAW = /*__DATA__*/ {};
+const SYMS = /*__SYMS__*/ [];
+const BUILT = "/*__BUILT__*/";
+/*__CORE__*/
+</script>
+<script>
+const CACHE = {}; SYMS.forEach(s => CACHE[s.key] = derive(s.key));
+let curKey = SYMS[0].key, curPeriod = "1Y";
+const chart = makeChart(document.getElementById("cv"), document.getElementById("tt"));
+
+// weekday-code (0..6) from 月..金 label
+const DOW_CODE = { "月": 1, "火": 2, "水": 3, "木": 4, "金": 5 };
+
+function weekdayRows() { return CACHE[curKey].filter(r => !r.weekend); }
+function filtered() {
+  const dow = document.getElementById("f-dow").value;
+  const wom = document.getElementById("f-wom").value;
+  const mon = document.getElementById("f-mon").value;
+  return weekdayRows().filter(r =>
+    (dow === "" || r.dow === DOW_CODE[dow]) &&
+    (wom === "" || r.wom === +wom) &&
+    (mon === "" || r.month === +mon));
+}
+
+function renderChart() {
+  const p = PERIODS.find(p => p.id === curPeriod);
+  chart.set(curKey, lastN(CACHE[curKey], p ? p.n : Infinity));
+}
+
+function statCard(k, v, u) {
+  return `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div><div class="u">${u || ""}</div></div>`;
+}
+function renderStats() {
+  const rows = filtered(), key = curKey;
+  const hl = rows.map(r => r.hl), oc = rows.map(r => r.oc);
+  const up = rows.filter(r => r.oc > 0).length, dn = rows.filter(r => r.oc < 0).length;
+  const n = rows.length;
+  const box = document.getElementById("stats");
+  box.innerHTML =
+    statCard("件数", n.toLocaleString("ja-JP"), "営業日") +
+    statCard("平均値幅", fmt(key, mean(hl)), "高値−安値") +
+    statCard("値幅 標準偏差", fmt(key, std(hl)), "±1σ") +
+    statCard("平均騰落", fmtSigned(key, mean(oc)), "終値−始値") +
+    statCard("騰落 標準偏差", fmt(key, std(oc)), "±1σ") +
+    statCard("陽線率", n ? (100 * up / n).toFixed(1) + "%" : "–", `陰線率 ${n ? (100 * dn / n).toFixed(1) + "%" : "–"}`);
+  document.getElementById("statwarn").textContent =
+    n < 2 ? "該当データが不足しています（条件を緩めてください）。" :
+    "※ 始値=終値の同値日は陽線・陰線どちらにも数えないため合計は100%になりません。";
+  renderRange();
+}
+
+function renderRange() {
+  const rows = filtered(), key = curKey;
+  const up = rows.map(r => r.up), down = rows.map(r => r.down);
+  const mu = mean(up), su = std(up), md = mean(down), sd = std(down);
+  const o = parseFloat(document.getElementById("openin").value);
+  const tb = document.querySelector("#rangetbl tbody");
+  if (!isFinite(o) || rows.length < 2) {
+    tb.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--ink-faint)">始値を入力してください</td></tr>`;
+    return;
+  }
+  const levels = [["平均", 0], ["±1σ", 1], ["±2σ", 2], ["±3σ", 3]];
+  tb.innerHTML = levels.map(([lab, k]) => {
+    const hi = o + mu + k * su;
+    const lo = o - (md + k * sd);
+    return `<tr><td>${lab}</td><td>${fmt(key, lo)}</td><td>${fmt(key, hi)}</td><td>${fmt(key, hi - lo)}</td></tr>`;
+  }).join("");
+}
+
+function renderDay() {
+  const d = document.getElementById("datein").value, key = curKey;
+  const out = document.getElementById("dayout");
+  if (!d) { out.textContent = "—"; return; }
+  const r = CACHE[key].find(x => x.date === d);
+  if (!r) { out.innerHTML = `<span style="color:var(--ink-faint)">${d} のデータはありません（土日/休場の可能性）。</span>`; return; }
+  out.innerHTML =
+    `<b>${r.date}（${WD[r.dow]}・第${r.wom}週）</b><br>` +
+    `始 <b>${fmt(key, r.o)}</b>／高 <b>${fmt(key, r.h)}</b>／安 <b>${fmt(key, r.l)}</b>／終 <b>${fmt(key, r.c)}</b><br>` +
+    `値幅 <b>${fmt(key, r.hl)}</b>／騰落 <b>${fmtSigned(key, r.oc)}</b>（${r.oc > 0 ? "陽線" : r.oc < 0 ? "陰線" : "同値"}）`;
+}
+
+// seasonality bar charts
+function bars(el, groups, key, signed) {
+  const vals = groups.map(g => g.v).filter(isFinite);
+  const max = Math.max(...vals.map(Math.abs), 1e-9);
+  el.innerHTML = groups.map(g => {
+    const h = isFinite(g.v) ? Math.max(2, Math.abs(g.v) / max * 100) : 2;
+    const cls = signed ? (g.v >= 0 ? "pos" : "neg") : "";
+    const label = isFinite(g.v) ? (signed ? fmtSigned(key, g.v) : fmt(key, g.v)) : "–";
+    return `<div class="bar-col"><div class="bar-val">${label}</div><div class="bar ${cls}" style="height:${h}%"></div><div class="bar-lab">${g.l}</div></div>`;
+  }).join("");
+}
+function renderSeason() {
+  const rows = weekdayRows(), key = curKey;
+  const byDow = [1, 2, 3, 4, 5].map(code => {
+    const g = rows.filter(r => r.dow === code);
+    return { code, hl: mean(g.map(r => r.hl)), oc: mean(g.map(r => r.oc)) };
+  });
+  bars(document.getElementById("s-dow-hl"), byDow.map(d => ({ l: WD[d.code], v: d.hl })), key, false);
+  bars(document.getElementById("s-dow-oc"), byDow.map(d => ({ l: WD[d.code], v: d.oc })), key, true);
+  const byMon = Array.from({ length: 12 }, (_, i) => {
+    const g = rows.filter(r => r.month === i + 1);
+    return { m: i + 1, hl: mean(g.map(r => r.hl)), oc: mean(g.map(r => r.oc)) };
+  });
+  bars(document.getElementById("s-mon-hl"), byMon.map(d => ({ l: d.m, v: d.hl })), key, false);
+  bars(document.getElementById("s-mon-oc"), byMon.map(d => ({ l: d.m, v: d.oc })), key, true);
+}
+
+function renderAll() {
+  renderChart(); renderStats(); renderDay(); renderSeason();
+  const rows = CACHE[curKey];
+  document.getElementById("foot").textContent =
+    `${symMeta(curKey).label}｜全${rows.length}本 ` +
+    (rows.length ? `(${rows[0].date} 〜 ${rows.at(-1).date})` : "") + `｜ビルド: ${BUILT}`;
+}
+
+// wire UI
+const symBox = document.getElementById("syms");
+SYMS.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.className = "chip" + (i === 0 ? " on" : ""); b.textContent = s.label;
+  b.onclick = () => { curKey = s.key; symBox.querySelectorAll(".chip").forEach(x => x.classList.remove("on")); b.classList.add("on"); renderAll(); };
+  symBox.appendChild(b);
+});
+const perBox = document.getElementById("periods");
+PERIODS.forEach(p => {
+  const b = document.createElement("button");
+  b.className = "chip" + (p.id === curPeriod ? " on" : ""); b.textContent = p.label;
+  b.onclick = () => { curPeriod = p.id; perBox.querySelectorAll(".chip").forEach(x => x.classList.remove("on")); b.classList.add("on"); renderChart(); };
+  perBox.appendChild(b);
+});
+["f-dow", "f-wom", "f-mon"].forEach(id => document.getElementById(id).onchange = renderStats);
+document.getElementById("openin").oninput = renderRange;
+document.getElementById("datein").onchange = renderDay;
+renderAll();
+</script>
+</body>
+</html>

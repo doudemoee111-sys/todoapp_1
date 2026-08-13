@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FX/ゴールド ローソク足チャート</title>
+<style>
+:root{
+  --bg:#f6f4ef;--surface:#fff;--surface-2:#efece3;--ink:#1c1f24;--ink-muted:#5d616a;
+  --border:#e1ddd0;--accent:#9c6c28;--accent-ink:#fff;--accent-soft:#f1e6d2;
+  --chart-grid:#d9d3c4;--chart-axis:#8a8d94;--chart-up:#2f7a52;--chart-down:#c14953;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#15181d;--surface:#1c2027;--surface-2:#21262e;--ink:#e8e6df;--ink-muted:#9da1a9;
+  --border:#2b3038;--accent:#d9a24e;--accent-ink:#1b1408;--accent-soft:#2c2314;
+  --chart-grid:#333a44;--chart-axis:#6c7078;--chart-up:#5fbf8c;--chart-down:#e0707a;color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#15181d;--surface:#1c2027;--surface-2:#21262e;--ink:#e8e6df;--ink-muted:#9da1a9;
+  --border:#2b3038;--accent:#d9a24e;--accent-ink:#1b1408;--accent-soft:#2c2314;
+  --chart-grid:#333a44;--chart-axis:#6c7078;--chart-up:#5fbf8c;--chart-down:#e0707a;color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,"Segoe UI","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;line-height:1.6}
+.wrap{max-width:1000px;margin:0 auto;padding:28px 20px 60px}
+h1{font-size:22px;font-weight:800;margin:0 0 4px}
+.sub{color:var(--ink-muted);font-size:13px;margin:0 0 20px}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.row .lbl{font-size:12px;font-weight:700;color:var(--ink-muted);align-self:center;margin-right:2px}
+button.chip{border:1px solid var(--border);background:var(--surface);color:var(--ink);
+  padding:6px 13px;border-radius:999px;font-size:13px;cursor:pointer;font-weight:600}
+button.chip:hover{border-color:var(--accent)}
+button.chip.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;
+  box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px rgba(0,0,0,.05);position:relative}
+.chart-box{position:relative;height:460px}
+canvas{width:100%;height:100%;display:block}
+.tt{position:absolute;pointer-events:none;opacity:0;transition:opacity .08s;background:var(--surface);
+  border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;
+  box-shadow:0 6px 20px rgba(0,0,0,.18);display:flex;flex-direction:column;gap:1px;z-index:5;min-width:150px}
+.tt b{font-size:12.5px;margin-bottom:3px}
+.tt em{font-style:normal;font-variant-numeric:tabular-nums;font-weight:700;float:right}
+.custom{display:none;gap:6px;align-items:center;font-size:13px}
+.custom.on{display:inline-flex}
+.custom input{font:inherit;padding:4px 6px;border:1px solid var(--border);border-radius:6px;
+  background:var(--surface);color:var(--ink)}
+.legend{font-size:12px;color:var(--ink-muted);margin-top:10px;display:flex;gap:18px;flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.swatch{width:12px;height:16px;border:1.5px solid var(--chart-up);display:inline-block;border-radius:2px}
+.swatch.down{background:var(--chart-down);border-color:var(--chart-down)}
+.foot{color:var(--ink-muted);font-size:11.5px;margin-top:22px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🕯️ FX/ゴールド ローソク足チャート</h1>
+  <p class="sub">6銘柄・日足。バーにカーソル（スマホはタップ）で始値・高値・安値・終値を表示。</p>
+
+  <div class="row" id="syms"><span class="lbl">通貨ペア</span></div>
+  <div class="row" id="periods"><span class="lbl">表示期間</span>
+    <span class="custom" id="custom">
+      <input type="date" id="from"> 〜 <input type="date" id="to">
+    </span>
+  </div>
+
+  <div class="card">
+    <div class="chart-box"><canvas id="cv"></canvas><div class="tt" id="tt"></div></div>
+    <div class="legend">
+      <span><span class="swatch"></span>陽線（終値≥始値・中抜き）</span>
+      <span><span class="swatch down"></span>陰線（終値&lt;始値・塗り）</span>
+    </div>
+  </div>
+  <p class="foot" id="foot"></p>
+</div>
+
+<script>
+const RAW = /*__DATA__*/ {};
+const SYMS = /*__SYMS__*/ [];
+const BUILT = "/*__BUILT__*/";
+/*__CORE__*/
+</script>
+<script>
+const CACHE = {}; SYMS.forEach(s => CACHE[s.key] = derive(s.key));
+let curKey = SYMS[0].key, curPeriod = "6M";
+const chart = makeChart(document.getElementById("cv"), document.getElementById("tt"));
+
+function fullRows() { return CACHE[curKey]; }
+function apply() {
+  let rows = fullRows();
+  if (curPeriod === "CUSTOM") {
+    const f = document.getElementById("from").value, t = document.getElementById("to").value;
+    rows = rows.filter(r => (!f || r.date >= f) && (!t || r.date <= t));
+  } else {
+    const p = PERIODS.find(p => p.id === curPeriod);
+    rows = lastN(rows, p ? p.n : Infinity);
+  }
+  chart.set(curKey, rows);
+  document.getElementById("foot").textContent =
+    `${symMeta(curKey).label}｜${rows.length}本 ` +
+    (rows.length ? `(${rows[0].date} 〜 ${rows.at(-1).date})` : "") + `｜ビルド: ${BUILT}`;
+}
+
+const symBox = document.getElementById("syms");
+SYMS.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.className = "chip" + (i === 0 ? " on" : ""); b.textContent = s.label; b.dataset.key = s.key;
+  b.onclick = () => { curKey = s.key; symBox.querySelectorAll(".chip").forEach(x => x.classList.remove("on")); b.classList.add("on"); apply(); };
+  symBox.appendChild(b);
+});
+const perBox = document.getElementById("periods");
+[...PERIODS, { id: "CUSTOM", label: "カスタム" }].forEach(p => {
+  const b = document.createElement("button");
+  b.className = "chip" + (p.id === curPeriod ? " on" : ""); b.textContent = p.label; b.dataset.id = p.id;
+  b.onclick = () => {
+    curPeriod = p.id; perBox.querySelectorAll(".chip").forEach(x => x.classList.remove("on")); b.classList.add("on");
+    document.getElementById("custom").classList.toggle("on", p.id === "CUSTOM"); apply();
+  };
+  perBox.insertBefore(b, document.getElementById("custom"));
+});
+document.getElementById("from").onchange = apply;
+document.getElementById("to").onchange = apply;
+apply();
+</script>
+</body>
+</html>
