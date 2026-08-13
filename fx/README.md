@@ -55,8 +55,15 @@ fx/
     templates/              ページの土台（デザイン・計算ロジックはここを編集）
 ```
 
-> 現在 `data/` に入っているのは **`make_sample_data.mjs` による合成サンプル**です
-> （約 3 年分・決定論的）。実データに差し替えると即座に本物のチャートになります。
+> `data/*.csv` と `web/*.html` は**ソースから再生成できるビルド生成物**のため
+> リポジトリには含めていません。下記の 2 コマンドで生成できます。
+> `data/` は現状 `make_sample_data.mjs` による合成サンプル（約 3 年分・決定論的）を
+> 想定しており、実データに差し替えると即座に本物のチャートになります。
+
+```bash
+node fx/scripts/make_sample_data.mjs   # data/*.csv を生成（実データがあれば不要）
+node fx/scripts/build_pages.mjs        # web/*.html を生成
+```
 
 ---
 
