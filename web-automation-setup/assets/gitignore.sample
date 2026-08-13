@@ -1,0 +1,52 @@
+# =============================================================================
+# video-automation を GitHub に上げる際の .gitignore サンプル
+# ここに挙げたファイルは「秘密情報」または「ローカル専用」なので、絶対にコミットしない。
+# 使い方: このファイルの内容を video-automation フォルダ直下の .gitignore にコピーする。
+# =============================================================================
+
+# --- APIキー・認証情報（最重要：絶対にコミットしない） ---
+*_api_key.txt
+anthropic_api_key.txt
+openai_api_key.txt
+stability_api_key.txt
+pexels_api_key.txt
+generator/token.json
+generator/client_secret.json
+research/api_key.txt
+# 念のため、認証系の一般的な名前も広く除外
+**/token.json
+**/client_secret*.json
+**/*credentials*.json
+.env
+.env.*
+
+# --- ローカル生成物・ログ（クラウドでは実行履歴で代替するため不要） ---
+generator/daily_routine_log.txt
+scheduled_tasks/*_report_log.txt
+*.log
+
+# --- 動画などの重い生成物（YouTubeに上がるので保管不要） ---
+*.mp4
+*.mov
+*.wav
+*.mp3
+outputs/
+
+# --- Python の一時ファイル ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# --- OS の一時ファイル ---
+.DS_Store
+Thumbs.db
+
+# =============================================================================
+# 【残す（コミットしてよい）もの】
+#   generator/*.py, research/*.py などのコード本体
+#   CLAUDE.md（設計・変更履歴の生きたドキュメント）
+#   research/output/ の CSV・improvement_proposals.md（蓄積を継続）
+#   assets/fonts/（同梱する場合の代替フォント）
+#   requirements.txt, setup 用スクリプト
+# =============================================================================
