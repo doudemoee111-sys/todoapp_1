@@ -41,19 +41,26 @@
 
 ```
 fx/
-  data/                     日足データ（1 銘柄 1 CSV, date,open,high,low,close）
+  data/                     日足データ（基準履歴。1 銘柄 1 CSV, date,open,high,low,close）
     USDJPY.csv EURJPY.csv GBPJPY.csv EURUSD.csv GBPUSD.csv GOLD.csv
+    daily/                  日次差分（YYYY-MM-DD.json）。毎朝の Routine が 1 日 1 ファイル追加
   web/                      生成物（毎朝上書き）
     fx_candlestick.html     🕯️ ローソク足チャート
     fx_dashboard.html       📊 統計分析ダッシュボード
   scripts/
-    lib.mjs                 銘柄定義・CSV パース（日本語ヘッダも許容）
-    build_pages.mjs         data/ から 2 ページを生成
-    append_daily.mjs        当日 OHLC を JSON で受け取り data/ に追記（同日は置換）
+    lib.mjs                 銘柄定義・CSV パース・基準履歴＋日次差分のマージ
+    build_pages.mjs         data/（基準 + daily 差分）から 2 ページを生成
+    append_delta.mjs        当日 OHLC を受け取り data/daily/<日付>.json を作成（無人 Routine 用）
+    append_daily.mjs        当日 OHLC を基準 CSV に直接追記（対話セッション用）
     make_sample_data.mjs    動作確認用のサンプル履歴を生成
     smoke.mjs               Chromium で描画を検証しスクショ保存（開発用）
     templates/              ページの土台（デザイン・計算ロジックはここを編集）
 ```
+
+**データの二層構造**: `data/*.csv` が正確な基準履歴（Excel 由来。Excel 再アップ時に上書き）、
+`data/daily/*.json` が毎朝の小さな追記。`build_pages` は両者をマージし、同一日付は差分が優先。
+無人 Routine が大きな CSV を書き換える必要がなく、**極小ファイル 1 個を GitHub API でコミット**
+するだけなので、書き込み権限が限られたクラウド環境でも確実に永続化できる。
 
 > `data/*.csv` と `web/*.html` は**ソースから再生成できるビルド生成物**のため
 > リポジトリには含めていません。下記の 2 コマンドで生成できます。
@@ -101,9 +108,15 @@ node fx/scripts/build_pages.mjs
 
 1. このブランチを取得
 2. `WebSearch` で 6 銘柄の当日レートを収集
-3. `append_daily.mjs` で `data/` に追記 → `build_pages.mjs` で再生成
-4. 変更をコミット & プッシュ
+3. `append_delta.mjs` で `data/daily/<日付>.json` を作成 → `build_pages.mjs` で再生成
+4. その差分 1 ファイルを **GitHub API（`create_or_update_file`）でコミット**
 5. 生成した 2 つの HTML をチャットに送付
+
+**なぜ GitHub API 経由なのか**: この環境では無人（スケジュール起動）セッションの
+`git push` が read-only で拒否される一方、GitHub App トークンによる API 書き込みは
+許可されている。そのため Routine は `git push` ではなく GitHub コネクタ（MCP）でコミットする。
+→ **Routine には GitHub コネクタの付与が必須**。claude.ai の Routines 画面でこの Routine を
+編集し、GitHub コネクタを有効化しておくこと（無いと手順 4 のコミットができない）。
 
 Routine の管理は claude.ai の Routines 画面、または当セッションの
 Claude Code Remote ツール（`list_triggers` / `update_trigger` / `delete_trigger`）から

@@ -1,12 +1,13 @@
 // Shared configuration and helpers for the FX/Gold cloud automation.
 // Pure Node (no external deps) so it runs in the locked-down cloud environment.
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ROOT = join(__dirname, "..");
 export const DATA_DIR = join(ROOT, "data");
+export const DAILY_DIR = join(DATA_DIR, "daily");
 export const WEB_DIR = join(ROOT, "web");
 
 // The 6 instruments carried over from the local system.
@@ -84,9 +85,41 @@ export function loadSymbol(key) {
   return parseCsv(readFileSync(path, "utf8"));
 }
 
+// Daily delta files: fx/data/daily/YYYY-MM-DD.json, each carrying that day's
+// OHLC for any subset of symbols. The unattended cloud Routine appends one such
+// tiny file per day via the GitHub API (small, reliable), instead of rewriting
+// the large base CSVs. build merges base CSV history + all daily deltas.
+export function loadDeltas() {
+  if (!existsSync(DAILY_DIR)) return [];
+  const files = readdirSync(DAILY_DIR).filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort();
+  const out = [];
+  for (const f of files) {
+    try {
+      const obj = JSON.parse(readFileSync(join(DAILY_DIR, f), "utf8"));
+      obj.date = obj.date || f.slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(obj.date)) out.push(obj);
+    } catch { /* skip malformed delta */ }
+  }
+  return out;
+}
+
+// Merge base CSV history with daily deltas (deltas win on same date).
 export function loadAll() {
+  const deltas = loadDeltas();
   const out = {};
-  for (const s of SYMBOLS) out[s.key] = loadSymbol(s.key);
+  for (const s of SYMBOLS) {
+    const map = new Map();
+    for (const r of loadSymbol(s.key)) map.set(r.date, r);
+    for (const d of deltas) {
+      const bar = d[s.key];
+      if (!bar) continue;
+      const o = Number(bar.open ?? bar.o), h = Number(bar.high ?? bar.h);
+      const l = Number(bar.low ?? bar.l), c = Number(bar.close ?? bar.c);
+      if (![o, h, l, c].every(Number.isFinite)) continue;
+      map.set(d.date, { date: d.date, o, h, l, c });
+    }
+    out[s.key] = [...map.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  }
   return out;
 }
 
