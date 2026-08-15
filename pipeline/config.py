@@ -78,6 +78,10 @@ GENRES = {
 
 # Rotation order when running in "alternate" mode.
 ROTATION = ["space", "urban"]
+# Phase offset for date-based rotation (--rotate-date). Chosen so 2026-08-15
+# resolves to "space" (the first hand-posted video) and the next day to
+# "urban", keeping the automated schedule alternating in step with it.
+ROTATION_PHASE = int(os.environ.get("ROTATION_PHASE", "1"))
 DEFAULT_GENRE = "space"   # ユーザー指定: まず宇宙・科学から
 
 # ---- Upload -----------------------------------------------------------------

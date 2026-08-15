@@ -18,7 +18,8 @@ from datetime import datetime
 from pathlib import Path
 
 import config
-from config import GENRES, OUTPUT_DIR, STATE_FILE, ROTATION, DEFAULT_GENRE, UPLOAD_PRIVACY
+from config import (GENRES, OUTPUT_DIR, STATE_FILE, ROTATION, ROTATION_PHASE,
+                    DEFAULT_GENRE, UPLOAD_PRIVACY)
 
 
 def _load_state() -> dict:
@@ -45,10 +46,15 @@ def _date_genre(d: "date | None" = None) -> str:
     genre alternates every day without needing a persisted state file. This is
     what the daily scheduled run uses, because each run is a fresh ephemeral
     session with no state.json carried over.
+
+    ROTATION_PHASE offsets the cycle so the automated schedule stays in step
+    with videos already posted by hand. The first manual video (2026-08-15)
+    was "space", so the phase is set to make that day resolve to "space" and
+    the next day resolve to "urban", giving clean day-by-day alternation.
     """
     from datetime import date as _date
     d = d or _date.today()
-    return ROTATION[d.toordinal() % len(ROTATION)]
+    return ROTATION[(d.toordinal() + ROTATION_PHASE) % len(ROTATION)]
 
 
 def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool) -> dict:
