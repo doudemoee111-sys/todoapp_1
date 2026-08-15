@@ -5,3 +5,8 @@ google-auth>=2.30
 google-auth-httplib2>=0.2
 requests>=2.31
 pillow>=10.0
+# google-auth imports cryptography at module load. Ubuntu's system
+# python3-cryptography is built for the distro interpreter, so it panics
+# (missing _cffi_backend) when picked up by a different python3 — pin our own.
+cffi>=1.16
+cryptography>=42.0

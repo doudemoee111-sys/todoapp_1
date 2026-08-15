@@ -19,4 +19,7 @@ python3 -m pip install -q --user -r "$(dirname "$0")/requirements.txt"
 echo "[setup] verifying…"
 ffmpeg -version | head -1
 python3 -c "import openai, googleapiclient, requests, PIL; print('python deps OK')"
+# Import the upload auth stack too — it pulls in cryptography, which fails late
+# (after a ~16 min build) rather than here if the wrong build is installed.
+python3 -c "from google.oauth2.credentials import Credentials; print('upload auth OK')"
 echo "[setup] done."
