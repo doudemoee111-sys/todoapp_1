@@ -38,6 +38,19 @@ def _next_genre(state: dict) -> str:
     return ROTATION[(ROTATION.index(last) + 1) % len(ROTATION)]
 
 
+def _date_genre(d: "date | None" = None) -> str:
+    """Stateless daily rotation: pick the genre from the calendar day.
+
+    Consecutive days advance by one ordinal, so with a 2-genre ROTATION the
+    genre alternates every day without needing a persisted state file. This is
+    what the daily scheduled run uses, because each run is a fresh ephemeral
+    session with no state.json carried over.
+    """
+    from datetime import date as _date
+    d = d or _date.today()
+    return ROTATION[d.toordinal() % len(ROTATION)]
+
+
 def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool) -> dict:
     from llm_script import generate_script
     from tts import synthesize, audio_duration
@@ -108,14 +121,18 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool) -> 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--genre", choices=list(GENRES.keys()))
-    ap.add_argument("--alternate", action="store_true", help="pick next genre from rotation state")
+    ap.add_argument("--alternate", action="store_true", help="pick next genre from rotation state (state.json)")
+    ap.add_argument("--rotate-date", action="store_true",
+                    help="pick genre deterministically from the calendar day (stateless; use this for daily scheduled runs)")
     ap.add_argument("--topic", default=None)
     ap.add_argument("--no-upload", action="store_true")
     ap.add_argument("--no-subtitles", action="store_true")
     args = ap.parse_args()
 
     state = _load_state()
-    if args.alternate:
+    if args.rotate_date:
+        genre_key = _date_genre()
+    elif args.alternate:
         genre_key = _next_genre(state)
     elif args.genre:
         genre_key = args.genre
