@@ -1,0 +1,698 @@
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FX 統計分析ダッシュボード</title>
+<style>
+  :root {
+    --bg: #f6f4ef;
+    --surface: #ffffff;
+    --surface-2: #efece3;
+    --ink: #1c1f24;
+    --ink-muted: #6b6f78;
+    --ink-faint: #9a9da3;
+    --border: #e1ddd0;
+    --accent: #a9762f;
+    --accent-ink: #ffffff;
+    --up: #2f9468;
+    --up-fill: #eaf5ef;
+    --down: #c74a3f;
+    --down-fill: #c74a3f;
+    --grid: #e5e1d4;
+    --shadow: 0 1px 2px rgba(28,31,36,.04), 0 6px 20px rgba(28,31,36,.06);
+    --radius: 10px;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c; --surface: #1b1f26; --surface-2: #20242c; --ink: #e9e6df;
+      --ink-muted: #9199a3; --ink-faint: #6b7078; --border: #2a2f38; --accent: #d9a24e;
+      --accent-ink: #1c1408; --up: #45b98a; --up-fill: #16241d; --down: #e2665a;
+      --down-fill: #e2665a; --grid: #262b33;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14171c; --surface: #1b1f26; --surface-2: #20242c; --ink: #e9e6df;
+    --ink-muted: #9199a3; --ink-faint: #6b7078; --border: #2a2f38; --accent: #d9a24e;
+    --accent-ink: #1c1408; --up: #45b98a; --up-fill: #16241d; --down: #e2665a;
+    --down-fill: #e2665a; --grid: #262b33; color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f4ef; --surface: #ffffff; --surface-2: #efece3; --ink: #1c1f24;
+    --ink-muted: #6b6f78; --ink-faint: #9a9da3; --border: #e1ddd0; --accent: #a9762f;
+    --accent-ink: #ffffff; --up: #2f9468; --up-fill: #eaf5ef; --down: #c74a3f;
+    --down-fill: #c74a3f; --grid: #e5e1d4; color-scheme: light;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, "Segoe UI", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+    line-height: 1.5; padding: 28px 20px 56px;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+
+  header.page { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+  .eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin: 0 0 6px; }
+  h1 { font-size: 26px; margin: 0 0 6px; font-weight: 800; letter-spacing: -0.01em; text-wrap: balance; }
+  .sub { color: var(--ink-muted); font-size: 14px; margin: 0; max-width: 62ch; }
+  .theme-note { font-size: 12px; color: var(--ink-faint); }
+
+  .panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 20px 22px;
+  }
+  .panel h2 { font-size: 15px; font-weight: 800; margin: 0 0 4px; letter-spacing: -.005em; }
+  .panel .panel-sub { font-size: 12.5px; color: var(--ink-muted); margin: 0 0 16px; }
+
+  .pills { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pill {
+    appearance: none; border: 1px solid var(--border); background: var(--surface-2); color: var(--ink);
+    font: inherit; font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 999px; cursor: pointer;
+    transition: background .12s ease, color .12s ease, border-color .12s ease, transform .06s ease;
+  }
+  .pill:hover { border-color: var(--accent); }
+  .pill:active { transform: scale(.97); }
+  .pill[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .pill:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  .pill.small { padding: 5px 11px; font-size: 12px; }
+
+  .control-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .control-row:last-child { margin-bottom: 0; }
+  .control-label { font-size: 12px; color: var(--ink-muted); font-weight: 600; letter-spacing: .02em; min-width: 78px; }
+  .custom-range { display: flex; align-items: center; gap: 8px; }
+  .custom-range input[type="date"] {
+    font: inherit; font-size: 13px; padding: 6px 10px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .custom-range span { color: var(--ink-faint); font-size: 13px; }
+
+  /* stat strip */
+  .stat-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .stat { background: var(--surface); padding: 12px 16px; display: flex; flex-direction: column; gap: 4px; }
+  .stat .k { font-size: 11px; color: var(--ink-muted); letter-spacing: .03em; }
+  .stat .v { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-variant-numeric: tabular-nums; font-size: 17px; font-weight: 700; }
+  .stat .v.up { color: var(--up); }
+  .stat .v.down { color: var(--down); }
+
+  /* chart */
+  .chart-shell { position: relative; margin-top: 14px; }
+  .chart-shell svg { display: block; width: 100%; height: auto; touch-action: none; }
+  .tooltip {
+    position: absolute; pointer-events: none; background: var(--ink); color: var(--bg);
+    font-size: 12px; padding: 8px 10px; border-radius: 8px; box-shadow: var(--shadow);
+    line-height: 1.55; white-space: nowrap; opacity: 0; transform: translate(-9999px,-9999px);
+    transition: opacity .08s ease; z-index: 5; font-variant-numeric: tabular-nums;
+  }
+  .tooltip .tt-date { font-weight: 700; margin-bottom: 2px; color: var(--bg); }
+  .tooltip .tt-row { color: var(--ink-faint); }
+  .tooltip .tt-row b { color: var(--bg); font-weight: 600; }
+  .legend { display: flex; gap: 18px; align-items: center; margin-top: 10px; font-size: 12px; color: var(--ink-muted); }
+  .legend .swatch { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .box { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
+
+  /* grid layouts */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+  @media (max-width: 900px) { .grid-2, .grid-4 { grid-template-columns: 1fr; } .stat-row { grid-template-columns: repeat(2,1fr); } }
+
+  /* stats table */
+  table.metrics { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.metrics th, table.metrics td { padding: 9px 10px; text-align: right; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  table.metrics th:first-child, table.metrics td:first-child { text-align: left; font-variant-numeric: normal; }
+  table.metrics thead th { color: var(--ink-muted); font-weight: 600; font-size: 11.5px; }
+  table.metrics tbody tr:last-child td { border-bottom: none; }
+
+  /* forecast */
+  .forecast-input { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .forecast-input input[type="number"] {
+    font: inherit; font-size: 15px; font-weight: 700; padding: 8px 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--ink); width: 140px;
+    font-variant-numeric: tabular-nums;
+  }
+  table.forecast { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.forecast th, table.forecast td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  table.forecast th:first-child, table.forecast td:first-child { text-align: left; font-variant-numeric: normal; color: var(--ink-muted); font-size: 12px; }
+  table.forecast thead th { color: var(--ink-muted); font-weight: 600; font-size: 11.5px; }
+  table.forecast .hi-row td { color: var(--up); font-weight: 600; }
+  table.forecast .lo-row td { color: var(--down); font-weight: 600; }
+  .forecast-note { font-size: 11.5px; color: var(--ink-faint); margin-top: 10px; }
+
+  /* date search */
+  .search-input { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .search-input input[type="date"] {
+    font: inherit; font-size: 14px; padding: 8px 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .search-result { display: grid; grid-template-columns: repeat(5,1fr); gap: 10px; }
+  .search-result .cell { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; }
+  .search-result .cell .k { font-size: 11px; color: var(--ink-muted); }
+  .search-result .cell .v { font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 700; margin-top: 2px; }
+  .search-empty { color: var(--ink-faint); font-size: 13px; padding: 8px 0; }
+
+  /* seasonality mini charts */
+  .mini-chart-title { font-size: 12.5px; font-weight: 700; margin: 0 0 10px; color: var(--ink); }
+  .mini-chart-title .unit { color: var(--ink-muted); font-weight: 500; }
+  svg.mini { display: block; width: 100%; height: auto; }
+  .mini-bar-label { font-size: 9.5px; fill: var(--ink-muted); }
+  .mini-val-label { font-size: 9px; fill: var(--ink-faint); }
+
+  details.table-toggle { margin-top: 16px; }
+  details.table-toggle > summary {
+    cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-muted);
+    list-style: none; display: inline-flex; align-items: center; gap: 6px;
+  }
+  details.table-toggle > summary::-webkit-details-marker { display: none; }
+  details.table-toggle > summary::before { content: "▸"; transition: transform .12s ease; }
+  details.table-toggle[open] > summary::before { transform: rotate(90deg); }
+  .table-scroll { overflow-x: auto; margin-top: 10px; border: 1px solid var(--border); border-radius: 8px; max-height: 320px; }
+  table.data-table { border-collapse: collapse; width: 100%; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  table.data-table th, table.data-table td { padding: 6px 12px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.data-table th:first-child, table.data-table td:first-child { text-align: left; }
+  table.data-table thead th { position: sticky; top: 0; background: var(--surface-2); color: var(--ink-muted); font-weight: 600; font-size: 11px; }
+  table.data-table tbody tr.up td.close { color: var(--up); }
+  table.data-table tbody tr.down td.close { color: var(--down); }
+
+  .section-divider { display: flex; align-items: center; gap: 12px; margin: 4px 0; }
+  .section-divider .line { flex: 1; height: 1px; background: var(--border); }
+  .section-divider .label { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-muted); white-space: nowrap; }
+
+  footer.note { font-size: 12px; color: var(--ink-faint); max-width: 72ch; }
+</style>
+
+<div class="wrap">
+  <header class="page">
+    <div>
+      <p class="eyebrow">FX / Gold · 統計分析ダッシュボード</p>
+      <h1 id="page-title">ドル円</h1>
+      <p class="sub">Excelの「集計用」シートのWeb版。通貨・期間・曜日/週/月の条件を選ぶと、下の統計・予想レンジ・季節性がすべて連動して再計算されます。</p>
+    </div>
+  </header>
+
+  <!-- ===== チャートパネル ===== -->
+  <section class="panel">
+    <div class="control-row">
+      <span class="control-label">通貨ペア</span>
+      <div class="pills" id="pair-pills" role="group" aria-label="通貨ペアを選択"></div>
+    </div>
+    <div class="control-row">
+      <span class="control-label">表示期間</span>
+      <div class="pills" id="period-pills" role="group" aria-label="チャート表示期間"></div>
+      <div class="custom-range" id="custom-range" hidden>
+        <input type="date" id="custom-start" aria-label="開始日">
+        <span>〜</span>
+        <input type="date" id="custom-end" aria-label="終了日">
+      </div>
+    </div>
+
+    <div class="stat-row" id="stat-row"></div>
+
+    <div class="chart-shell" id="chart-shell">
+      <svg id="chart-svg" viewBox="0 0 1180 440" preserveAspectRatio="none" role="img" aria-label="ローソク足チャート"></svg>
+      <div class="tooltip" id="tooltip">
+        <div class="tt-date" id="tt-date"></div>
+        <div class="tt-row">始値 <b id="tt-o"></b></div>
+        <div class="tt-row">高値 <b id="tt-h"></b></div>
+        <div class="tt-row">安値 <b id="tt-l"></b></div>
+        <div class="tt-row">終値 <b id="tt-c"></b></div>
+      </div>
+    </div>
+    <div class="legend">
+      <span class="swatch"><span class="box" style="background:transparent;border:2px solid var(--up);"></span>陽線（終値&gt;始値）</span>
+      <span class="swatch"><span class="box" style="background:var(--down);"></span>陰線（終値&lt;始値）</span>
+    </div>
+
+    <details class="table-toggle">
+      <summary id="table-summary">表示中のデータを表で見る</summary>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead><tr><th>日付</th><th>始値</th><th>高値</th><th>安値</th><th>終値</th><th>騰落</th></tr></thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </details>
+  </section>
+
+  <div class="section-divider"><span class="label">統計分析（曜日・第N週・月で絞り込み／土日は集計対象外）</span><span class="line"></span></div>
+
+  <!-- ===== 統計フィルタ + テーブル ===== -->
+  <section class="panel">
+    <h2>絞り込み条件</h2>
+    <p class="panel-sub">ここで選んだ曜日・第N週・月の条件は、統計テーブル・本日の予想レンジに反映されます（季節性グラフとチャート期間には影響しません）。</p>
+    <div class="control-row">
+      <span class="control-label">曜日</span>
+      <div class="pills" id="wd-pills" role="group" aria-label="曜日で絞り込み"></div>
+    </div>
+    <div class="control-row">
+      <span class="control-label">第N週</span>
+      <div class="pills" id="wk-pills" role="group" aria-label="第N週で絞り込み"></div>
+    </div>
+    <div class="control-row">
+      <span class="control-label">月</span>
+      <div class="pills" id="mo-pills" role="group" aria-label="月で絞り込み"></div>
+    </div>
+  </section>
+
+  <div class="grid-2">
+    <section class="panel">
+      <h2>統計値</h2>
+      <p class="panel-sub" id="metrics-sub"></p>
+      <table class="metrics">
+        <thead><tr><th>項目</th><th>件数</th><th>平均</th><th>標準偏差</th></tr></thead>
+        <tbody id="metrics-body"></tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>本日の予想レンジ</h2>
+      <p class="panel-sub">左の絞り込み条件に合致した日の過去統計をもとに、始値からの予想高値・安値を算出します。</p>
+      <div class="forecast-input">
+        <span class="control-label" style="min-width:auto;">本日の始値</span>
+        <input type="number" id="forecast-open" step="any" placeholder="例: 159.20">
+      </div>
+      <table class="forecast">
+        <thead><tr><th></th><th>平均ベース</th><th>±1σ</th><th>±2σ</th><th>±3σ</th></tr></thead>
+        <tbody>
+          <tr class="hi-row"><td>予想高値</td><td id="fc-h0"></td><td id="fc-h1"></td><td id="fc-h2"></td><td id="fc-h3"></td></tr>
+          <tr class="lo-row"><td>予想安値</td><td id="fc-l0"></td><td id="fc-l1"></td><td id="fc-l2"></td><td id="fc-l3"></td></tr>
+        </tbody>
+      </table>
+      <p class="forecast-note">過去の平均的な値動きを当てはめた目安であり、将来のレートを保証するものではありません。</p>
+    </section>
+  </div>
+
+  <section class="panel">
+    <h2>日付検索</h2>
+    <p class="panel-sub">選択中の通貨ペアの、指定した日のデータを表示します。</p>
+    <div class="search-input">
+      <input type="date" id="search-date" aria-label="検索する日付">
+    </div>
+    <div id="search-result"></div>
+  </section>
+
+  <div class="section-divider"><span class="label">季節性（土日を除く、選択中ペア全期間）</span><span class="line"></span></div>
+
+  <div class="grid-4" id="season-charts"></div>
+
+  <footer class="note">
+    データはYahoo Financeの日足終値ベース（ゴールドはCOMEX金先物 GC=F、USD建て）。陽線率は「終値&lt;始値」の日の割合で、始値=終値の日は陽線・陰線どちらにも数えていないため陽線率+陰線率は100%になりません。統計・予想レンジは過去の値動きに基づく参考値であり、将来のレートを保証するものではありません。
+  </footer>
+</div>
+
+<script id="fx-data" type="application/json">/*__FXDATA__*/</script>
+<script>
+(function () {
+  "use strict";
+  const DATA = JSON.parse(document.getElementById("fx-data").textContent);
+  const PAIRS = ["ドル円", "ユーロ円", "ポンド円", "ユーロドル", "ポンドドル", "ゴールド"];
+  const PERIODS = [
+    { key: "1m", label: "1ヶ月" },
+    { key: "3m", label: "3ヶ月" },
+    { key: "6m", label: "6ヶ月" },
+    { key: "1y", label: "1年" },
+    { key: "ytd", label: "年初来" },
+    { key: "all", label: "全期間" },
+    { key: "custom", label: "カスタム" },
+  ];
+  const WEEKDAYS = ["すべて", "月", "火", "水", "木", "金"];
+  const WEEKS = ["すべて", "1", "2", "3", "4", "5"];
+  const MONTHS = ["すべて", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"];
+
+  const decimalsFor = (pair) => (pair === "ゴールド" ? 2 : pair.endsWith("円") ? 3 : 4);
+  const fmt = (n, d) => n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+  const $ = (sel) => document.querySelector(sel);
+  const mean = (arr) => arr.reduce((a, b) => a + b, 0) / arr.length;
+  const stdevp = (arr, m) => Math.sqrt(arr.reduce((a, b) => a + (b - m) ** 2, 0) / arr.length);
+
+  const state = {
+    pair: "ドル円",
+    period: "3m", customStart: null, customEnd: null,
+    wd: "すべて", wk: "すべて", mo: "すべて",
+  };
+  let lastMetrics = null;
+
+  // ---------- derived per-row fields (weekday/week/month), cached per pair ----------
+  const derivedCache = {};
+  function getDerived(pair) {
+    if (derivedCache[pair]) return derivedCache[pair];
+    const out = DATA[pair].rows.map((r) => {
+      const d = new Date(r[0] + "T00:00:00");
+      const dow = d.getDay();
+      const wdJP = ["日", "月", "火", "水", "木", "金", "土"][dow];
+      const month = d.getMonth() + 1;
+      const week = Math.floor((d.getDate() - 1) / 7) + 1;
+      const [, o, h, l, c] = r;
+      return {
+        date: r[0], o, h, l, c, wd: wdJP, month, week,
+        isWeekend: dow === 0 || dow === 6,
+        range: h - l, chg: o - c, o2l: o - l, o2h: o - h,
+      };
+    });
+    derivedCache[pair] = out;
+    return out;
+  }
+
+  // ---------- pills ----------
+  function buildPills(container, items, getKey, getLabel, onSelect, small) {
+    container.innerHTML = "";
+    items.forEach((item) => {
+      const btn = document.createElement("button");
+      btn.className = "pill" + (small ? " small" : "");
+      btn.type = "button";
+      btn.textContent = getLabel(item);
+      btn.setAttribute("aria-pressed", "false");
+      btn.addEventListener("click", () => onSelect(getKey(item)));
+      container.appendChild(btn);
+    });
+  }
+  function syncPills(container, pred) {
+    [...container.children].forEach((btn, i) => btn.setAttribute("aria-pressed", pred(i) ? "true" : "false"));
+  }
+
+  buildPills($("#pair-pills"), PAIRS, (p) => p, (p) => p, (key) => { state.pair = key; $("#forecast-open").value = DATA[key].rows[DATA[key].rows.length - 1][1]; renderAll(); });
+  buildPills($("#period-pills"), PERIODS, (p) => p.key, (p) => p.label, (key) => {
+    state.period = key; $("#custom-range").hidden = key !== "custom"; renderChartSection();
+  });
+  buildPills($("#wd-pills"), WEEKDAYS, (w) => w, (w) => w, (key) => { state.wd = key; renderStatsSection(); });
+  buildPills($("#wk-pills"), WEEKS, (w) => w, (w) => w, (key) => { state.wk = key; renderStatsSection(); }, true);
+  buildPills($("#mo-pills"), MONTHS, (m) => m, (m) => m, (key) => { state.mo = key; renderStatsSection(); }, true);
+
+  $("#custom-start").addEventListener("change", (e) => { state.customStart = e.target.value; if (state.period === "custom") renderChartSection(); });
+  $("#custom-end").addEventListener("change", (e) => { state.customEnd = e.target.value; if (state.period === "custom") renderChartSection(); });
+  $("#forecast-open").addEventListener("input", () => renderForecast(lastMetrics));
+  $("#search-date").addEventListener("change", renderSearch);
+
+  // ================= チャート(ローソク足) =================
+  function sliceForPeriod(rows) {
+    if (!rows.length) return [];
+    const toTime = (s) => new Date(s + "T00:00:00").getTime();
+    const lastTime = toTime(rows[rows.length - 1][0]);
+    let startTime = -Infinity;
+    switch (state.period) {
+      case "1m": startTime = lastTime - 31 * 86400000; break;
+      case "3m": startTime = lastTime - 93 * 86400000; break;
+      case "6m": startTime = lastTime - 186 * 86400000; break;
+      case "1y": startTime = lastTime - 366 * 86400000; break;
+      case "ytd": { const y = new Date(lastTime).getFullYear(); startTime = new Date(y, 0, 1).getTime(); break; }
+      case "all": startTime = -Infinity; break;
+      case "custom": {
+        if (!state.customStart || !state.customEnd) return rows.slice(-63);
+        const s = toTime(state.customStart), e = toTime(state.customEnd);
+        return rows.filter((r) => { const t = toTime(r[0]); return t >= s && t <= e; });
+      }
+    }
+    return rows.filter((r) => toTime(r[0]) >= startTime);
+  }
+
+  function renderChartStats(slice, decimals) {
+    const statRow = $("#stat-row");
+    statRow.innerHTML = "";
+    if (!slice.length) { statRow.innerHTML = '<div class="stat"><span class="k">データなし</span></div>'; return; }
+    const first = slice[0], last = slice[slice.length - 1];
+    const change = last[4] - first[1];
+    const changePct = (change / first[1]) * 100;
+    let hi = -Infinity, lo = Infinity, rangeSum = 0, upDays = 0;
+    slice.forEach((r) => { hi = Math.max(hi, r[2]); lo = Math.min(lo, r[3]); rangeSum += r[2] - r[3]; if (r[4] > r[1]) upDays++; });
+    const avgRange = rangeSum / slice.length;
+    const upPct = (upDays / slice.length) * 100;
+    const dir = change >= 0 ? "up" : "down";
+    const arrow = change >= 0 ? "▲" : "▼";
+    const items = [
+      { k: "終値", v: fmt(last[4], decimals) },
+      { k: "期間騰落", v: `${arrow} ${fmt(Math.abs(change), decimals)} (${changePct >= 0 ? "+" : ""}${changePct.toFixed(2)}%)`, cls: dir },
+      { k: "期間高値 / 安値", v: `${fmt(hi, decimals)} / ${fmt(lo, decimals)}` },
+      { k: "平均値幅（日次）", v: fmt(avgRange, decimals) },
+      { k: "陽線率", v: `${upPct.toFixed(1)}% (${slice.length}日中)` },
+    ];
+    items.forEach((it) => {
+      const div = document.createElement("div"); div.className = "stat";
+      div.innerHTML = `<span class="k">${it.k}</span><span class="v ${it.cls || ""}">${it.v}</span>`;
+      statRow.appendChild(div);
+    });
+  }
+
+  function renderChartTable(slice, decimals) {
+    const tbody = $("#table-body"); tbody.innerHTML = "";
+    $("#table-summary").textContent = `表示中のデータを表で見る（${slice.length}件）`;
+    const frag = document.createDocumentFragment();
+    for (let i = slice.length - 1; i >= 0; i--) {
+      const r = slice[i]; const up = r[4] > r[1]; const change = r[4] - r[1];
+      const tr = document.createElement("tr"); tr.className = up ? "up" : "down";
+      tr.innerHTML = `<td>${r[0]}</td><td>${fmt(r[1], decimals)}</td><td>${fmt(r[2], decimals)}</td><td>${fmt(r[3], decimals)}</td><td class="close">${fmt(r[4], decimals)}</td><td class="close">${change >= 0 ? "+" : ""}${fmt(change, decimals)}</td>`;
+      frag.appendChild(tr);
+    }
+    tbody.appendChild(frag);
+  }
+
+  const svgNS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs) { const e = document.createElementNS(svgNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+
+  function renderCandles(slice, decimals) {
+    const svg = $("#chart-svg"); svg.innerHTML = "";
+    const W = 1180, H = 440, padL = 64, padR = 16, padT = 16, padB = 34;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    if (!slice.length) return;
+    let hi = -Infinity, lo = Infinity;
+    slice.forEach((r) => { hi = Math.max(hi, r[2]); lo = Math.min(lo, r[3]); });
+    const pad = (hi - lo) * 0.08 || hi * 0.01 || 1; hi += pad; lo -= pad;
+    const yFor = (v) => padT + plotH * (1 - (v - lo) / (hi - lo));
+    const n = slice.length, slot = plotW / n;
+    const xFor = (i) => padL + slot * (i + 0.5);
+    const candleW = Math.max(1.4, Math.min(9, slot * 0.62));
+
+    for (let g = 0; g <= 5; g++) {
+      const v = lo + (hi - lo) * (g / 5), y = yFor(v);
+      svg.appendChild(el("line", { x1: padL, x2: W - padR, y1: y, y2: y, stroke: "var(--grid)" }));
+      const label = el("text", { x: padL - 8, y: y + 4, "text-anchor": "end", fill: "var(--ink-muted)", "font-size": "11" });
+      label.textContent = fmt(v, decimals); svg.appendChild(label);
+    }
+    const step = Math.max(1, Math.round(n / 8));
+    for (let i = 0; i < n; i += step) {
+      const label = el("text", { x: xFor(i), y: H - padB + 18, "text-anchor": "middle", fill: "var(--ink-muted)", "font-size": "11" });
+      label.textContent = slice[i][0].slice(2); svg.appendChild(label);
+    }
+    const candleGroup = el("g", {});
+    slice.forEach((r, i) => {
+      const [, o, h, l, c] = r; const up = c > o; const x = xFor(i);
+      const yO = yFor(o), yH = yFor(h), yL = yFor(l), yC = yFor(c);
+      const bodyTop = Math.min(yO, yC), bodyH = Math.max(1, Math.abs(yC - yO));
+      const color = up ? "var(--up)" : "var(--down)";
+      candleGroup.appendChild(el("line", { x1: x, x2: x, y1: yH, y2: yL, stroke: color, "stroke-width": 1.1 }));
+      candleGroup.appendChild(el("rect", {
+        x: x - candleW / 2, y: bodyTop, width: candleW, height: bodyH,
+        fill: up ? "var(--up-fill)" : color, stroke: color, "stroke-width": up ? 1.3 : 0,
+        rx: candleW > 3 ? 1 : 0, "data-i": i,
+      }));
+    });
+    svg.appendChild(candleGroup);
+
+    const hoverLine = el("line", { stroke: "var(--ink-faint)", "stroke-width": 1, "stroke-dasharray": "3 3", y1: padT, y2: H - padB, visibility: "hidden" });
+    svg.appendChild(hoverLine);
+    const hitArea = el("rect", { x: padL, y: padT, width: plotW, height: plotH, fill: "transparent" });
+    svg.appendChild(hitArea);
+    const tooltip = $("#tooltip"), shell = $("#chart-shell");
+
+    function showTooltip(i) {
+      const r = slice[i];
+      hoverLine.setAttribute("x1", xFor(i)); hoverLine.setAttribute("x2", xFor(i)); hoverLine.setAttribute("visibility", "visible");
+      $("#tt-date").textContent = r[0];
+      $("#tt-o").textContent = fmt(r[1], decimals); $("#tt-h").textContent = fmt(r[2], decimals);
+      $("#tt-l").textContent = fmt(r[3], decimals); $("#tt-c").textContent = fmt(r[4], decimals);
+      const shellRect = shell.getBoundingClientRect(), svgRect = svg.getBoundingClientRect();
+      const scale = svgRect.width / W;
+      let left = xFor(i) * scale + 14;
+      if (left > shellRect.width - 150) left = xFor(i) * scale - 150;
+      tooltip.style.transform = `translate(${left}px, 20px)`; tooltip.style.opacity = "1";
+    }
+    function hideTooltip() { hoverLine.setAttribute("visibility", "hidden"); tooltip.style.opacity = "0"; tooltip.style.transform = "translate(-9999px,-9999px)"; }
+    hitArea.addEventListener("mousemove", (ev) => {
+      const rect = svg.getBoundingClientRect();
+      const relX = ((ev.clientX - rect.left) / rect.width) * W;
+      let i = Math.round((relX - padL) / slot - 0.5); i = Math.max(0, Math.min(n - 1, i));
+      showTooltip(i);
+    });
+    hitArea.addEventListener("mouseleave", hideTooltip);
+    hitArea.addEventListener("touchstart", (ev) => {
+      const t = ev.touches[0]; const rect = svg.getBoundingClientRect();
+      const relX = ((t.clientX - rect.left) / rect.width) * W;
+      let i = Math.round((relX - padL) / slot - 0.5); i = Math.max(0, Math.min(n - 1, i));
+      showTooltip(i);
+    }, { passive: true });
+  }
+
+  function renderChartSection() {
+    syncPills($("#period-pills"), (i) => PERIODS[i].key === state.period);
+    const decimals = decimalsFor(state.pair);
+    const slice = sliceForPeriod(DATA[state.pair].rows);
+    renderChartStats(slice, decimals);
+    renderCandles(slice, decimals);
+    renderChartTable(slice, decimals);
+  }
+
+  // ================= 統計テーブル + 本日の予想レンジ =================
+  function filteredForStats(pair) {
+    return getDerived(pair).filter((r) =>
+      !r.isWeekend &&
+      (state.wd === "すべて" || r.wd === state.wd) &&
+      (state.wk === "すべて" || String(r.week) === state.wk) &&
+      (state.mo === "すべて" || String(r.month) === state.mo)
+    );
+  }
+  function computeMetrics(filtered) {
+    const n = filtered.length;
+    if (!n) return null;
+    const metrics = {};
+    ["range", "chg", "o2l", "o2h"].forEach((key) => {
+      const vals = filtered.map((r) => r[key]);
+      const m = mean(vals);
+      metrics[key] = { avg: m, sd: stdevp(vals, m) };
+    });
+    return { n, metrics };
+  }
+  function renderMetricsTable(metrics, decimals) {
+    const body = $("#metrics-body"); body.innerHTML = "";
+    if (!metrics) {
+      body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--ink-faint)">該当データなし</td></tr>';
+      $("#metrics-sub").textContent = "該当件数: 0件";
+      return;
+    }
+    const rows = [["高値ー安値（レンジ）", "range"], ["始値ー終値", "chg"], ["始値ー安値", "o2l"], ["始値ー高値", "o2h"]];
+    rows.forEach(([label, key]) => {
+      const m = metrics.metrics[key];
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${label}</td><td>${metrics.n.toLocaleString()}</td><td>${fmt(m.avg, decimals)}</td><td>${fmt(m.sd, decimals)}</td>`;
+      body.appendChild(tr);
+    });
+    $("#metrics-sub").textContent = `該当件数: ${metrics.n.toLocaleString()}件`;
+  }
+  function renderForecast(metrics) {
+    const ids = ["fc-h0", "fc-h1", "fc-h2", "fc-h3", "fc-l0", "fc-l1", "fc-l2", "fc-l3"];
+    const openVal = parseFloat($("#forecast-open").value);
+    if (!metrics || isNaN(openVal)) { ids.forEach((id) => ($("#" + id).textContent = "—")); return; }
+    const decimals = decimalsFor(state.pair);
+    const hMean = openVal - metrics.metrics.o2h.avg, hSd = metrics.metrics.o2h.sd;
+    const lMean = openVal - metrics.metrics.o2l.avg, lSd = metrics.metrics.o2l.sd;
+    $("#fc-h0").textContent = fmt(hMean, decimals);
+    $("#fc-h1").textContent = fmt(hMean + hSd, decimals);
+    $("#fc-h2").textContent = fmt(hMean + 2 * hSd, decimals);
+    $("#fc-h3").textContent = fmt(hMean + 3 * hSd, decimals);
+    $("#fc-l0").textContent = fmt(lMean, decimals);
+    $("#fc-l1").textContent = fmt(lMean - lSd, decimals);
+    $("#fc-l2").textContent = fmt(lMean - 2 * lSd, decimals);
+    $("#fc-l3").textContent = fmt(lMean - 3 * lSd, decimals);
+  }
+  function renderStatsSection() {
+    syncPills($("#wd-pills"), (i) => WEEKDAYS[i] === state.wd);
+    syncPills($("#wk-pills"), (i) => WEEKS[i] === state.wk);
+    syncPills($("#mo-pills"), (i) => MONTHS[i] === state.mo);
+    const decimals = decimalsFor(state.pair);
+    const metrics = computeMetrics(filteredForStats(state.pair));
+    lastMetrics = metrics;
+    renderMetricsTable(metrics, decimals);
+    renderForecast(metrics);
+  }
+
+  // ================= 日付検索 =================
+  function renderSearch() {
+    const dateStr = $("#search-date").value;
+    const container = $("#search-result");
+    if (!dateStr) { container.innerHTML = '<div class="search-empty">日付を選択してください</div>'; return; }
+    const found = DATA[state.pair].rows.find((r) => r[0] === dateStr);
+    if (!found) { container.innerHTML = '<div class="search-empty">データがありません（休場日の可能性があります）</div>'; return; }
+    const decimals = decimalsFor(state.pair);
+    const d = new Date(dateStr + "T00:00:00");
+    const wdJP = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
+    const items = [["曜日", wdJP], ["始値", fmt(found[1], decimals)], ["高値", fmt(found[2], decimals)], ["安値", fmt(found[3], decimals)], ["終値", fmt(found[4], decimals)]];
+    container.innerHTML = `<div class="search-result">${items.map(([k, v]) => `<div class="cell"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("")}</div>`;
+  }
+
+  // ================= 季節性ミニグラフ =================
+  function computeSeasonality(pair) {
+    const rows = getDerived(pair).filter((r) => !r.isWeekend);
+    const wdKeys = ["月", "火", "水", "木", "金"];
+    const build = (subset) => {
+      const n = subset.length;
+      if (!n) return { n, avgRange: 0, avgChg: 0, winRate: 0 };
+      return {
+        n,
+        avgRange: mean(subset.map((r) => r.range)),
+        avgChg: -mean(subset.map((r) => r.chg)),
+        winRate: subset.filter((r) => r.chg < 0).length / n,
+      };
+    };
+    const wdStats = wdKeys.map((wd) => ({ label: wd, ...build(rows.filter((r) => r.wd === wd)) }));
+    const moStats = [];
+    for (let m = 1; m <= 12; m++) moStats.push({ label: String(m), ...build(rows.filter((r) => r.month === m)) });
+    return { wdStats, moStats };
+  }
+
+  function renderMiniBarChart(container, title, unitNote, items, valueKey, opts) {
+    opts = opts || {};
+    const diverging = !!opts.diverging;
+    const decimals = opts.decimals != null ? opts.decimals : 3;
+    const W = 280, H = 180, padL = 6, padR = 6, padT = 6, padB = 20;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const vals = items.map((it) => it[valueKey]);
+    const maxAbs = Math.max(...vals.map((v) => Math.abs(v)), 1e-9);
+    const zeroY = diverging ? padT + plotH / 2 : padT + plotH;
+    const scale = diverging ? (plotH / 2) / maxAbs : plotH / Math.max(...vals, 1e-9);
+    const n = items.length, slot = plotW / n, barW = Math.max(6, slot * 0.55);
+    let parts = [];
+    if (diverging) parts.push(`<line x1="${padL}" x2="${W - padR}" y1="${zeroY}" y2="${zeroY}" stroke="var(--grid)" stroke-width="1"></line>`);
+    items.forEach((it, i) => {
+      const x = padL + slot * (i + 0.5);
+      const v = it[valueKey];
+      const barH = Math.max(Math.abs(v) * scale, it.n ? 1 : 0);
+      const y = diverging ? (v >= 0 ? zeroY - barH : zeroY) : zeroY - barH;
+      const color = diverging ? (v >= 0 ? "var(--up)" : "var(--down)") : "var(--accent)";
+      parts.push(`<rect x="${(x - barW / 2).toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${barH.toFixed(1)}" rx="2" fill="${color}"><title>${it.label}: ${fmt(v, decimals)}（${it.n}日）</title></rect>`);
+      parts.push(`<text x="${x.toFixed(1)}" y="${H - 6}" text-anchor="middle" class="mini-bar-label">${it.label}</text>`);
+    });
+    container.innerHTML = `<div class="mini-chart-title">${title} <span class="unit">${unitNote}</span></div><svg class="mini" viewBox="0 0 ${W} ${H}">${parts.join("")}</svg>`;
+  }
+
+  function renderSeasonality() {
+    const decimals = decimalsFor(state.pair);
+    const { wdStats, moStats } = computeSeasonality(state.pair);
+    const container = $("#season-charts");
+    container.innerHTML = `
+      <section class="panel" id="sc-wd-range"></section>
+      <section class="panel" id="sc-mo-range"></section>
+      <section class="panel" id="sc-wd-chg"></section>
+      <section class="panel" id="sc-mo-chg"></section>`;
+    renderMiniBarChart($("#sc-wd-range"), "曜日別 平均値幅", "(高値ー安値)", wdStats, "avgRange", { decimals });
+    renderMiniBarChart($("#sc-mo-range"), "月別 平均値幅", "(高値ー安値)", moStats, "avgRange", { decimals });
+    renderMiniBarChart($("#sc-wd-chg"), "曜日別 平均騰落", "(+は上昇)", wdStats, "avgChg", { decimals, diverging: true });
+    renderMiniBarChart($("#sc-mo-chg"), "月別 平均騰落", "(+は上昇)", moStats, "avgChg", { decimals, diverging: true });
+  }
+
+  // ================= init =================
+  function renderAll() {
+    $("#page-title").textContent = state.pair;
+    syncPills($("#pair-pills"), (i) => PAIRS[i] === state.pair);
+    renderChartSection();
+    renderStatsSection();
+    renderSearch();
+    renderSeasonality();
+  }
+
+  const lastRow = DATA[state.pair].rows[DATA[state.pair].rows.length - 1];
+  $("#custom-end").value = lastRow[0];
+  const d0 = new Date(lastRow[0] + "T00:00:00"); d0.setMonth(d0.getMonth() - 3);
+  $("#custom-start").value = d0.toISOString().slice(0, 10);
+  state.customStart = $("#custom-start").value; state.customEnd = $("#custom-end").value;
+
+  $("#forecast-open").value = lastRow[1];
+  $("#search-date").value = new Date().toLocaleDateString("en-CA");
+  renderAll();
+  window.addEventListener("resize", () => { renderCandles(sliceForPeriod(DATA[state.pair].rows), decimalsFor(state.pair)); });
+})();
+
+</script>
+

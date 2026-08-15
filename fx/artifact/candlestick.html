@@ -1,0 +1,544 @@
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FX ローソク足チャート</title>
+<style>
+  @font-face {
+    font-family: "TabularMono";
+    src: local("SF Mono"), local("Cascadia Mono"), local("Consolas");
+  }
+  :root {
+    --bg: #f6f4ef;
+    --surface: #ffffff;
+    --surface-2: #efece3;
+    --ink: #1c1f24;
+    --ink-muted: #6b6f78;
+    --ink-faint: #9a9da3;
+    --border: #e1ddd0;
+    --accent: #a9762f;
+    --accent-ink: #ffffff;
+    --up: #2f9468;
+    --up-fill: #eaf5ef;
+    --down: #c74a3f;
+    --down-fill: #c74a3f;
+    --grid: #e5e1d4;
+    --shadow: 0 1px 2px rgba(28,31,36,.04), 0 6px 20px rgba(28,31,36,.06);
+    --radius: 10px;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c;
+      --surface: #1b1f26;
+      --surface-2: #20242c;
+      --ink: #e9e6df;
+      --ink-muted: #9199a3;
+      --ink-faint: #6b7078;
+      --border: #2a2f38;
+      --accent: #d9a24e;
+      --accent-ink: #1c1408;
+      --up: #45b98a;
+      --up-fill: #16241d;
+      --down: #e2665a;
+      --down-fill: #e2665a;
+      --grid: #262b33;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14171c; --surface: #1b1f26; --surface-2: #20242c; --ink: #e9e6df;
+    --ink-muted: #9199a3; --ink-faint: #6b7078; --border: #2a2f38; --accent: #d9a24e;
+    --accent-ink: #1c1408; --up: #45b98a; --up-fill: #16241d; --down: #e2665a;
+    --down-fill: #e2665a; --grid: #262b33; color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f4ef; --surface: #ffffff; --surface-2: #efece3; --ink: #1c1f24;
+    --ink-muted: #6b6f78; --ink-faint: #9a9da3; --border: #e1ddd0; --accent: #a9762f;
+    --accent-ink: #ffffff; --up: #2f9468; --up-fill: #eaf5ef; --down: #c74a3f;
+    --down-fill: #c74a3f; --grid: #e5e1d4; color-scheme: light;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+    line-height: 1.5;
+    padding: 28px 20px 48px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+
+  header.page { margin-bottom: 22px; }
+  .eyebrow {
+    font-size: 12px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700; margin: 0 0 6px;
+  }
+  h1 {
+    font-size: 26px; margin: 0 0 6px; font-weight: 800; letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .sub { color: var(--ink-muted); font-size: 14px; margin: 0; max-width: 62ch; }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 18px 20px;
+  }
+  .controls { display: flex; flex-direction: column; gap: 14px; margin-bottom: 16px; }
+  .control-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .control-label {
+    font-size: 12px; color: var(--ink-muted); font-weight: 600; letter-spacing: .02em;
+    min-width: 72px;
+  }
+  .pills { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pill {
+    appearance: none; border: 1px solid var(--border); background: var(--surface-2);
+    color: var(--ink); font: inherit; font-size: 13px; font-weight: 600;
+    padding: 7px 14px; border-radius: 999px; cursor: pointer;
+    transition: background .12s ease, color .12s ease, border-color .12s ease, transform .06s ease;
+  }
+  .pill:hover { border-color: var(--accent); }
+  .pill:active { transform: scale(.97); }
+  .pill[aria-pressed="true"] {
+    background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
+  }
+  .pill:focus-visible, button:focus-visible, input:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  .custom-range { display: flex; align-items: center; gap: 8px; }
+  .custom-range input[type="date"] {
+    font: inherit; font-size: 13px; padding: 6px 10px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .custom-range span { color: var(--ink-faint); font-size: 13px; }
+
+  .stat-row {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px;
+    background: var(--border); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; margin-bottom: 16px;
+  }
+  .stat {
+    background: var(--surface); padding: 12px 16px; display: flex; flex-direction: column; gap: 4px;
+  }
+  .stat .k { font-size: 11px; color: var(--ink-muted); letter-spacing: .03em; }
+  .stat .v {
+    font-family: "TabularMono", ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-variant-numeric: tabular-nums; font-size: 17px; font-weight: 700;
+  }
+  .stat .v.up { color: var(--up); }
+  .stat .v.down { color: var(--down); }
+
+  .chart-shell { position: relative; }
+  .chart-shell svg { display: block; width: 100%; height: auto; touch-action: none; }
+  .crosshair-line { stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
+  .tooltip {
+    position: absolute; pointer-events: none; background: var(--ink); color: var(--bg);
+    font-size: 12px; padding: 8px 10px; border-radius: 8px; box-shadow: var(--shadow);
+    line-height: 1.55; white-space: nowrap; opacity: 0; transform: translate(-9999px,-9999px);
+    transition: opacity .08s ease; z-index: 5; font-variant-numeric: tabular-nums;
+  }
+  .tooltip .tt-date { font-weight: 700; margin-bottom: 2px; color: var(--bg); }
+  .tooltip .tt-row { color: var(--ink-faint); }
+  .tooltip .tt-row b { color: var(--bg); font-weight: 600; }
+
+  .legend { display: flex; gap: 18px; align-items: center; margin-top: 10px; font-size: 12px; color: var(--ink-muted); }
+  .legend .swatch { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .box { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
+
+  details.table-toggle { margin-top: 18px; }
+  details.table-toggle > summary {
+    cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-muted);
+    list-style: none; display: inline-flex; align-items: center; gap: 6px;
+  }
+  details.table-toggle > summary::-webkit-details-marker { display: none; }
+  details.table-toggle > summary::before { content: "▸"; transition: transform .12s ease; }
+  details.table-toggle[open] > summary::before { transform: rotate(90deg); }
+  .table-scroll { overflow-x: auto; margin-top: 10px; border: 1px solid var(--border); border-radius: 8px; max-height: 320px; }
+  table.data-table {
+    border-collapse: collapse; width: 100%; font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  table.data-table th, table.data-table td {
+    padding: 6px 12px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  table.data-table th:first-child, table.data-table td:first-child { text-align: left; }
+  table.data-table thead th {
+    position: sticky; top: 0; background: var(--surface-2); color: var(--ink-muted);
+    font-weight: 600; font-size: 11px;
+  }
+  table.data-table tbody tr.up td.close { color: var(--up); }
+  table.data-table tbody tr.down td.close { color: var(--down); }
+
+  footer.note {
+    margin-top: 20px; font-size: 12px; color: var(--ink-faint); max-width: 68ch;
+  }
+
+  @media (max-width: 680px) {
+    .stat-row { grid-template-columns: repeat(2, 1fr); }
+    .control-label { min-width: auto; width: 100%; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="page">
+    <p class="eyebrow">FX / Gold · 10-Year Daily Data</p>
+    <h1 id="page-title">ドル円 ローソク足チャート</h1>
+    <p class="sub">通貨ペアと期間を選ぶと、その範囲の日足OHLCをローソク足で表示します。バーにカーソルを合わせると始値・高値・安値・終値が確認できます。</p>
+  </header>
+
+  <div class="panel">
+    <div class="controls">
+      <div class="control-row">
+        <span class="control-label">通貨ペア</span>
+        <div class="pills" id="pair-pills" role="group" aria-label="通貨ペアを選択"></div>
+      </div>
+      <div class="control-row">
+        <span class="control-label">期間</span>
+        <div class="pills" id="period-pills" role="group" aria-label="期間を選択"></div>
+        <div class="custom-range" id="custom-range" hidden>
+          <input type="date" id="custom-start" aria-label="開始日">
+          <span>〜</span>
+          <input type="date" id="custom-end" aria-label="終了日">
+        </div>
+      </div>
+    </div>
+
+    <div class="stat-row" id="stat-row"></div>
+
+    <div class="chart-shell" id="chart-shell">
+      <svg id="chart-svg" viewBox="0 0 1180 460" preserveAspectRatio="none" role="img" aria-label="ローソク足チャート"></svg>
+      <div class="tooltip" id="tooltip">
+        <div class="tt-date" id="tt-date"></div>
+        <div class="tt-row">始値 <b id="tt-o"></b></div>
+        <div class="tt-row">高値 <b id="tt-h"></b></div>
+        <div class="tt-row">安値 <b id="tt-l"></b></div>
+        <div class="tt-row">終値 <b id="tt-c"></b></div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span class="swatch"><span class="box" id="legend-up-box" style="background:transparent;border:2px solid var(--up);"></span>陽線（終値&gt;始値）</span>
+      <span class="swatch"><span class="box" style="background:var(--down);"></span>陰線（終値&lt;始値）</span>
+    </div>
+
+    <details class="table-toggle">
+      <summary id="table-summary">表示中のデータを表で見る</summary>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr><th>日付</th><th>始値</th><th>高値</th><th>安値</th><th>終値</th><th>騰落</th></tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </details>
+  </div>
+
+  <footer class="note">
+    データはYahoo Financeの日足終値ベース（ゴールドはCOMEX金先物 GC=F、USD建て）。過去の値動きであり、将来のレートを保証するものではありません。
+  </footer>
+</div>
+
+<script id="fx-data" type="application/json">/*__FXDATA__*/</script>
+<script>
+(function () {
+  "use strict";
+  const DATA = JSON.parse(document.getElementById("fx-data").textContent);
+  const PAIRS = ["ドル円", "ユーロ円", "ポンド円", "ユーロドル", "ポンドドル", "ゴールド"];
+  const PERIODS = [
+    { key: "1m", label: "1ヶ月" },
+    { key: "3m", label: "3ヶ月" },
+    { key: "6m", label: "6ヶ月" },
+    { key: "1y", label: "1年" },
+    { key: "ytd", label: "年初来" },
+    { key: "all", label: "全期間" },
+    { key: "custom", label: "カスタム" },
+  ];
+
+  const decimalsFor = (pair) => {
+    if (pair === "ゴールド") return 2;
+    if (pair.endsWith("円")) return 3;
+    return 4;
+  };
+
+  const state = {
+    pair: "ドル円",
+    period: "3m",
+    customStart: null,
+    customEnd: null,
+  };
+
+  const $ = (sel) => document.querySelector(sel);
+
+  function buildPills(container, items, getKey, getLabel, onSelect) {
+    container.innerHTML = "";
+    items.forEach((item) => {
+      const btn = document.createElement("button");
+      btn.className = "pill";
+      btn.type = "button";
+      btn.textContent = getLabel(item);
+      btn.setAttribute("aria-pressed", "false");
+      btn.addEventListener("click", () => onSelect(getKey(item)));
+      container.appendChild(btn);
+    });
+  }
+
+  function syncPillState(container, activeIndexPredicate) {
+    [...container.children].forEach((btn, i) => {
+      btn.setAttribute("aria-pressed", activeIndexPredicate(i) ? "true" : "false");
+    });
+  }
+
+  buildPills($("#pair-pills"), PAIRS, (p) => p, (p) => p, (key) => {
+    state.pair = key;
+    render();
+  });
+  buildPills($("#period-pills"), PERIODS, (p) => p.key, (p) => p.label, (key) => {
+    state.period = key;
+    $("#custom-range").hidden = key !== "custom";
+    render();
+  });
+
+  $("#custom-start").addEventListener("change", (e) => { state.customStart = e.target.value; if (state.period === "custom") render(); });
+  $("#custom-end").addEventListener("change", (e) => { state.customEnd = e.target.value; if (state.period === "custom") render(); });
+
+  function sliceForPeriod(rows) {
+    if (!rows.length) return [];
+    const lastDate = rows[rows.length - 1][0];
+    const toTime = (s) => new Date(s + "T00:00:00").getTime();
+    let startTime = -Infinity;
+    const lastTime = toTime(lastDate);
+
+    switch (state.period) {
+      case "1m": startTime = lastTime - 31 * 86400000; break;
+      case "3m": startTime = lastTime - 93 * 86400000; break;
+      case "6m": startTime = lastTime - 186 * 86400000; break;
+      case "1y": startTime = lastTime - 366 * 86400000; break;
+      case "ytd": {
+        const y = new Date(lastTime).getFullYear();
+        startTime = new Date(y, 0, 1).getTime();
+        break;
+      }
+      case "all": startTime = -Infinity; break;
+      case "custom": {
+        if (!state.customStart || !state.customEnd) return rows.slice(-63);
+        const s = toTime(state.customStart), e = toTime(state.customEnd);
+        return rows.filter((r) => { const t = toTime(r[0]); return t >= s && t <= e; });
+      }
+    }
+    return rows.filter((r) => toTime(r[0]) >= startTime);
+  }
+
+  function fmt(n, d) { return n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }); }
+
+  function renderStats(slice, decimals) {
+    const statRow = $("#stat-row");
+    statRow.innerHTML = "";
+    if (!slice.length) {
+      statRow.innerHTML = '<div class="stat"><span class="k">データなし</span></div>';
+      return;
+    }
+    const first = slice[0], last = slice[slice.length - 1];
+    const change = last[4] - first[1];
+    const changePct = (change / first[1]) * 100;
+    let hi = -Infinity, lo = Infinity, rangeSum = 0, upDays = 0;
+    slice.forEach((r) => {
+      hi = Math.max(hi, r[2]);
+      lo = Math.min(lo, r[3]);
+      rangeSum += (r[2] - r[3]);
+      if (r[4] > r[1]) upDays++;
+    });
+    const avgRange = rangeSum / slice.length;
+    const upPct = (upDays / slice.length) * 100;
+    const dir = change >= 0 ? "up" : "down";
+    const arrow = change >= 0 ? "▲" : "▼";
+
+    const items = [
+      { k: "終値", v: fmt(last[4], decimals) },
+      { k: "期間騰落", v: `${arrow} ${fmt(Math.abs(change), decimals)} (${changePct >= 0 ? "+" : ""}${changePct.toFixed(2)}%)`, cls: dir },
+      { k: "期間高値 / 安値", v: `${fmt(hi, decimals)} / ${fmt(lo, decimals)}` },
+      { k: "平均値幅（日次）", v: fmt(avgRange, decimals) },
+      { k: "陽線率", v: `${upPct.toFixed(1)}% (${slice.length}日中)` },
+    ];
+    items.forEach((it) => {
+      const div = document.createElement("div");
+      div.className = "stat";
+      div.innerHTML = `<span class="k">${it.k}</span><span class="v ${it.cls || ""}">${it.v}</span>`;
+      statRow.appendChild(div);
+    });
+  }
+
+  function renderTable(slice, decimals) {
+    const tbody = $("#table-body");
+    tbody.innerHTML = "";
+    $("#table-summary").textContent = `表示中のデータを表で見る（${slice.length}件）`;
+    const frag = document.createDocumentFragment();
+    for (let i = slice.length - 1; i >= 0; i--) {
+      const r = slice[i];
+      const up = r[4] > r[1];
+      const change = r[4] - r[1];
+      const tr = document.createElement("tr");
+      tr.className = up ? "up" : "down";
+      tr.innerHTML = `<td>${r[0]}</td><td>${fmt(r[1], decimals)}</td><td>${fmt(r[2], decimals)}</td><td>${fmt(r[3], decimals)}</td><td class="close">${fmt(r[4], decimals)}</td><td class="close">${change >= 0 ? "+" : ""}${fmt(change, decimals)}</td>`;
+      frag.appendChild(tr);
+    }
+    tbody.appendChild(frag);
+  }
+
+  const svgNS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs) {
+    const e = document.createElementNS(svgNS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+
+  function renderChart(slice, decimals) {
+    const svg = $("#chart-svg");
+    svg.innerHTML = "";
+    const W = 1180, H = 460;
+    const padL = 64, padR = 16, padT = 16, padB = 34;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+
+    if (!slice.length) {
+      svg.appendChild(el("text", { x: W / 2, y: H / 2, fill: "var(--ink-muted)", "text-anchor": "middle" }));
+      return;
+    }
+
+    let hi = -Infinity, lo = Infinity;
+    slice.forEach((r) => { hi = Math.max(hi, r[2]); lo = Math.min(lo, r[3]); });
+    const pad = (hi - lo) * 0.08 || hi * 0.01 || 1;
+    hi += pad; lo -= pad;
+
+    const yFor = (v) => padT + plotH * (1 - (v - lo) / (hi - lo));
+    const n = slice.length;
+    const slot = plotW / n;
+    const xFor = (i) => padL + slot * (i + 0.5);
+    const candleW = Math.max(1.4, Math.min(9, slot * 0.62));
+
+    // grid + y labels
+    const gridN = 5;
+    for (let g = 0; g <= gridN; g++) {
+      const v = lo + (hi - lo) * (g / gridN);
+      const y = yFor(v);
+      svg.appendChild(el("line", { x1: padL, x2: W - padR, y1: y, y2: y, class: "crosshair-line", stroke: "var(--grid)", "stroke-dasharray": "0" }));
+      const label = el("text", { x: padL - 8, y: y + 4, "text-anchor": "end", fill: "var(--ink-muted)", "font-size": "11" });
+      label.textContent = fmt(v, decimals);
+      svg.appendChild(label);
+    }
+
+    // x labels (thinned)
+    const targetLabels = 8;
+    const step = Math.max(1, Math.round(n / targetLabels));
+    for (let i = 0; i < n; i += step) {
+      const x = xFor(i);
+      const label = el("text", { x: x, y: H - padB + 18, "text-anchor": "middle", fill: "var(--ink-muted)", "font-size": "11" });
+      label.textContent = slice[i][0].slice(2);
+      svg.appendChild(label);
+    }
+
+    const candleGroup = el("g", {});
+    slice.forEach((r, i) => {
+      const [, o, h, l, c] = r;
+      const up = c > o;
+      const x = xFor(i);
+      const yO = yFor(o), yH = yFor(h), yL = yFor(l), yC = yFor(c);
+      const bodyTop = Math.min(yO, yC);
+      const bodyH = Math.max(1, Math.abs(yC - yO));
+      const color = up ? "var(--up)" : "var(--down)";
+
+      candleGroup.appendChild(el("line", { x1: x, x2: x, y1: yH, y2: yL, stroke: color, "stroke-width": 1.1 }));
+      const rect = el("rect", {
+        x: x - candleW / 2, y: bodyTop, width: candleW, height: bodyH,
+        fill: up ? "var(--up-fill)" : color,
+        stroke: color, "stroke-width": up ? 1.3 : 0,
+        rx: candleW > 3 ? 1 : 0,
+        "data-i": i,
+      });
+      candleGroup.appendChild(rect);
+    });
+    svg.appendChild(candleGroup);
+
+    // hover layer
+    const hoverLine = el("line", { class: "crosshair-line", y1: padT, y2: H - padB, visibility: "hidden" });
+    svg.appendChild(hoverLine);
+    const hitArea = el("rect", { x: padL, y: padT, width: plotW, height: plotH, fill: "transparent" });
+    svg.appendChild(hitArea);
+
+    const tooltip = $("#tooltip");
+    const shell = $("#chart-shell");
+
+    function showTooltip(i, clientX) {
+      const r = slice[i];
+      hoverLine.setAttribute("x1", xFor(i));
+      hoverLine.setAttribute("x2", xFor(i));
+      hoverLine.setAttribute("visibility", "visible");
+      $("#tt-date").textContent = r[0];
+      $("#tt-o").textContent = fmt(r[1], decimals);
+      $("#tt-h").textContent = fmt(r[2], decimals);
+      $("#tt-l").textContent = fmt(r[3], decimals);
+      $("#tt-c").textContent = fmt(r[4], decimals);
+      const shellRect = shell.getBoundingClientRect();
+      const svgRect = svg.getBoundingClientRect();
+      const scale = svgRect.width / W;
+      let left = (xFor(i) * scale) + 14;
+      if (left > shellRect.width - 150) left = (xFor(i) * scale) - 150;
+      tooltip.style.transform = `translate(${left}px, ${20}px)`;
+      tooltip.style.opacity = "1";
+    }
+    function hideTooltip() {
+      hoverLine.setAttribute("visibility", "hidden");
+      tooltip.style.opacity = "0";
+      tooltip.style.transform = "translate(-9999px,-9999px)";
+    }
+
+    hitArea.addEventListener("mousemove", (ev) => {
+      const rect = svg.getBoundingClientRect();
+      const relX = ((ev.clientX - rect.left) / rect.width) * W;
+      let i = Math.round((relX - padL) / slot - 0.5);
+      i = Math.max(0, Math.min(n - 1, i));
+      showTooltip(i, ev.clientX);
+    });
+    hitArea.addEventListener("mouseleave", hideTooltip);
+    hitArea.addEventListener("touchstart", (ev) => {
+      const t = ev.touches[0];
+      const rect = svg.getBoundingClientRect();
+      const relX = ((t.clientX - rect.left) / rect.width) * W;
+      let i = Math.round((relX - padL) / slot - 0.5);
+      i = Math.max(0, Math.min(n - 1, i));
+      showTooltip(i, t.clientX);
+    }, { passive: true });
+  }
+
+  function render() {
+    const pairData = DATA[state.pair];
+    const decimals = decimalsFor(state.pair);
+    const slice = sliceForPeriod(pairData.rows);
+
+    $("#page-title").textContent = `${state.pair} ローソク足チャート`;
+    syncPillState($("#pair-pills"), (i) => PAIRS[i] === state.pair);
+    syncPillState($("#period-pills"), (i) => PERIODS[i].key === state.period);
+
+    renderStats(slice, decimals);
+    renderChart(slice, decimals);
+    renderTable(slice, decimals);
+  }
+
+  // set default custom range to something sensible
+  const lastRow = DATA[state.pair].rows[DATA[state.pair].rows.length - 1];
+  $("#custom-end").value = lastRow[0];
+  const d = new Date(lastRow[0] + "T00:00:00");
+  d.setMonth(d.getMonth() - 3);
+  $("#custom-start").value = d.toISOString().slice(0, 10);
+  state.customStart = $("#custom-start").value;
+  state.customEnd = $("#custom-end").value;
+
+  render();
+  window.addEventListener("resize", () => render());
+})();
+</script>
+
