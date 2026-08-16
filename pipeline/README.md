@@ -27,7 +27,11 @@ bash pipeline/setup.sh          # ffmpeg + Noto CJK フォント + Python依存 
 | `OPENAI_API_KEY` | 台本生成（＋暫定の音声） | 設定済み |
 | `STABILITY_API_KEY` | 画像・サムネ生成 | 設定済み |
 | `YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET` / `YOUTUBE_REFRESH_TOKEN` | アップロード | 設定済み |
-| **`GOOGLE_TTS_API_KEY`** | **Google Cloud TTS（本番の音声）** | **要設定** |
+| **`GOOGLE_TTS_API_KEY`** | **Google Cloud TTS（本番の音声）** | 設定済み |
+
+> これらは **クラウド環境（Environment）の環境変数** に登録します。登録後は
+> **新しいセッション（コンテナ再起動後）から反映** される点に注意（実行中セッションには入りません）。
+> `run.py` は起動時に `preflight()` でこれらの有無を検査し、欠けていれば即座に停止します。
 
 ### Google Cloud TTS のキー取得（本番音声に必須）
 
@@ -49,8 +53,11 @@ bash pipeline/setup.sh          # ffmpeg + Noto CJK フォント + Python依存 
 # 宇宙・科学を1本作って予約投稿（本番）
 python pipeline/run.py --genre space
 
-# 交互ローテーション（前回の続きのジャンルを自動選択）
+# 交互ローテーション（前回の続きのジャンルを自動選択。state.json を使う）
 python pipeline/run.py --alternate
+
+# 日付ベースの交互ローテーション（状態ファイル不要。★スケジュール実行はこれを使う）
+python pipeline/run.py --rotate-date
 
 # ビルドのみ（アップロードしない）— 動画を手元で確認したいとき
 python pipeline/run.py --genre space --no-upload
@@ -69,14 +76,52 @@ TTS_PROVIDER=openai python pipeline/run.py --genre space --no-upload
 
 ---
 
-## 全自動スケジュール投稿
+## 全自動スケジュール投稿（ルーティン / トリガー）
 
-コンテナは毎回リセットされるため、スケジュール実行のたびに `setup.sh` を流してから `run.py` を実行します。
-`assets/routine-prompt.md` にルーティン用のプロンプトを用意しています。
+毎日 **17:00 JST（08:00 UTC, cron `0 8 * * *`）** にトリガーが起動し、`--rotate-date` で
+宇宙↔都市伝説を日替わり交互に生成→予約投稿します（宇宙=19時 / 都市伝説=20時 JST 公開）。
 
-- 宇宙・科学: 毎日 or 隔日で `--genre space`（19時JST公開）
-- 都市伝説: `--genre urban`（20時JST公開）
-- 交互運用: `--alternate` を1日1回
+### スケジュール実行の大前提（★再発防止の要点）
+
+トリガーは **毎回まっさらな新セッション** を起動します。その新セッションには
+**リポジトリも依存関係も無い** ため、プロンプトの中で「取得 → 準備 → 実行」を
+自分で行う必要があります。これを怠ると `pipeline/` が見つからず何も実行できません
+（実際に一度この失敗が起きました。下の「ポストモーテム」参照）。
+
+トリガーのプロンプトは必ず次の順序を守ること:
+
+```bash
+# 1) リポジトリを取得（新セッションには存在しないので自分でclone。認証はプロキシ経由で通る）
+if [ -d ~/todoapp_1/.git ]; then
+  cd ~/todoapp_1 && git fetch origin claude/web-automation-setup-ifetgk \
+    && git checkout claude/web-automation-setup-ifetgk \
+    && git pull origin claude/web-automation-setup-ifetgk
+else
+  git clone --branch claude/web-automation-setup-ifetgk \
+    https://github.com/doudemoee111-sys/todoapp_1.git ~/todoapp_1 && cd ~/todoapp_1
+fi
+# 2) 依存を導入
+bash pipeline/setup.sh
+# 3) 生成＋予約投稿（preflight が前提を検査してから走る）
+cd pipeline && python3 run.py --rotate-date
+```
+
+### 多層の再発防止
+
+| 層 | 仕組み | 何を防ぐか |
+|---|---|---|
+| プロンプト | 手順1で必ず `clone`（既存なら `fetch`）する | 新セッションにコードが無い問題 |
+| `run.py` の `preflight()` | 実行前に鍵・ffmpeg を検査し、欠ければ即停止＋原因を明示 | 鍵/ツール欠落のまま走り、時間と課金を浪費する事故 |
+| ジャンル選択 `--rotate-date` | 日付から決定的に算出（状態ファイル不要） | ephemeral セッションで `state.json` が消え交互にならない問題 |
+| 明示的な失敗報告 | エラー時はダミー音声・プレースホルダで代替せず中断・報告 | 「壊れた動画を正常として投稿」する事故 |
+
+### ポストモーテム（2026-08-16 の失敗）
+
+- **事象**: 初回のスケジュール実行が「`/home/user` が空・Gitリポジトリ未紐付け」で失敗。
+- **原因**: トリガーの新セッションにソースリポジトリが紐づいておらず、プロンプトも
+  `clone` を行っていなかったため、`pipeline/` を取得できなかった。
+- **対策**: プロンプト手順1に `clone`/`fetch` を追加、`run.py` に `preflight()` を追加、
+  本節に前提と手順を明文化。以後は同じ失敗を検知・防止できる。
 
 ## モジュール構成
 

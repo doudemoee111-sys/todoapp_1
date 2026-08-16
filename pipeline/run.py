@@ -13,6 +13,8 @@ Stages: script (OpenAI) -> TTS (Google) -> images (Stability) -> assemble (ffmpe
 from __future__ import annotations
 import argparse
 import json
+import os
+import shutil
 import time
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +22,51 @@ from pathlib import Path
 import config
 from config import (GENRES, OUTPUT_DIR, STATE_FILE, ROTATION, ROTATION_PHASE,
                     DEFAULT_GENRE, UPLOAD_PRIVACY)
+
+
+class PreflightError(RuntimeError):
+    """Raised when the run can't possibly succeed, before any work is done."""
+
+
+def preflight(do_upload: bool) -> None:
+    """Fail fast, and loudly, if a prerequisite is missing.
+
+    Scheduled runs execute in fresh, ephemeral sessions, so the whole
+    environment (credentials, system tools, even the checkout) has to be
+    reconstructed each time. When something is missing it is far better to
+    stop here with a precise list than to spend ~15 minutes half-building a
+    video or, worse, silently producing a broken one. Every message names the
+    exact fix.
+    """
+    problems: list[str] = []
+
+    # --- credentials ---------------------------------------------------------
+    if not os.environ.get("OPENAI_API_KEY"):
+        problems.append("OPENAI_API_KEY 未設定 → 台本生成に必須（環境変数に追加）")
+    if not os.environ.get("STABILITY_API_KEY"):
+        problems.append("STABILITY_API_KEY 未設定 → 画像生成に必須（環境変数に追加）")
+    if config.TTS_PROVIDER == "google" and not (
+            os.environ.get("GOOGLE_TTS_API_KEY")
+            or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")):
+        problems.append(
+            "GOOGLE_TTS_API_KEY（または GOOGLE_APPLICATION_CREDENTIALS）未設定 "
+            "→ Google TTS に必須")
+    if do_upload:
+        for k in ("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"):
+            if not os.environ.get(k):
+                problems.append(f"{k} 未設定 → YouTube アップロードに必須")
+
+    # --- system tools --------------------------------------------------------
+    for tool in ("ffmpeg", "ffprobe"):
+        if not shutil.which(tool):
+            problems.append(f"{tool} が PATH にない → `bash pipeline/setup.sh` を先に実行")
+
+    if problems:
+        raise PreflightError(
+            "事前チェック(preflight)に失敗しました。以下を解消してから再実行してください:\n  - "
+            + "\n  - ".join(problems))
+    print(f"[preflight] OK — credentials{'（upload込み）' if do_upload else ''}・"
+          f"ffmpeg・コード すべて揃っています。")
 
 
 def _load_state() -> dict:
@@ -135,6 +182,9 @@ def main() -> None:
     ap.add_argument("--no-subtitles", action="store_true")
     args = ap.parse_args()
 
+    do_upload = not args.no_upload
+    preflight(do_upload)  # stop now if a prerequisite is missing
+
     state = _load_state()
     if args.rotate_date:
         genre_key = _date_genre()
@@ -146,7 +196,7 @@ def main() -> None:
         genre_key = DEFAULT_GENRE
 
     t0 = time.time()
-    result = run(genre_key, args.topic, do_upload=not args.no_upload, subtitles=not args.no_subtitles)
+    result = run(genre_key, args.topic, do_upload=do_upload, subtitles=not args.no_subtitles)
     state["last_genre"] = genre_key
     _save_state(state)
     print(f"\nDONE in {time.time()-t0:.0f}s -> {result.get('video_id', '(not uploaded)')}")
