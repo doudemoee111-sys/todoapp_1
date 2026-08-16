@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from google.oauth2.credentials import Credentials
+from google.auth.exceptions import RefreshError
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
@@ -29,6 +30,29 @@ def _service():
         token_uri="https://oauth2.googleapis.com/token",
     )
     return build("youtube", "v3", credentials=creds, cache_discovery=False)
+
+
+def check_auth() -> str:
+    """Verify the YouTube OAuth credential actually works, without uploading.
+
+    Forces a token refresh (channels.list triggers it) so an expired/revoked
+    refresh token fails here cheaply, instead of after ~15 min of video build.
+    Returns the authorized channel's title on success.
+    """
+    yt = _service()
+    try:
+        resp = yt.channels().list(part="snippet", mine=True).execute()
+    except RefreshError as e:
+        raise RuntimeError(
+            f"YouTube 認証に失敗しました（{e}）。YOUTUBE_REFRESH_TOKEN が失効/取り消し済み、"
+            "または CLIENT_ID/SECRET と不一致の可能性があります。OAuth Playground で再発行し、"
+            "OAuth同意画面を『本番』に公開してから、環境変数を上書きしてください。") from e
+    items = resp.get("items", [])
+    if not items:
+        raise RuntimeError(
+            "認証は通りましたが、このアカウントに YouTube チャンネルが見つかりません。"
+            "投稿先チャンネルの Google アカウントで認可し直してください。")
+    return items[0]["snippet"]["title"]
 
 
 def next_publish_at(hour_jst: int, min_lead_hours: int = 3) -> datetime:

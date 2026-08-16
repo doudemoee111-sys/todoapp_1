@@ -180,7 +180,15 @@ def main() -> None:
     ap.add_argument("--topic", default=None)
     ap.add_argument("--no-upload", action="store_true")
     ap.add_argument("--no-subtitles", action="store_true")
+    ap.add_argument("--check-auth", action="store_true",
+                    help="verify the YouTube OAuth credential works, print the channel, then exit")
     args = ap.parse_args()
+
+    if args.check_auth:
+        from youtube_upload import check_auth
+        title = check_auth()
+        print(f"[check-auth] OK — 認証成功。投稿先チャンネル: 「{title}」")
+        return
 
     do_upload = not args.no_upload
     preflight(do_upload)  # stop now if a prerequisite is missing
