@@ -3,5 +3,10 @@ google-cloud-texttospeech>=2.16
 google-api-python-client>=2.100
 google-auth>=2.30
 google-auth-httplib2>=0.2
+google-auth-oauthlib>=1.2
 requests>=2.31
 pillow>=10.0
+# cffi is a transitive dep that occasionally fails to land in the ephemeral
+# container, tripping YouTube auth on the first run; pin it explicitly so
+# setup.sh always installs it up front instead of relying on self-healing.
+cffi>=1.16
