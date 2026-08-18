@@ -4,7 +4,7 @@ import os
 import textwrap
 from pathlib import Path
 
-import requests
+from http_retry import request_with_retry
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 from config import STABILITY_ENDPOINT
@@ -25,7 +25,8 @@ def _font(size: int) -> ImageFont.FreeTypeFont:
 
 def _bg(prompt: str, out: Path) -> None:
     api_key = os.environ.get("STABILITY_API_KEY")
-    resp = requests.post(
+    resp = request_with_retry(
+        "POST",
         STABILITY_ENDPOINT,
         headers={"Authorization": f"Bearer {api_key}", "Accept": "image/*"},
         files={"none": ""},

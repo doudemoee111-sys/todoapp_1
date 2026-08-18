@@ -9,7 +9,7 @@ import os
 import subprocess
 from pathlib import Path
 
-import requests
+from http_retry import request_with_retry
 
 from config import STABILITY_ENDPOINT, VIDEO_W, VIDEO_H
 
@@ -18,7 +18,8 @@ def _generate_one(prompt: str, out_path: Path, negative: str = "") -> bool:
     api_key = os.environ.get("STABILITY_API_KEY")
     if not api_key:
         raise RuntimeError("STABILITY_API_KEY が未設定です。")
-    resp = requests.post(
+    resp = request_with_retry(
+        "POST",
         STABILITY_ENDPOINT,
         headers={"Authorization": f"Bearer {api_key}", "Accept": "image/*"},
         files={"none": ""},

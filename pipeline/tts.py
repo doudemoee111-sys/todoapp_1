@@ -16,7 +16,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-import requests
+from http_retry import request_with_retry
 
 from config import (TTS_PROVIDER, GOOGLE_TTS_VOICE, GOOGLE_TTS_SPEAKING_RATE,
                     OPENAI_TTS_VOICE)
@@ -49,7 +49,7 @@ def _google_synth_chunk_apikey(text: str, api_key: str) -> bytes:
         "voice": {"languageCode": "ja-JP", "name": GOOGLE_TTS_VOICE},
         "audioConfig": {"audioEncoding": "MP3", "speakingRate": GOOGLE_TTS_SPEAKING_RATE},
     }
-    r = requests.post(url, json=body, timeout=60)
+    r = request_with_retry("POST", url, json=body, timeout=60)
     r.raise_for_status()
     return base64.b64decode(r.json()["audioContent"])
 
