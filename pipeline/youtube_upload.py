@@ -55,6 +55,39 @@ def check_auth() -> str:
     return items[0]["snippet"]["title"]
 
 
+def fetch_recent_titles(max_results: int = 40) -> list[str]:
+    """Titles of the channel's most recent videos (newest first), scheduled/
+    private uploads included.
+
+    Used to steer topic selection away from themes we just covered. Every run
+    clones the repo fresh, so there is no local history to trust and pushing a
+    history file back fails from the unprivileged scheduled sessions — YouTube
+    itself is the durable source of truth (the shorts pipeline uses the same
+    trick). Best-effort: returns [] on any error so generation never blocks on
+    this read.
+    """
+    try:
+        yt = _service()
+        ch = yt.channels().list(part="contentDetails", mine=True).execute()
+        items = ch.get("items", [])
+        if not items:
+            return []
+        uploads = items[0]["contentDetails"]["relatedPlaylists"]["uploads"]
+        titles: list[str] = []
+        req = yt.playlistItems().list(part="snippet", playlistId=uploads, maxResults=50)
+        while req is not None and len(titles) < max_results:
+            resp = req.execute()
+            for it in resp.get("items", []):
+                t = (it.get("snippet") or {}).get("title")
+                if t:
+                    titles.append(t)
+            req = yt.playlistItems().list_next(req, resp)
+        return titles[:max_results]
+    except Exception as e:  # noqa: BLE001
+        print(f"  [dedup] 直近タイトルの取得に失敗（重複回避はスキップ）: {e}")
+        return []
+
+
 def next_publish_at(hour_jst: int, min_lead_hours: int = 3) -> datetime:
     """Next occurrence of hour_jst (JST) that is at least min_lead_hours from now.
 

@@ -35,12 +35,41 @@ def _chat(messages, temperature=0.85, json_mode=False):
     return _c().chat.completions.create(**kw).choices[0].message.content
 
 
-def _pick_topic(genre: dict) -> str:
+def _avoid_block(avoid_titles: list[str] | None) -> str:
+    if not avoid_titles:
+        return ""
+    joined = "\n".join(f"- {t}" for t in avoid_titles[:20])
+    return ("\n\n【重要】次は最近このチャンネルで既に扱ったテーマ/タイトルです。"
+            "これらと本質的に同じ題材・切り口は避け、明確に異なる新規テーマにしてください:\n"
+            + joined)
+
+
+def _pick_topic(genre: dict, avoid_titles: list[str] | None = None) -> str:
     out = _chat(
         [{"role": "system", "content": "あなたは日本のYouTubeで大人気の動画作家です。"},
-         {"role": "user", "content": genre["topic_seed_prompt"] + "\nテーマ名だけを1行で出力。"}],
+         {"role": "user", "content": genre["topic_seed_prompt"] + _avoid_block(avoid_titles)
+          + "\nテーマ名だけを1行で出力。"}],
         temperature=1.0)
     return out.strip().splitlines()[0].strip("　 「」\"'")
+
+
+def _is_duplicate(topic: str, avoid_titles: list[str]) -> bool:
+    """Ask the model whether `topic` is essentially the same subject as any
+    recent title — catches paraphrases and re-skins, not just exact matches."""
+    if not avoid_titles:
+        return False
+    joined = "\n".join(f"- {t}" for t in avoid_titles[:20])
+    user = (f"新しい動画テーマ案: 「{topic}」\n\n最近の動画タイトル:\n{joined}\n\n"
+            "このテーマ案は、上のいずれかと『本質的に同じ題材・内容』ですか？"
+            "言い回しや切り口が違っても、中心となる題材が同じなら duplicate とみなします。"
+            'JSONで {"duplicate": true または false} のみ出力。')
+    try:
+        data = json.loads(_chat(
+            [{"role": "system", "content": "重複判定器。出力はJSONのみ。"},
+             {"role": "user", "content": user}], temperature=0.0, json_mode=True))
+        return bool(data.get("duplicate", False))
+    except Exception:  # noqa: BLE001
+        return False  # 判定に失敗したら重複扱いにせず続行(生成を止めない)
 
 
 def _outline(genre: dict, topic: str) -> dict:
@@ -114,10 +143,30 @@ JSON: {{"prompts":[str, ...]}}（要素数はちょうど{NUM_IMAGES}）"""
     return prompts or [genre["image_style"]] * NUM_IMAGES
 
 
-def generate_script(genre_key: str, topic: str | None = None) -> dict:
+def _select_topic(genre: dict, avoid_titles: list[str], max_retries: int = 4) -> str:
+    """Pick a topic, re-picking if it duplicates a recent one (semantic check).
+
+    Continues (does not abort) after max_retries so a run never fails outright —
+    a slightly-close final candidate beats posting nothing for the day.
+    """
+    topic = _pick_topic(genre, avoid_titles)
+    for attempt in range(1, max_retries + 1):
+        if not _is_duplicate(topic, avoid_titles):
+            break
+        print(f"  [dedup] テーマ「{topic}」は最近と重複 → 再選定 ({attempt}/{max_retries})")
+        topic = _pick_topic(genre, avoid_titles)
+    else:
+        print(f"  [dedup] {max_retries}回再選定しても重複を回避しきれず、最後の候補「{topic}」で続行します。")
+    print(f"  [dedup] 採用テーマ: {topic}（回避対象 {len(avoid_titles)} 件）")
+    return topic
+
+
+def generate_script(genre_key: str, topic: str | None = None,
+                    avoid_titles: list[str] | None = None) -> dict:
     genre = GENRES[genre_key]
+    avoid_titles = avoid_titles or []
     if not topic:
-        topic = _pick_topic(genre)
+        topic = _select_topic(genre, avoid_titles)
 
     outline = _outline(genre, topic)
     title = outline.get("title", topic)[:100]

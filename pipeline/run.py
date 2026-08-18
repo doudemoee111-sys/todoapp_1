@@ -119,7 +119,13 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool) -> 
 
     # 1. Script
     print("[1/6] script generation (OpenAI)…")
-    pkg = generate_script(genre_key, topic)
+    # Pull recent titles from YouTube (scheduled/private included) so the model
+    # avoids repeating a theme across days. Stateless — no local history needed.
+    from youtube_upload import fetch_recent_titles
+    avoid_titles = fetch_recent_titles() if topic is None else []
+    if avoid_titles:
+        print(f"      重複回避: 直近 {len(avoid_titles)} 件のタイトルを回避対象にします")
+    pkg = generate_script(genre_key, topic, avoid_titles=avoid_titles)
     (work / "script.json").write_text(json.dumps(pkg, ensure_ascii=False, indent=2))
     print(f"      topic: {pkg['topic']}")
     print(f"      title: {pkg['title']}")
