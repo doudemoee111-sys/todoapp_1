@@ -99,9 +99,10 @@ JSON: {{"title":str,"chapters":[{{"heading":str,"summary":str}}],
 
 def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
                     heading: str, summary: str, prev_tail: str) -> str:
-    per = max(420, NARRATION_TARGET_CHARS // total)
+    per = max(420, genre.get("narration_target", NARRATION_TARGET_CHARS) // total)
     ctx = f"直前の章の終わり: {prev_tail[-120:]}" if prev_tail else "これは最初の章です。"
-    role = ("最初の章なので、視聴者を一気に引き込むフックから始める。" if idx == 0
+    role = ("最初の章。挨拶や自己紹介は一切せず、事件・テーマの核心や結末の一部をチラ見せする強いフックから入り、"
+            "『この続きは最後まで見たくなる』引きを作る。" if idx == 0
             else "自然に前の章から続ける。" if idx < total - 1
             else "動画のまとめと、チャンネル登録・高評価のお願いで締める。")
     user = f"""次の動画の第{idx+1}章のナレーション本文だけを書いてください。
@@ -141,6 +142,62 @@ JSON: {{"prompts":[str, ...]}}（要素数はちょうど{NUM_IMAGES}）"""
     while 0 < len(prompts) < NUM_IMAGES:
         prompts.append(prompts[len(prompts) % len(prompts) if prompts else 0])
     return prompts or [genre["image_style"]] * NUM_IMAGES
+
+
+def _image_prompts_from_narration(genre: dict, title: str, narration: str) -> list[str]:
+    """Image prompts for a video whose narration is supplied (not LLM-outlined)."""
+    user = f"""次のナレーション本文をもとに、動画「{title}」({genre['label']})用の画像生成プロンプトを英語でちょうど{NUM_IMAGES}個、JSON配列で作成。
+本文の流れ順に、各場面の情景・被写体・構図を1文の具体的な英語で描く。実在人物の顔のクローズアップや特定人物の再現は避け、象徴的・情景的に。テキストやロゴは含めない。
+本文:
+{narration[:6000]}
+JSON: {{"prompts":[str, ...]}}（要素数はちょうど{NUM_IMAGES}）"""
+    data = json.loads(_chat([{"role": "system", "content": "アートディレクター。JSONのみ。"},
+                             {"role": "user", "content": user}], json_mode=True))
+    prompts = data.get("prompts", [])
+    if len(prompts) > NUM_IMAGES:
+        prompts = prompts[:NUM_IMAGES]
+    while 0 < len(prompts) < NUM_IMAGES:
+        prompts.append(prompts[len(prompts) % len(prompts)])
+    return prompts or [genre["image_style"]] * NUM_IMAGES
+
+
+def _desc_and_tags(genre: dict, title: str, narration: str) -> tuple[str, list[str]]:
+    user = f"""動画「{title}」({genre['label']})のYouTube概要欄(日本語200〜400字、内容要約＋チャンネル登録の誘導)と、日本語中心のタグ10〜15個をJSONで作成。
+本文冒頭: {narration[:800]}
+JSON: {{"description": str, "tags": [str, ...]}}"""
+    try:
+        data = json.loads(_chat([{"role": "system", "content": "YouTube運用のプロ。JSONのみ。"},
+                                 {"role": "user", "content": user}], json_mode=True))
+        return data.get("description", ""), (data.get("tags") or genre["tags"])[:15]
+    except Exception:  # noqa: BLE001
+        return "", genre["tags"]
+
+
+def build_from_narration(genre_key: str, narration: str, title: str | None = None) -> dict:
+    """Build a full script package around a PROVIDED narration text.
+
+    Used when a hand-written script is supplied (e.g. the intro video): the
+    narration is taken as-is, and only the image prompts / description / tags
+    are generated to match it. Same return shape as generate_script().
+    """
+    genre = GENRES[genre_key]
+    narration = narration.strip()
+    if not title:
+        title = narration.split("\n", 1)[0][:60]
+    title = title.strip()
+    image_prompts = _image_prompts_from_narration(genre, title, narration)
+    description, tags = _desc_and_tags(genre, title, narration)
+    return {
+        "topic": title,
+        "title": title[:100],
+        "chapters": [{"heading": "", "narration": narration}],
+        "narration": narration,
+        "image_prompts": image_prompts,
+        "thumbnail_text": title[:24],
+        "thumbnail_prompt": f"{title}. {genre['image_style']}",
+        "description": description,
+        "tags": tags,
+    }
 
 
 def _select_topic(genre: dict, avoid_titles: list[str], max_retries: int = 4) -> str:

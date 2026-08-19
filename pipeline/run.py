@@ -104,8 +104,9 @@ def _date_genre(d: "date | None" = None) -> str:
     return ROTATION[(d.toordinal() + ROTATION_PHASE) % len(ROTATION)]
 
 
-def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool) -> dict:
-    from llm_script import generate_script
+def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
+        narration: str | None = None, title: str | None = None) -> dict:
+    from llm_script import generate_script, build_from_narration
     from tts import synthesize, audio_duration
     from images import generate_images
     from assemble import assemble
@@ -118,14 +119,20 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool) -> 
     print(f"== {genre['label']} == work dir: {work}")
 
     # 1. Script
-    print("[1/6] script generation (OpenAI)…")
-    # Pull recent titles from YouTube (scheduled/private included) so the model
-    # avoids repeating a theme across days. Stateless — no local history needed.
-    from youtube_upload import fetch_recent_titles
-    avoid_titles = fetch_recent_titles() if topic is None else []
-    if avoid_titles:
-        print(f"      重複回避: 直近 {len(avoid_titles)} 件のタイトルを回避対象にします")
-    pkg = generate_script(genre_key, topic, avoid_titles=avoid_titles)
+    if narration:
+        # Provided (hand-written) script: use the narration as-is, generate only
+        # the image prompts / description / tags to match it.
+        print("[1/6] script from provided narration…")
+        pkg = build_from_narration(genre_key, narration, title)
+    else:
+        print("[1/6] script generation (OpenAI)…")
+        # Pull recent titles from YouTube (scheduled/private included) so the
+        # model avoids repeating a theme across days. Stateless — no local file.
+        from youtube_upload import fetch_recent_titles
+        avoid_titles = fetch_recent_titles() if topic is None else []
+        if avoid_titles:
+            print(f"      重複回避: 直近 {len(avoid_titles)} 件のタイトルを回避対象にします")
+        pkg = generate_script(genre_key, topic, avoid_titles=avoid_titles)
     (work / "script.json").write_text(json.dumps(pkg, ensure_ascii=False, indent=2))
     print(f"      topic: {pkg['topic']}")
     print(f"      title: {pkg['title']}")
@@ -177,6 +184,28 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool) -> 
     return result
 
 
+def _load_narration(path: str) -> str:
+    """Read a narration script. If it is the structured storyboard markdown
+    (with 【ナレーション】 / 【画面指示】 markers) extract only the narration lines;
+    otherwise return the file text as-is.
+    """
+    text = Path(path).read_text(encoding="utf-8")
+    if "【ナレーション】" not in text:
+        return text.strip()
+    out, capture = [], False
+    for ln in text.splitlines():
+        s = ln.strip()
+        if s.startswith("【ナレーション】"):
+            capture = True
+            continue
+        if s[:1] in ("【", "#", "-", "※", "*") or s.startswith("---"):
+            capture = False
+            continue
+        if capture and s:
+            out.append(s)
+    return "\n".join(out).strip()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--genre", choices=list(GENRES.keys()))
@@ -188,6 +217,13 @@ def main() -> None:
     ap.add_argument("--no-subtitles", action="store_true")
     ap.add_argument("--check-auth", action="store_true",
                     help="verify the YouTube OAuth credential works, print the channel, then exit")
+    ap.add_argument("--narration-file", default=None,
+                    help="build the video from this provided narration script instead of generating one")
+    ap.add_argument("--title", default=None, help="explicit video title (for --narration-file / --intro-seed)")
+    ap.add_argument("--intro-seed", default=None,
+                    help="one-time intro: build from this seed script only while its --intro-title is not yet "
+                         "on the channel; once published, fall through to normal research+generate")
+    ap.add_argument("--intro-title", default=None, help="title/dedup key for --intro-seed")
     args = ap.parse_args()
 
     if args.check_auth:
@@ -209,8 +245,27 @@ def main() -> None:
     else:
         genre_key = DEFAULT_GENRE
 
+    # Optional: build from a provided narration (hand-written script).
+    narration = None
+    title_override = args.title
+    if args.narration_file:
+        narration = _load_narration(args.narration_file)
+        print(f"[script] 台本ファイルを使用: {args.narration_file}（{len(narration)}字）")
+    elif args.intro_seed:
+        from youtube_upload import fetch_recent_titles
+        recent = fetch_recent_titles()
+        itl = args.intro_title or ""
+        already = bool(itl) and any(itl[:12] in t for t in recent)
+        if already:
+            print(f"[intro] シード動画『{itl[:20]}…』は既に投稿済み → 通常の調査＋生成に切替")
+        else:
+            narration = _load_narration(args.intro_seed)
+            title_override = itl or title_override
+            print(f"[intro] 初回シード台本でビルド: {args.intro_seed}（{len(narration)}字）")
+
     t0 = time.time()
-    result = run(genre_key, args.topic, do_upload=do_upload, subtitles=not args.no_subtitles)
+    result = run(genre_key, args.topic, do_upload=do_upload, subtitles=not args.no_subtitles,
+                 narration=narration, title=title_override)
     state["last_genre"] = genre_key
     _save_state(state)
     print(f"\nDONE in {time.time()-t0:.0f}s -> {result.get('video_id', '(not uploaded)')}")

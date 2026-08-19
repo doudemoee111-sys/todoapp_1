@@ -74,6 +74,29 @@ GENRES = {
         "narration_style": "少しミステリアスで引き込むトーン。緊張感を持たせつつ聞き取りやすく。",
         "tags": ["都市伝説", "ミステリー", "解説", "怖い話", "不思議", "オカルト", "考察"],
     },
+    "mystery": {
+        "key": "mystery",
+        "label": "未解決事件・ミステリー解説",
+        "publish_hour_jst": 19,
+        "youtube_category_id": "24",   # Entertainment
+        "narration_target": 3900,      # ~15 min of JP narration
+        "image_style": (
+            "dark cinematic documentary illustration, moody atmospheric, muted "
+            "desaturated tones, fog and deep shadow, film grain, tense mysterious "
+            "mood, realistic, 8k, no text, no watermark"
+        ),
+        "topic_seed_prompt": (
+            "日本のYouTubeで再生数が伸びやすい『未解決事件・ミステリー解説』の長尺動画テーマを1つ提案してください。"
+            "実在の未解決事件・失踪・謎の現象など、公表された事実をもとに約15分しっかり語れて、"
+            "意外性と考察の余地がある題材にすること。存命の個人を誹謗中傷せず、事実の範囲で扱えるテーマにすること。"
+        ),
+        "narration_style": (
+            "落ち着いた低めのトーンで、緊張感を保ちながら語る。冒頭は挨拶を一切せず、"
+            "事件の核心や結末の一部をチラ見せして視聴者を引き込む。『謎の提示→状況説明→"
+            "意外な事実の発覚→結論と独自の考察』という起承転結のストーリーテリングで構成する。"
+        ),
+        "tags": ["未解決事件", "ミステリー", "解説", "都市伝説", "謎", "考察", "実話", "怖い話", "事件"],
+    },
 }
 
 # Rotation order when running in "alternate" mode.
