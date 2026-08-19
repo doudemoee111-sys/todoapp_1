@@ -25,6 +25,12 @@ NUM_IMAGES = 30                 # "画像多め": ~30 scene images per video
 TARGET_MIN_SECONDS = 480        # 8 minutes minimum
 NARRATION_TARGET_CHARS = 3200   # ~8-10 min of JP narration at normal TTS speed
 
+# ---- Teaser short ("CM" for a mystery long-form) ----------------------------
+SHORT_W, SHORT_H = 1080, 1920   # vertical 9:16 (YouTube Shorts)
+SHORT_NUM_IMAGES = 6            # fewer, punchy scenes for a ~50s teaser
+SHORT_FONT_SIZE = 30            # larger burned subtitles for vertical/mobile
+TEASER_TARGET_CHARS = 170       # ~45-55s of narration
+
 # ---- TTS --------------------------------------------------------------------
 # provider: "google" (chosen) with fallback "openai" for smoke tests.
 TTS_PROVIDER = os.environ.get("TTS_PROVIDER", "google")

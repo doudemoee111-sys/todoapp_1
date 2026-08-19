@@ -16,7 +16,8 @@ import json
 import os
 from openai import OpenAI
 
-from config import SCRIPT_MODEL, NUM_IMAGES, NARRATION_TARGET_CHARS, GENRES
+from config import (SCRIPT_MODEL, NUM_IMAGES, NARRATION_TARGET_CHARS, GENRES,
+                    SHORT_NUM_IMAGES, TEASER_TARGET_CHARS)
 
 _client = None
 
@@ -197,6 +198,42 @@ def build_from_narration(genre_key: str, narration: str, title: str | None = Non
         "thumbnail_prompt": f"{title}. {genre['image_style']}",
         "description": description,
         "tags": tags,
+    }
+
+
+def generate_teaser(genre_key: str, source_topic: str, source_narration: str) -> dict:
+    """Build a vertical teaser-short script ('CM') for a long-form video.
+
+    The short teases the long-form's biggest hook/mystery, withholds the payoff
+    (寸止め), and drives viewers to the full video — like a trailer before a film.
+    Returns: {narration, title, image_prompts, hashtags, tags}.
+    """
+    genre = GENRES[genre_key]
+    user = f"""次の長尺ミステリー解説動画の「予告編ショート(縦型・約{TEASER_TARGET_CHARS}文字)」の台本をJSONで作成してください。CM＋映画のように、続きを本編で見たくさせるのが目的です。
+
+長尺のテーマ: {source_topic}
+長尺の内容(冒頭抜粋): {source_narration[:1200]}
+
+要件:
+- narration: 話し言葉のナレーション。合計{TEASER_TARGET_CHARS}文字前後(約45〜55秒)。
+  ・冒頭3秒で最大の謎・衝撃をチラ見せする強烈なフックから入る(挨拶は一切しない)。
+  ・核心・結末はあえて見せきらない(寸止め)。緊張感を高める。
+  ・最後に「事件の全貌・結末は本編で。概要欄と固定コメントのリンクから今すぐ」と本編へ強く誘導する。
+- title: 25文字前後のフックの効いた日本語タイトル。末尾に半角スペース+『#Shorts』を付ける。
+- image_prompts: 縦型(9:16)用の英語画像プロンプトをちょうど{SHORT_NUM_IMAGES}個。暗く映画的でミステリアスな情景を1文で具体的に。実在人物の顔クローズアップは避け象徴的に。テキスト/ロゴは含めない。
+- hashtags: 日本語中心のハッシュタグ5個前後(#Shorts を必ず含む)。
+JSON: {{"narration": str, "title": str, "image_prompts": [str, ...], "hashtags": [str, ...]}}"""
+    data = json.loads(_chat([{"role": "system", "content": "YouTube予告編(CM)の脚本家。出力はJSONのみ。"},
+                             {"role": "user", "content": user}], temperature=0.9, json_mode=True))
+    prompts = (data.get("image_prompts") or [])[:SHORT_NUM_IMAGES]
+    while 0 < len(prompts) < SHORT_NUM_IMAGES:
+        prompts.append(prompts[len(prompts) % len(prompts)])
+    return {
+        "narration": (data.get("narration") or "").strip(),
+        "title": (data.get("title") or source_topic)[:100],
+        "image_prompts": prompts or [genre["image_style"]] * SHORT_NUM_IMAGES,
+        "hashtags": data.get("hashtags") or ["#Shorts"],
+        "tags": (genre["tags"] + ["Shorts", "予告編"])[:15],
     }
 
 

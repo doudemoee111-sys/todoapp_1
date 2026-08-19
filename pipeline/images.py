@@ -14,7 +14,8 @@ from http_retry import request_with_retry
 from config import STABILITY_ENDPOINT, VIDEO_W, VIDEO_H
 
 
-def _generate_one(prompt: str, out_path: Path, negative: str = "") -> bool:
+def _generate_one(prompt: str, out_path: Path, negative: str = "",
+                  aspect: str = "16:9") -> bool:
     api_key = os.environ.get("STABILITY_API_KEY")
     if not api_key:
         raise RuntimeError("STABILITY_API_KEY が未設定です。")
@@ -24,7 +25,7 @@ def _generate_one(prompt: str, out_path: Path, negative: str = "") -> bool:
         headers={"Authorization": f"Bearer {api_key}", "Accept": "image/*"},
         files={"none": ""},
         data={"prompt": prompt, "negative_prompt": negative,
-              "aspect_ratio": "16:9", "output_format": "png"},
+              "aspect_ratio": aspect, "output_format": "png"},
         timeout=120,
     )
     if resp.status_code == 200:
@@ -34,14 +35,15 @@ def _generate_one(prompt: str, out_path: Path, negative: str = "") -> bool:
     return False
 
 
-def _solid_fallback(out_path: Path) -> None:
+def _solid_fallback(out_path: Path, width: int = VIDEO_W, height: int = VIDEO_H) -> None:
     subprocess.run(
         ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
-         "-i", f"color=c=0x0b1026:s={VIDEO_W}x{VIDEO_H}", "-frames:v", "1", str(out_path)],
+         "-i", f"color=c=0x0b1026:s={width}x{height}", "-frames:v", "1", str(out_path)],
         check=True)
 
 
-def generate_images(prompts: list[str], style: str, out_dir: str | Path) -> list[Path]:
+def generate_images(prompts: list[str], style: str, out_dir: str | Path,
+                    aspect: str = "16:9", width: int = VIDEO_W, height: int = VIDEO_H) -> list[Path]:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     negative = "text, watermark, signature, blurry, deformed, extra limbs, low quality"
@@ -51,11 +53,11 @@ def generate_images(prompts: list[str], style: str, out_dir: str | Path) -> list
         full_prompt = f"{p}. {style}"
         ok = False
         try:
-            ok = _generate_one(full_prompt, out, negative)
+            ok = _generate_one(full_prompt, out, negative, aspect=aspect)
         except Exception as e:  # noqa: BLE001
             print(f"  [images] error on {i}: {e}")
         if not ok:
-            _solid_fallback(out)
+            _solid_fallback(out, width, height)
         paths.append(out)
         print(f"  [images] {i+1}/{len(prompts)} -> {out.name}")
     return paths

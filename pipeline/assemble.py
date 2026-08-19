@@ -25,7 +25,8 @@ def _run(cmd: list[str]) -> None:
     subprocess.run(cmd, check=True)
 
 
-def _ken_burns_segment(img: Path, dur: float, idx: int, out: Path) -> None:
+def _ken_burns_segment(img: Path, dur: float, idx: int, out: Path,
+                       width: int = VIDEO_W, height: int = VIDEO_H) -> None:
     frames = max(1, round(FPS * dur))
     zi = 0.0006  # zoom increment / frame -> ~+11% over ~8s
     # Alternate horizontal pan direction for variety.
@@ -34,10 +35,10 @@ def _ken_burns_segment(img: Path, dur: float, idx: int, out: Path) -> None:
     else:
         x_expr = "x='(iw-iw/zoom)/2-(iw*0.04)*on/{f}'".format(f=frames)
     vf = (
-        f"scale={VIDEO_W*2}:{VIDEO_H*2}:force_original_aspect_ratio=increase,"
-        f"crop={VIDEO_W*2}:{VIDEO_H*2},"
+        f"scale={width*2}:{height*2}:force_original_aspect_ratio=increase,"
+        f"crop={width*2}:{height*2},"
         f"zoompan=z='min(zoom+{zi},1.15)':d={frames}:{x_expr}:"
-        f"y='(ih-ih/zoom)/2':s={VIDEO_W}x{VIDEO_H}:fps={FPS},setsar=1,format=yuv420p"
+        f"y='(ih-ih/zoom)/2':s={width}x{height}:fps={FPS},setsar=1,format=yuv420p"
     )
     _run(["ffmpeg", "-y", "-loglevel", "error", "-loop", "1", "-i", str(img),
           "-t", f"{dur:.3f}", "-vf", vf,
@@ -69,7 +70,9 @@ def _ts(sec: float) -> str:
 
 
 def assemble(images: list[Path], audio_path: str | Path, out_path: str | Path,
-             narration: str = "", subtitles: bool = True) -> Path:
+             narration: str = "", subtitles: bool = True,
+             width: int = VIDEO_W, height: int = VIDEO_H,
+             font_size: int = 18, margin_v: int = 40) -> Path:
     audio_path = Path(audio_path)
     out_path = Path(out_path)
     dur = audio_duration(audio_path)
@@ -82,7 +85,7 @@ def assemble(images: list[Path], audio_path: str | Path, out_path: str | Path,
     for i, img in enumerate(images):
         seg = tmp / f"seg_{i:03d}.mp4"
         d = per if i < n - 1 else (dur - per * (n - 1)) + 0.5  # last absorbs remainder
-        _ken_burns_segment(img, max(0.8, d), i, seg)
+        _ken_burns_segment(img, max(0.8, d), i, seg, width, height)
         segs.append(seg)
         print(f"  [assemble] segment {i+1}/{n}")
 
@@ -98,9 +101,9 @@ def assemble(images: list[Path], audio_path: str | Path, out_path: str | Path,
     have_subs = subtitles and narration and _build_srt(narration, dur, srt)
     if have_subs:
         try:
-            style = (f"FontName={_JP_FONT},FontSize=18,PrimaryColour=&H00FFFFFF,"
+            style = (f"FontName={_JP_FONT},FontSize={font_size},PrimaryColour=&H00FFFFFF,"
                      f"OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,"
-                     f"MarginV=40,Alignment=2")
+                     f"MarginV={margin_v},Alignment=2")
             vf = f"subtitles={srt.as_posix()}:force_style='{style}'"
             _run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(silent), "-i", str(audio_path),
                   "-vf", vf, "-map", "0:v", "-map", "1:a",

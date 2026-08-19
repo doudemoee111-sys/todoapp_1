@@ -105,7 +105,8 @@ def _date_genre(d: "date | None" = None) -> str:
 
 
 def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
-        narration: str | None = None, title: str | None = None) -> dict:
+        narration: str | None = None, title: str | None = None,
+        make_teaser: bool = False) -> dict:
     from llm_script import generate_script, build_from_narration
     from tts import synthesize, audio_duration
     from images import generate_images
@@ -177,11 +178,55 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
         result["video_id"] = vid
         result["publish_at_jst"] = pub.isoformat()
         print(f"      scheduled publish: {pub.isoformat()} (JST)  https://youtu.be/{vid}")
+
+        # 7. Teaser short ("CM" for this long-form): same topic, linked back.
+        if make_teaser:
+            try:
+                result["teaser"] = _build_and_upload_teaser(genre_key, pkg, vid, pub, work)
+            except Exception as e:  # noqa: BLE001
+                print(f"[teaser] 予告編ショートの生成に失敗（本編は投稿済み）: {e}")
     else:
         print("[6/6] upload skipped (--no-upload)")
 
     (work / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
     return result
+
+
+def _build_and_upload_teaser(genre_key: str, source_pkg: dict, long_video_id: str,
+                             publish_at_jst, work) -> dict:
+    """Build a vertical teaser short for a just-uploaded long-form and schedule
+    it at the same time, linking back to the full video (description + comment)."""
+    from llm_script import generate_teaser
+    from tts import synthesize
+    from images import generate_images
+    from assemble import assemble
+    from youtube_upload import upload_video, post_comment
+    from config import SHORT_W, SHORT_H, SHORT_FONT_SIZE
+
+    genre = GENRES[genre_key]
+    long_url = f"https://youtu.be/{long_video_id}"
+    print("[7/7] teaser short (CM) generation…")
+    t = generate_teaser(genre_key, source_pkg["topic"], source_pkg["narration"])
+    tdir = work / "teaser"
+    tdir.mkdir(exist_ok=True)
+    audio = tdir / "narration.mp3"
+    synthesize(t["narration"], audio)
+    imgs = generate_images(t["image_prompts"], genre["image_style"], tdir / "img",
+                           aspect="9:16", width=SHORT_W, height=SHORT_H)
+    video = tdir / "teaser.mp4"
+    assemble(imgs, audio, video, narration=t["narration"], subtitles=True,
+             width=SHORT_W, height=SHORT_H, font_size=SHORT_FONT_SIZE, margin_v=140)
+
+    title = t["title"] if "#Shorts" in t["title"] else (t["title"][:88] + " #Shorts")
+    desc = (f"{t['narration'][:70]}…\n\n"
+            f"▼ 事件の全貌・結末は本編で（約15分）\n{long_url}\n\n"
+            + " ".join(t.get("hashtags") or ["#Shorts", "#未解決事件", "#ミステリー"]))
+    vid = upload_video(video, title, desc, t["tags"], genre["youtube_category_id"],
+                       publish_at_jst, None, UPLOAD_PRIVACY)
+    post_comment(vid, f"👇 事件の全貌・結末はこちら（本編・約15分）\n{long_url}")
+    url = f"https://youtu.be/{vid}"
+    print(f"[7/7] teaser done {url} -> links to {long_url}")
+    return {"video_id": vid, "url": url, "title": title, "links_to": long_url}
 
 
 def _load_narration(path: str) -> str:
@@ -224,6 +269,8 @@ def main() -> None:
                     help="one-time intro: build from this seed script only while its --intro-title is not yet "
                          "on the channel; once published, fall through to normal research+generate")
     ap.add_argument("--intro-title", default=None, help="title/dedup key for --intro-seed")
+    ap.add_argument("--teaser", action="store_true",
+                    help="after the long-form upload, also build+upload a vertical teaser short linking to it")
     args = ap.parse_args()
 
     if args.check_auth:
@@ -265,7 +312,7 @@ def main() -> None:
 
     t0 = time.time()
     result = run(genre_key, args.topic, do_upload=do_upload, subtitles=not args.no_subtitles,
-                 narration=narration, title=title_override)
+                 narration=narration, title=title_override, make_teaser=args.teaser)
     state["last_genre"] = genre_key
     _save_state(state)
     print(f"\nDONE in {time.time()-t0:.0f}s -> {result.get('video_id', '(not uploaded)')}")

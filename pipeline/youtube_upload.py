@@ -55,6 +55,28 @@ def check_auth() -> str:
     return items[0]["snippet"]["title"]
 
 
+def post_comment(video_id: str, text: str) -> bool:
+    """Post a top-level comment on the video as the channel owner (best-effort).
+
+    Used to place the long-form link under a teaser short. Pinning must be done
+    manually in YouTube Studio — the Data API has no pin endpoint. Requires the
+    youtube.force-ssl scope; if the token lacks it this fails gracefully and the
+    description link still carries the funnel.
+    """
+    try:
+        yt = _service()
+        yt.commentThreads().insert(
+            part="snippet",
+            body={"snippet": {"videoId": video_id,
+                              "topLevelComment": {"snippet": {"textOriginal": text}}}},
+        ).execute()
+        print("  [comment] 本編リンクのコメントを投稿しました（ピン留めはStudioで手動）")
+        return True
+    except Exception as e:  # noqa: BLE001
+        print(f"  [comment] コメント投稿はスキップ（スコープ不足の可能性: {e}）。概要欄リンクは有効です。")
+        return False
+
+
 def fetch_recent_titles(max_results: int = 40) -> list[str]:
     """Titles of the channel's most recent videos (newest first), scheduled/
     private uploads included.
