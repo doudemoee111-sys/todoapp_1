@@ -15,17 +15,42 @@ import argparse
 import json
 import os
 import shutil
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
 
 import config
-from config import (GENRES, OUTPUT_DIR, STATE_FILE, ROTATION, ROTATION_PHASE,
+from config import (GENRES, OperatorError, OUTPUT_DIR, STATE_FILE, ROTATION, ROTATION_PHASE,
                     DEFAULT_GENRE, UPLOAD_PRIVACY)
 
 
-class PreflightError(RuntimeError):
+class PreflightError(OperatorError):
     """Raised when the run can't possibly succeed, before any work is done."""
+
+
+def print_credential_fingerprints() -> None:
+    """Show which credential values this session actually received.
+
+    Environment variables are copied into a session once, at startup, so an
+    edit in the environment settings reaches only *later* sessions. That makes
+    "I updated the secret and the error is byte-identical" ambiguous: is the
+    value wrong, or did the new value never arrive? A truncated SHA-256 answers
+    that without ever printing the secret.
+    """
+    import hashlib
+    for k in ("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN",
+              "YOUTUBE_EXPECTED_CHANNEL_ID"):
+        v = os.environ.get(k)
+        if not v:
+            print(f"  {k:30s} (未設定)")
+            continue
+        fp = hashlib.sha256(v.strip().encode()).hexdigest()[:8]
+        note = "  ※前後に空白/改行あり（自動除去して使用）" if v != v.strip() else ""
+        print(f"  {k:30s} sha256[:8]={fp}{note}")
+    print("\n  手元での照合: printf '%s' '環境に貼った値' | sha256sum | cut -c1-8")
+    print("    一致しない → 更新がこのセッションに未反映。編集した環境を確認し、新規セッションを作成")
+    print("    一致する   → 値は届いている。原因は Google 側（クライアント/トークン）")
 
 
 def preflight(do_upload: bool, need_tts: bool = True) -> None:
@@ -55,6 +80,15 @@ def preflight(do_upload: bool, need_tts: bool = True) -> None:
         for k in ("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"):
             if not os.environ.get(k):
                 problems.append(f"{k} 未設定 → YouTube アップロードに必須")
+            elif os.environ[k] != os.environ[k].strip():
+                # Not fatal — the client strips it — but it means the value was
+                # pasted with a stray newline, which is worth knowing about.
+                print(f"[preflight] 注意 — {k} の前後に空白/改行が含まれています（自動で除去して使用）")
+        want = (os.environ.get("YOUTUBE_EXPECTED_CHANNEL_ID") or "").strip()
+        if want and not (want.startswith("UC") and len(want) == 24):
+            problems.append(
+                "YOUTUBE_EXPECTED_CHANNEL_ID の形式が不正 → `UC` で始まる24文字の"
+                "チャンネルID を設定（@ハンドルやURLではない）")
 
     # --- system tools --------------------------------------------------------
     for tool in ("ffmpeg", "ffprobe"):
@@ -67,6 +101,9 @@ def preflight(do_upload: bool, need_tts: bool = True) -> None:
             + "\n  - ".join(problems))
     print(f"[preflight] OK — credentials{'（upload込み）' if do_upload else ''}・"
           f"ffmpeg・コード すべて揃っています。")
+    if do_upload and not (os.environ.get("YOUTUBE_EXPECTED_CHANNEL_ID") or "").strip():
+        print("[preflight] 注意 — YOUTUBE_EXPECTED_CHANNEL_ID が未設定です。"
+              "誤ったチャンネルへの投稿を防ぐため、設定を推奨します。")
 
 
 def _load_state() -> dict:
@@ -436,6 +473,9 @@ def main() -> None:
     ap.add_argument("--no-subtitles", action="store_true")
     ap.add_argument("--check-auth", action="store_true",
                     help="verify the YouTube OAuth credential works, print the channel, then exit")
+    ap.add_argument("--fingerprints", action="store_true",
+                    help="print a non-reversible fingerprint of each YouTube credential, to confirm "
+                         "an environment-variable update actually reached this session")
     ap.add_argument("--narration-file", default=None,
                     help="build the video from this provided narration script instead of generating one")
     ap.add_argument("--title", default=None, help="explicit video title (for --narration-file / --intro-seed)")
@@ -453,10 +493,18 @@ def main() -> None:
                     help="override the ambient length in seconds (--mode ambient/guide)")
     args = ap.parse_args()
 
+    if args.fingerprints:
+        print_credential_fingerprints()
+        return
+
     if args.check_auth:
-        from youtube_upload import check_auth
-        title = check_auth()
-        print(f"[check-auth] OK — 認証成功。投稿先チャンネル: 「{title}」")
+        from youtube_upload import check_auth, expected_channel_id
+        title, channel_id = check_auth()
+        print(f"[check-auth] OK — 認証成功。投稿先チャンネル: 「{title}」 ({channel_id})")
+        want = expected_channel_id()
+        print(f"[check-auth] OK — YOUTUBE_EXPECTED_CHANNEL_ID と一致: {want}" if want else
+              "[check-auth] 注意 — YOUTUBE_EXPECTED_CHANNEL_ID が未設定です。"
+              "上のチャンネルIDを設定しておくと、誤ったチャンネルへの投稿を防げます。")
         return
 
     do_upload = not args.no_upload
@@ -509,4 +557,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except OperatorError as e:
+        # Configuration, not a crash: print the fix and nothing else, so a
+        # scheduled run's log ends with the one line worth acting on.
+        print(f"\nERROR: {e}", file=sys.stderr)
+        raise SystemExit(1)

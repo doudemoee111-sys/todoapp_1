@@ -28,10 +28,16 @@ bash pipeline/setup.sh          # ffmpeg + Noto CJK フォント + Python依存 
 | `STABILITY_API_KEY` | 画像・サムネ生成 | 設定済み |
 | `YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET` / `YOUTUBE_REFRESH_TOKEN` | アップロード | 設定済み |
 | **`GOOGLE_TTS_API_KEY`** | **Google Cloud TTS（本番の音声）** | 設定済み |
+| `YOUTUBE_EXPECTED_CHANNEL_ID` | 投稿先チャンネルの固定（誤爆防止） | 任意・強く推奨 |
 
 > これらは **クラウド環境（Environment）の環境変数** に登録します。登録後は
 > **新しいセッション（コンテナ再起動後）から反映** される点に注意（実行中セッションには入りません）。
 > `run.py` は起動時に `preflight()` でこれらの有無を検査し、欠けていれば即座に停止します。
+
+> `YOUTUBE_EXPECTED_CHANNEL_ID` を設定すると、`--check-auth` と**毎回のアップロード直前**に
+> 認可先チャンネルIDを照合し、異なる場合は投稿せず停止します。投稿先を取り違えると動画を
+> 削除しても視聴者クラスタの学習は戻らないため、複数チャンネルを運用するなら必ず設定してください。
+> 値は `UC` で始まる24文字のチャンネルID（`@ハンドル` や URL ではない）。
 
 ### Google Cloud TTS のキー取得（本番音声に必須）
 
@@ -61,6 +67,13 @@ python pipeline/run.py --rotate-date
 
 # ビルドのみ（アップロードしない）— 動画を手元で確認したいとき
 python pipeline/run.py --genre space --no-upload
+
+# 認証の検証（動画を作る前に必ず。投稿先チャンネル名とIDを表示して終了）
+python pipeline/run.py --check-auth
+
+# 認証情報の指紋を表示（値は出さない）— 環境変数の更新がこのセッションに
+# 届いているかの確認用。手元の値と `sha256sum | cut -c1-8` で照合する
+python pipeline/run.py --fingerprints
 
 # テーマを指定
 python pipeline/run.py --genre urban --topic "きさらぎ駅の謎"

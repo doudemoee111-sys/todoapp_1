@@ -11,6 +11,15 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+class OperatorError(RuntimeError):
+    """A failure the operator can fix, as opposed to a bug in this code.
+
+    Missing credentials, a revoked token, the wrong destination channel: these
+    are configuration, not crashes, so the entrypoint prints the message alone
+    instead of a traceback the operator would have to read past to find it.
+    """
+
+
 ROOT = Path(__file__).resolve().parent
 OUTPUT_DIR = ROOT / "output"
 ASSETS_DIR = ROOT / "assets"
