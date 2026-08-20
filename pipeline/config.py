@@ -28,7 +28,8 @@ NARRATION_TARGET_CHARS = 3200   # ~8-10 min of JP narration at normal TTS speed
 # ---- Teaser short ("CM" for a mystery long-form) ----------------------------
 SHORT_W, SHORT_H = 1080, 1920   # vertical 9:16 (YouTube Shorts)
 SHORT_NUM_IMAGES = 8            # scene variety for a ~55s substantive teaser
-SHORT_FONT_SIZE = 36            # larger burned subtitles for vertical/mobile
+SHORT_FONT_SIZE = 66            # burned-subtitle size in TRUE px (ASS PlayRes=1080x1920)
+SHORT_SUB_MAXLEN = 12           # split vertical captions short so each fits one line
 # 実測: 区切りごとの合成では 304字=61.1秒 ≈ 約5.0字/秒。60秒制限に収めるため
 # 280字前後(≈56秒)を目標にする(組み立て時に末尾+0.5秒の余白が付くため余裕を持たせる)。
 # 予告編は「ただの誘導」ではなく、具体的な引き(事実・エピソード)を2〜3個入れて

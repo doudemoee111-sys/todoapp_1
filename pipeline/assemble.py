@@ -46,54 +46,85 @@ def _ken_burns_segment(img: Path, dur: float, idx: int, out: Path,
           "-pix_fmt", "yuv420p", "-r", str(FPS), "-t", f"{dur:.3f}", str(out)])
 
 
-def _build_srt(narration: str, total: float, srt_path: Path) -> bool:
-    sents = [s for s in re.split(r"(?<=[。！？\n])", narration) if s.strip()]
+def _cues_from_narration(narration: str, total: float) -> list[tuple[float, float, str]]:
+    """Proportional fallback timing when no measured segments are available:
+    split into sentences and allot time by character length."""
+    sents = [s.strip() for s in re.split(r"(?<=[。！？\n])", narration) if s.strip()]
     if not sents:
-        return False
+        return []
     weights = [len(s) for s in sents]
     tot_w = sum(weights) or 1
-    t = 0.0
-    lines = []
-    for i, (s, w) in enumerate(zip(sents, weights), 1):
+    cues, t = [], 0.0
+    for s, w in zip(sents, weights):
         seg = total * w / tot_w
         start, end = t, min(total, t + seg)
         t = end
-        lines.append(f"{i}\n{_ts(start)} --> {_ts(end)}\n{s.strip()}\n")
-    srt_path.write_text("\n".join(lines), encoding="utf-8")
-    return True
+        cues.append((start, end, s))
+    return cues
 
 
-def _srt_from_segments(segments, total: float, srt_path: Path) -> bool:
-    """Build an SRT from measured per-unit timings so each subtitle stays on
-    screen for exactly as long as its narration is spoken (no proportional
-    guessing). `segments` is [(text, start_sec, end_sec), ...]. Each cue is held
-    back-to-back until the next unit actually begins, so a viewer always has the
-    full time the voice takes to read a line — never cut short."""
+def _cues_from_segments(segments, total: float) -> list[tuple[float, float, str]]:
+    """Exact cues from measured per-unit timings. Each cue is held until the next
+    unit actually begins (clamped to the true audio length) so a subtitle never
+    disappears before its narration has finished — the viewer always gets the
+    full spoken duration to read the line."""
     segs = [s for s in (segments or []) if s and str(s[0]).strip()]
-    if not segs:
-        return False
-    lines = []
-    for i, (text, start, end) in enumerate(segs, 1):
-        # Hold this cue until the next unit starts (or clip end) so nothing
-        # disappears early; clamp to the true audio length.
-        nxt = segs[i][1] if i < len(segs) else total
+    cues = []
+    for i, (text, start, end) in enumerate(segs):
+        nxt = segs[i + 1][1] if i + 1 < len(segs) else total
         end = min(total, max(end, nxt))
         start = min(start, end)
-        lines.append(f"{i}\n{_ts(start)} --> {_ts(end)}\n{str(text).strip()}\n")
-    srt_path.write_text("\n".join(lines), encoding="utf-8")
-    return True
+        cues.append((start, end, str(text).strip()))
+    return cues
 
 
-def _ts(sec: float) -> str:
+def _ass_ts(sec: float) -> str:
+    sec = max(0.0, sec)
     h = int(sec // 3600); m = int((sec % 3600) // 60)
-    s = int(sec % 60); ms = int((sec - int(sec)) * 1000)
-    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+    s = sec % 60
+    return f"{h:d}:{m:02d}:{s:05.2f}"
+
+
+def _write_ass(cues, path: Path, width: int, height: int,
+               font_size: int, margin_v: int, font: str = _JP_FONT) -> bool:
+    """Write an ASS subtitle file with an explicit PlayResX/PlayResY equal to the
+    real video size, so FontSize is in TRUE pixels and never gets silently
+    upscaled. (Burning a bare SRT lets libass default to a 384x288 layout canvas
+    and rescale the font by height/288 — a ~6.7x blow-up on a 1080x1920 vertical
+    video, which made captions overflow the frame. ASS with PlayRes fixes that.)"""
+    cues = [c for c in cues if c[2].strip()]
+    if not cues:
+        return False
+    header = (
+        "[Script Info]\n"
+        "ScriptType: v4.00+\n"
+        f"PlayResX: {width}\n"
+        f"PlayResY: {height}\n"
+        "WrapStyle: 0\n"
+        "ScaledBorderAndShadow: yes\n\n"
+        "[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, "
+        "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
+        "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        f"Style: D,{font},{font_size},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,"
+        f"100,100,0,0,1,{max(2, round(font_size/16))},2,2,{max(40, width//14)},"
+        f"{max(40, width//14)},{margin_v},1\n\n"
+        "[Events]\n"
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+    )
+    def _clean(t: str) -> str:
+        return t.replace("\\", " ").replace("{", "(").replace("}", ")").replace("\n", " ").strip()
+    body = "".join(
+        f"Dialogue: 0,{_ass_ts(s)},{_ass_ts(e)},D,,0,0,0,,{_clean(txt)}\n"
+        for s, e, txt in cues)
+    path.write_text(header + body, encoding="utf-8")
+    return True
 
 
 def assemble(images: list[Path], audio_path: str | Path, out_path: str | Path,
              narration: str = "", subtitles: bool = True,
              width: int = VIDEO_W, height: int = VIDEO_H,
-             font_size: int = 26, margin_v: int = 60,
+             font_size: int = 52, margin_v: int = 90,
              sub_segments=None) -> Path:
     audio_path = Path(audio_path)
     out_path = Path(out_path)
@@ -121,17 +152,19 @@ def assemble(images: list[Path], audio_path: str | Path, out_path: str | Path,
     # 3. mux audio (+ optional burned subtitles)
     #    Prefer measured per-unit timings (sub_segments) so each line stays on
     #    screen exactly as long as it is spoken; fall back to proportional split.
-    srt = tmp / "subs.srt"
+    #    Burn as ASS with real PlayRes so the font size is honoured in true pixels
+    #    (a bare SRT would be upscaled off-screen on vertical video).
+    ass = tmp / "subs.ass"
     if subtitles and sub_segments:
-        have_subs = _srt_from_segments(sub_segments, dur, srt)
+        cues = _cues_from_segments(sub_segments, dur)
+    elif subtitles and narration:
+        cues = _cues_from_narration(narration, dur)
     else:
-        have_subs = bool(subtitles and narration and _build_srt(narration, dur, srt))
+        cues = []
+    have_subs = _write_ass(cues, ass, width, height, font_size, margin_v)
     if have_subs:
         try:
-            style = (f"FontName={_JP_FONT},FontSize={font_size},PrimaryColour=&H00FFFFFF,"
-                     f"OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,"
-                     f"MarginV={margin_v},Alignment=2")
-            vf = f"subtitles={srt.as_posix()}:force_style='{style}'"
+            vf = f"subtitles={ass.as_posix()}"
             _run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(silent), "-i", str(audio_path),
                   "-vf", vf, "-map", "0:v", "-map", "1:a",
                   "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",

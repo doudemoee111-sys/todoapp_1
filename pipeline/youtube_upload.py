@@ -124,11 +124,17 @@ def next_publish_at(hour_jst: int, min_lead_hours: int = 3) -> datetime:
 
 
 def upload_video(video_path: str | Path, title: str, description: str, tags: list[str],
-                 category_id: str, publish_at_jst: datetime,
+                 category_id: str, publish_at_jst: datetime | None = None,
                  thumbnail_path: str | Path | None = None,
                  privacy: str = "private") -> str:
     yt = _service()
-    publish_at_utc = publish_at_jst.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    status_body = {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}
+    # publishAt (予約公開) は private の時だけ有効。public/unlisted で即時公開する
+    # 場合や publish_at 未指定の場合は付けない(付けると API が弾く/無視するため)。
+    publish_at_utc = None
+    if publish_at_jst is not None and privacy == "private":
+        publish_at_utc = publish_at_jst.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        status_body["publishAt"] = publish_at_utc
     body = {
         "snippet": {
             "title": title[:100],
@@ -136,11 +142,7 @@ def upload_video(video_path: str | Path, title: str, description: str, tags: lis
             "tags": tags,
             "categoryId": category_id,
         },
-        "status": {
-            "privacyStatus": privacy,
-            "publishAt": publish_at_utc,
-            "selfDeclaredMadeForKids": False,
-        },
+        "status": status_body,
     }
     media = MediaFileUpload(str(video_path), mimetype="video/*", resumable=True, chunksize=8 * 1024 * 1024)
     req = yt.videos().insert(part="snippet,status", body=body, media_body=media)
@@ -150,7 +152,7 @@ def upload_video(video_path: str | Path, title: str, description: str, tags: lis
         if status:
             print(f"  [upload] {int(status.progress() * 100)}%")
     video_id = resp["id"]
-    print(f"  [upload] done videoId={video_id} publishAt={publish_at_utc}")
+    print(f"  [upload] done videoId={video_id} privacy={privacy} publishAt={publish_at_utc or '(即時)'}")
 
     if thumbnail_path and os.path.exists(thumbnail_path):
         try:

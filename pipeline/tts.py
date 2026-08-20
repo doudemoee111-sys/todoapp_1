@@ -128,6 +128,30 @@ def synthesize(text: str, out_path: str | Path) -> Path:
     return _synthesize_google(text, out_path)
 
 
+# Only characters that are almost always clause/word boundaries when a caption
+# is broken right AFTER them. Ambiguous kana (が/な/か/で/よ/ね…) are excluded
+# because they are commonly verb/adjective inflections, not particles.
+_JP_BREAK_AFTER = "をにへともは、。！？」』】）"
+
+
+def _is_kanji(ch: str) -> bool:
+    return "一" <= ch <= "鿿"
+
+
+def _jp_wrap_point(u: str, max_len: int) -> int:
+    """Pick a natural break index at or before max_len so a hard-wrapped caption
+    doesn't split a word. Prefer breaking just after a safe particle/punctuation;
+    else just before a kanji (a common word start); else fall back to max_len."""
+    lo = max(4, max_len - 5)
+    for i in range(max_len, lo - 1, -1):        # after a safe particle/punctuation
+        if u[i - 1] in _JP_BREAK_AFTER:
+            return i
+    for i in range(max_len, lo - 1, -1):        # before a kanji (word boundary)
+        if _is_kanji(u[i]) and not _is_kanji(u[i - 1]):
+            return i
+    return max_len
+
+
 def _split_subtitle_units(text: str, max_len: int = 40, min_len: int = 12) -> list[str]:
     """Split narration into readable subtitle-sized units.
 
@@ -142,7 +166,7 @@ def _split_subtitle_units(text: str, max_len: int = 40, min_len: int = 12) -> li
             units.append(s)
             continue
         cur = ""
-        for p in re.split(r"(?<=、)", s):
+        for p in re.split(r"(?<=[、，])", s):
             if cur and len(cur + p) > max_len:
                 units.append(cur)
                 cur = p
@@ -150,9 +174,30 @@ def _split_subtitle_units(text: str, max_len: int = 40, min_len: int = 12) -> li
                 cur += p
         if cur.strip():
             units.append(cur)
-    merged: list[str] = []
+    # Hard-wrap any unit that STILL exceeds max_len (a long clause with no comma
+    # to break on). Without this, a burned caption can run off the frame edge
+    # because libass does not reliably wrap gapless CJK text. Break at a natural
+    # Japanese boundary (after a particle, or before a kanji) when possible so we
+    # don't cut in the middle of a word.
+    capped: list[str] = []
     for u in units:
-        if merged and len(u) < min_len and len(merged[-1]) + len(u) <= max_len + 12:
+        while len(u) > max_len:
+            cut = _jp_wrap_point(u, max_len)
+            capped.append(u[:cut])
+            u = u[cut:]
+        if u.strip():
+            capped.append(u)
+    # Merge a tiny leftover fragment into the previous unit, but NEVER past
+    # max_len (so merging can't recreate an over-long, overflowing caption).
+    # Punctuation-only tails (a lone 。) always glue back so they never flash as
+    # their own caption.
+    _punct = "。、！？」』】）"
+    merged: list[str] = []
+    for u in capped:
+        only_punct = u != "" and all(c in _punct for c in u)
+        if merged and only_punct and len(merged[-1]) + len(u) <= max_len + 2:
+            merged[-1] += u
+        elif merged and len(u) < min_len and len(merged[-1]) + len(u) <= max_len:
             merged[-1] += u
         else:
             merged.append(u)
@@ -174,11 +219,14 @@ def _synth_unit_bytes(text: str, api_key, sa_client, use_openai: bool, seg: Path
         raise RuntimeError("Google Cloud TTS の認証情報がありません（GOOGLE_TTS_API_KEY 等）。")
 
 
-def synthesize_timed(text: str, out_path: str | Path):
+def synthesize_timed(text: str, out_path: str | Path, max_sub_len: int = 40):
     """Synthesize the narration one subtitle-unit at a time and measure each
     unit's REAL audio duration, so burned subtitles stay perfectly in sync with
     the voice (no proportional guessing). Returns (audio_path, segments) where
     segments = [(text, start_sec, end_sec), ...].
+
+    max_sub_len caps how long a single subtitle unit may be. Use a smaller value
+    for vertical shorts so captions fit the narrow frame in 1-2 lines.
     """
     out_path = Path(out_path)
     use_openai = (TTS_PROVIDER == "openai")
@@ -188,7 +236,8 @@ def synthesize_timed(text: str, out_path: str | Path):
         from google.cloud import texttospeech as tts
         sa_client = tts.TextToSpeechClient()
 
-    units = _split_subtitle_units(text)
+    min_len = 6 if max_sub_len <= 20 else 12
+    units = _split_subtitle_units(text, max_len=max_sub_len, min_len=min_len)
     tmpdir = Path(tempfile.mkdtemp(prefix="tts_timed_"))
     seg_files: list[Path] = []
     segments: list[tuple[str, float, float]] = []

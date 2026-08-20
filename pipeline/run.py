@@ -203,7 +203,7 @@ def _build_and_upload_teaser(genre_key: str, source_pkg: dict, long_video_id: st
     from images import generate_images
     from assemble import assemble
     from youtube_upload import upload_video, post_comment
-    from config import SHORT_W, SHORT_H, SHORT_FONT_SIZE
+    from config import SHORT_W, SHORT_H, SHORT_FONT_SIZE, SHORT_SUB_MAXLEN
 
     genre = GENRES[genre_key]
     long_url = f"https://youtu.be/{long_video_id}"
@@ -212,12 +212,13 @@ def _build_and_upload_teaser(genre_key: str, source_pkg: dict, long_video_id: st
     tdir = work / "teaser"
     tdir.mkdir(exist_ok=True)
     audio = tdir / "narration.mp3"
-    audio, sub_segments = synthesize_timed(t["narration"], audio)
+    # Short captions for the narrow vertical frame (1-2 lines each).
+    audio, sub_segments = synthesize_timed(t["narration"], audio, max_sub_len=SHORT_SUB_MAXLEN)
     imgs = generate_images(t["image_prompts"], genre["image_style"], tdir / "img",
                            aspect="9:16", width=SHORT_W, height=SHORT_H)
     video = tdir / "teaser.mp4"
     assemble(imgs, audio, video, narration=t["narration"], subtitles=True,
-             width=SHORT_W, height=SHORT_H, font_size=SHORT_FONT_SIZE, margin_v=140,
+             width=SHORT_W, height=SHORT_H, font_size=SHORT_FONT_SIZE, margin_v=180,
              sub_segments=sub_segments)
 
     title = t["title"] if "#Shorts" in t["title"] else (t["title"][:88] + " #Shorts")
