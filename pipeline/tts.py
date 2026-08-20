@@ -109,6 +109,41 @@ def _synthesize_openai(text: str, out_path: Path) -> Path:
 
 
 # ---- helpers ----------------------------------------------------------------
+_A_RATE, _A_CH = 24000, 1  # normalise every clip to this so a copy-concat is gapless
+
+
+def _norm_trim(src: Path, dst: Path) -> float:
+    """Re-encode a TTS clip to a fixed format and trim the leading/trailing
+    silence Google pads onto every request. Returns the trimmed duration.
+
+    Concatenating untrimmed clips stacks clip-N's trailing pad on clip-N+1's
+    leading pad, producing a ~0.75s dead spot at every sentence join that reads
+    as robotic. Trimming both ends lets us insert ONE controlled, natural gap."""
+    trim = ("silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.04,"
+            "areverse,"
+            "silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.04,"
+            "areverse")
+    try:
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(src),
+                        "-af", trim, "-ar", str(_A_RATE), "-ac", str(_A_CH),
+                        "-b:a", "160k", str(dst)], check=True)
+        d = audio_duration(dst)
+        if d <= 0.05:  # trim ate everything (near-silent clip) — fall back to raw
+            raise ValueError("empty after trim")
+        return d
+    except Exception:  # noqa: BLE001
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(src),
+                        "-ar", str(_A_RATE), "-ac", str(_A_CH), "-b:a", "160k",
+                        str(dst)], check=True)
+        return audio_duration(dst)
+
+
+def _silence_clip(path: Path, seconds: float) -> None:
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+                    "-i", f"anullsrc=r={_A_RATE}:cl=mono", "-t", f"{seconds:.3f}",
+                    "-b:a", "160k", str(path)], check=True)
+
+
 def _concat_audio(seg_files: list[Path], out_path: Path) -> None:
     if len(seg_files) == 1:
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(seg_files[0]),
@@ -182,7 +217,12 @@ def _split_subtitle_units(text: str, max_len: int = 40, min_len: int = 12) -> li
     capped: list[str] = []
     for u in units:
         while len(u) > max_len:
-            cut = _jp_wrap_point(u, max_len)
+            # If cutting at max_len would leave a sub-min tail, pull the break
+            # back so both halves are reasonable (avoids a 2-char caption stub).
+            limit = max_len
+            if 0 < len(u) - max_len < min_len:
+                limit = max(4, len(u) - min_len)
+            cut = _jp_wrap_point(u, limit)
             capped.append(u[:cut])
             u = u[cut:]
         if u.strip():
@@ -219,14 +259,22 @@ def _synth_unit_bytes(text: str, api_key, sa_client, use_openai: bool, seg: Path
         raise RuntimeError("Google Cloud TTS の認証情報がありません（GOOGLE_TTS_API_KEY 等）。")
 
 
-def synthesize_timed(text: str, out_path: str | Path, max_sub_len: int = 40):
-    """Synthesize the narration one subtitle-unit at a time and measure each
-    unit's REAL audio duration, so burned subtitles stay perfectly in sync with
-    the voice (no proportional guessing). Returns (audio_path, segments) where
-    segments = [(text, start_sec, end_sec), ...].
+def _sentences_for_tts(text: str) -> list[str]:
+    """Split narration into whole sentences (kept intact) for continuous TTS."""
+    return [s.strip() for s in re.split(r"(?<=[。！？\n])", text) if s.strip()]
 
-    max_sub_len caps how long a single subtitle unit may be. Use a smaller value
-    for vertical shorts so captions fit the narrow frame in 1-2 lines.
+
+def synthesize_timed(text: str, out_path: str | Path, max_sub_len: int = 40):
+    """Synthesize the narration and return burned-subtitle timings in sync with
+    the voice. Returns (audio_path, segments) where segments = [(text, start, end)].
+
+    Audio is synthesized ONE WHOLE SENTENCE AT A TIME (not per subtitle unit), so
+    the voice keeps its natural prosody and the only pauses are at real sentence
+    ends — no robotic gap every few characters. Each sentence's REAL measured
+    duration is then distributed across its short display units in proportion to
+    their length, so captions still track the narration closely (drift is reset
+    every sentence and never accumulates). max_sub_len caps caption length — use a
+    small value for vertical shorts so each caption fits the narrow frame.
     """
     out_path = Path(out_path)
     use_openai = (TTS_PROVIDER == "openai")
@@ -237,19 +285,34 @@ def synthesize_timed(text: str, out_path: str | Path, max_sub_len: int = 40):
         sa_client = tts.TextToSpeechClient()
 
     min_len = 6 if max_sub_len <= 20 else 12
-    units = _split_subtitle_units(text, max_len=max_sub_len, min_len=min_len)
+    gap = 0.26  # one natural, consistent pause between sentences
+    sentences = _sentences_for_tts(text) or [text.strip()]
     tmpdir = Path(tempfile.mkdtemp(prefix="tts_timed_"))
-    seg_files: list[Path] = []
+    sil = tmpdir / "gap.mp3"
+    _silence_clip(sil, gap)
+    concat_list: list[Path] = []
     segments: list[tuple[str, float, float]] = []
     t = 0.0
-    for i, u in enumerate(units):
+    last = len(sentences) - 1
+    for i, sent in enumerate(sentences):
+        raw = tmpdir / f"raw_{i:04d}.mp3"
+        _synth_unit_bytes(sent, api_key, sa_client, use_openai, raw)  # whole sentence
         seg = tmpdir / f"seg_{i:04d}.mp3"
-        _synth_unit_bytes(u, api_key, sa_client, use_openai, seg)
-        d = audio_duration(seg)
-        segments.append((u.strip(), t, t + d))
-        t += d
-        seg_files.append(seg)
-    _concat_audio(seg_files, out_path)
+        d = _norm_trim(raw, seg)  # trim Google's silence padding; d = speech length
+        concat_list.append(seg)
+        if i != last:
+            concat_list.append(sil)
+        # Distribute this sentence's real duration over its short caption units.
+        units = _split_subtitle_units(sent, max_len=max_sub_len, min_len=min_len)
+        wtot = sum(len(u) for u in units) or 1
+        st = t
+        for j, u in enumerate(units):
+            du = d * len(u) / wtot
+            end = t + d if j == len(units) - 1 else st + du
+            segments.append((u.strip(), st, end))
+            st = end
+        t += d + (gap if i != last else 0.0)  # captions hold across the gap
+    _concat_audio(concat_list, out_path)
     return out_path, segments
 
 
