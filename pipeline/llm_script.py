@@ -201,6 +201,36 @@ def build_from_narration(genre_key: str, narration: str, title: str | None = Non
     }
 
 
+def _ensure_teaser_length(narration: str, source_narration: str,
+                          target: int = TEASER_TARGET_CHARS, max_passes: int = 2) -> str:
+    """Grow a too-short teaser to ~target chars by adding concrete episodes from
+    the source, keeping the opening hook and the final CTA. LLMs undershoot JP
+    char counts, so a single generation often lands well short of a ~55s runtime."""
+    floor = int(target * 0.9)
+    passes = 0
+    while len(narration) < floor and passes < max_passes:
+        passes += 1
+        prompt = f"""次の「予告編ショート」のナレーションは尺が短すぎます。今は約{len(narration)}文字ですが、{target}文字前後まで自然に膨らませてください。
+
+現在のナレーション:
+{narration}
+
+本編の内容(抜粋・ここから具体的な事実を足す):
+{source_narration[:2000]}
+
+条件:
+- 冒頭のフック(最初の1〜2文)と、最後の誘導文(概要欄・固定コメントのリンクへのCTA)はそのまま残す。
+- 中盤に、本編から"具体的で興味を引くエピソード・数字・矛盾点"を1〜2個だけ足して厚みを出す。抽象的な煽りや同じ内容の言い換えで水増ししない。
+- 全体で{target}文字前後(最低{floor}文字)。話し言葉で、1文ごとに新情報を足す。
+- 出力はナレーション本文だけ(見出し・記号・注釈なし)。"""
+        grown = _chat([{"role": "system", "content": "予告編の脚本家。具体的な事実で尺を厚くする。出力は本文のみ。"},
+                       {"role": "user", "content": prompt}], temperature=0.8).strip()
+        # 伸ばした結果が短くなった場合は元を維持(退行防止)。
+        if len(grown) > len(narration):
+            narration = grown
+    return narration
+
+
 def generate_teaser(genre_key: str, source_topic: str, source_narration: str) -> dict:
     """Build a vertical teaser-short script ('CM') for a long-form video.
 
@@ -209,27 +239,42 @@ def generate_teaser(genre_key: str, source_topic: str, source_narration: str) ->
     Returns: {narration, title, image_prompts, hashtags, tags}.
     """
     genre = GENRES[genre_key]
-    user = f"""次の長尺ミステリー解説動画の「予告編ショート(縦型・約{TEASER_TARGET_CHARS}文字)」の台本をJSONで作成してください。CM＋映画のように、続きを本編で見たくさせるのが目的です。
+    approx_sec = round(TEASER_TARGET_CHARS / 5.3)  # 実測 ≈5.3字/秒
+    user = f"""次の長尺ミステリー解説動画の「予告編ショート(縦型・約{TEASER_TARGET_CHARS}文字/約{approx_sec}秒)」の台本をJSONで作成してください。映画の予告編のように、"それ自体が面白くて最後まで見てしまう"短編に仕上げるのが目的です。
 
 長尺のテーマ: {source_topic}
-長尺の内容(冒頭抜粋): {source_narration[:1200]}
+長尺の内容(本編抜粋): {source_narration[:2000]}
 
-要件:
-- narration: 話し言葉のナレーション。合計{TEASER_TARGET_CHARS}文字前後(約45〜55秒)。
-  ・冒頭3秒で最大の謎・衝撃をチラ見せする強烈なフックから入る(挨拶は一切しない)。
-  ・核心・結末はあえて見せきらない(寸止め)。緊張感を高める。
-  ・最後に「事件の全貌・結末は本編で。概要欄と固定コメントのリンクから今すぐ」と本編へ強く誘導する。
-- title: 25文字前後のフックの効いた日本語タイトル。末尾に半角スペース+『#Shorts』を付ける。
-- image_prompts: 縦型(9:16)用の英語画像プロンプトをちょうど{SHORT_NUM_IMAGES}個。暗く映画的でミステリアスな情景を1文で具体的に。実在人物の顔クローズアップは避け象徴的に。テキスト/ロゴは含めない。
+【最重要の方針】
+このショートは「ただ本編に誘導するだけの空っぽな予告」にしては絶対にいけません。本編の中から"視聴者が思わず『え、何それ』と引き込まれる具体的な事実・エピソード・数字"を実際に2〜3個抜き出して見せ、単体でも満足感と驚きがある一本にしてください。誘導(CTA)は最後の1文だけ。残りは全部"中身"に使います。
+
+【narration の構成(この順序で、合計{TEASER_TARGET_CHARS}文字前後。最低でも{int(TEASER_TARGET_CHARS*0.9)}文字は必ず書き、短くしすぎない)】
+1. フック(最初の3秒/1〜2文): 最大の謎・衝撃を一撃で提示。挨拶・自己紹介・「今日は〜」は禁止。例:「太平洋のど真ん中で、一人の男が風船にぶら下がったまま消えました。」
+2. 具体的な引き(本文の大半): 本編から具体的な事実・エピソードを2〜3個、順番に見せる。各エピソードは"それだけで興味深い"レベルの具体性(固有名詞・数字・状況・矛盾点)を必ず含める。視聴者が「続きが気になる」だけでなく「今この話が面白い」と感じるようにする。単なる問いの羅列や抽象的な煽りは禁止。
+3. オープンループの深掘り: 事実を並べるうちに"説明がつかない最大の謎"が立ち上がるように構成し、緊張を高める。
+4. 寸止め(1文): 最も気になる核心・結末だけは"あえて見せきらない"。答えを言い切らない。
+5. CTA(最後の1文だけ): 「結末と真相は本編で。下の概要欄・固定コメントのリンクから今すぐ」。くどくしない。
+
+【文体】
+- 話し言葉。テンポよく、1文ごとに新しい情報か展開を必ず足す(水増し・接続詞での引き延ばし禁止)。
+- 断定できない事柄は「〜と言われている」「記録が残っている」等の表現を使い、捏造しない。
+
+- title: 25文字前後のフックの効いた日本語タイトル。内容の"具体的な引き"が伝わる語を入れる。末尾に半角スペース+『#Shorts』を付ける。
+- image_prompts: 縦型(9:16)用の英語画像プロンプトをちょうど{SHORT_NUM_IMAGES}個。narrationの各場面(フック→各エピソード→謎→余韻)に対応させ、暗く映画的でミステリアスな情景を1文で具体的に。実在人物の顔クローズアップは避け象徴的に。テキスト/ロゴは含めない。
 - hashtags: 日本語中心のハッシュタグ5個前後(#Shorts を必ず含む)。
 JSON: {{"narration": str, "title": str, "image_prompts": [str, ...], "hashtags": [str, ...]}}"""
-    data = json.loads(_chat([{"role": "system", "content": "YouTube予告編(CM)の脚本家。出力はJSONのみ。"},
+    data = json.loads(_chat([{"role": "system", "content": "あなたは『続きが見たくてたまらなくなる』YouTube予告編の名手です。ただの誘導ではなく、具体的な事実で引き込む短編を書きます。出力はJSONのみ。"},
                              {"role": "user", "content": user}], temperature=0.9, json_mode=True))
+    narration = (data.get("narration") or "").strip()
+    # 日本語LLMは文字数指定を大幅に下振れしがち。短すぎる予告は「間延び前の物足りなさ」
+    # ではなく単純に尺不足になるので、下限を割ったら本編抜粋から具体的エピソードを足して
+    # 目標付近まで膨らませる(フックとCTAは維持)。
+    narration = _ensure_teaser_length(narration, source_narration)
     prompts = (data.get("image_prompts") or [])[:SHORT_NUM_IMAGES]
     while 0 < len(prompts) < SHORT_NUM_IMAGES:
         prompts.append(prompts[len(prompts) % len(prompts)])
     return {
-        "narration": (data.get("narration") or "").strip(),
+        "narration": narration,
         "title": (data.get("title") or source_topic)[:100],
         "image_prompts": prompts or [genre["image_style"]] * SHORT_NUM_IMAGES,
         "hashtags": data.get("hashtags") or ["#Shorts"],
