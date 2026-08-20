@@ -28,7 +28,7 @@ class PreflightError(RuntimeError):
     """Raised when the run can't possibly succeed, before any work is done."""
 
 
-def preflight(do_upload: bool) -> None:
+def preflight(do_upload: bool, need_tts: bool = True) -> None:
     """Fail fast, and loudly, if a prerequisite is missing.
 
     Scheduled runs execute in fresh, ephemeral sessions, so the whole
@@ -45,7 +45,7 @@ def preflight(do_upload: bool) -> None:
         problems.append("OPENAI_API_KEY 未設定 → 台本生成に必須（環境変数に追加）")
     if not os.environ.get("STABILITY_API_KEY"):
         problems.append("STABILITY_API_KEY 未設定 → 画像生成に必須（環境変数に追加）")
-    if config.TTS_PROVIDER == "google" and not (
+    if need_tts and config.TTS_PROVIDER == "google" and not (
             os.environ.get("GOOGLE_TTS_API_KEY")
             or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")):
         problems.append(
@@ -134,6 +134,13 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
         if avoid_titles:
             print(f"      重複回避: 直近 {len(avoid_titles)} 件のタイトルを回避対象にします")
         pkg = generate_script(genre_key, topic, avoid_titles=avoid_titles)
+
+    # 1b. Compliance gate — a no-op unless the genre declares compliance:
+    # "medical". Runs before TTS so a flagged script is never voiced, and
+    # raises rather than publishing something it could not fix.
+    import compliance
+    pkg = compliance.enforce(pkg, genre)
+
     (work / "script.json").write_text(json.dumps(pkg, ensure_ascii=False, indent=2))
     print(f"      topic: {pkg['topic']}")
     print(f"      title: {pkg['title']}")
@@ -175,7 +182,7 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
         print("[6/6] upload (YouTube, scheduled)…")
         from youtube_upload import upload_video, next_publish_at
         pub = next_publish_at(genre["publish_hour_jst"])
-        vid = upload_video(video, pkg["title"], pkg["description"], pkg["tags"],
+        vid = upload_video(video, pkg["title"], _description(genre, pkg), pkg["tags"],
                            genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
         result["video_id"] = vid
         result["publish_at_jst"] = pub.isoformat()
@@ -187,6 +194,170 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
                 result["teaser"] = _build_and_upload_teaser(genre_key, pkg, vid, pub, work)
             except Exception as e:  # noqa: BLE001
                 print(f"[teaser] 予告編ショートの生成に失敗（本編は投稿済み）: {e}")
+    else:
+        print("[6/6] upload skipped (--no-upload)")
+
+    (work / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
+    return result
+
+
+def _description(genre: dict, pkg: dict) -> str:
+    """Final description text: the genre's fixed lead block, then the summary.
+
+    The lead block goes first because YouTube folds the description after the
+    first two lines on mobile — anything below the fold is effectively unread
+    by someone lying in bed.
+    """
+    prefix = genre.get("description_prefix") or ""
+    body = pkg.get("description") or ""
+    return f"{prefix}\n{body}".strip() if prefix else body
+
+
+def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> dict:
+    """L2: a masking-noise video. No narration, no TTS, no Ken Burns.
+
+    Its job is watch time. A viewer keeps this running for the whole night, and
+    that time counts towards the 4,000-hour threshold in full — unlike Shorts
+    feed or ad-driven views, which do not count at all.
+    """
+    from ambient import (build_package, variation, synthesize_masking_noise,
+                         render_ambient, params_record)
+    from images import generate_images
+    from thumbnail import make_thumbnail
+
+    genre = GENRES[genre_key]
+    seconds = seconds or config.AMBIENT_SECONDS
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    work = OUTPUT_DIR / f"{genre_key}_ambient_{stamp}"
+    work.mkdir(parents=True, exist_ok=True)
+    print(f"== {genre['label']} / マスキング音源 {seconds/3600:.1f}h == work dir: {work}")
+
+    print("[1/5] メタデータ生成…")
+    avoid = []
+    if do_upload:
+        from youtube_upload import fetch_recent_titles
+        avoid = fetch_recent_titles()
+    pkg = build_package(genre, seconds, avoid)
+
+    import compliance
+    pkg = compliance.enforce(pkg, genre)
+    print(f"      title: {pkg['title']}")
+
+    print("[2/5] 静止画（Stability, 1枚）…")
+    imgs = generate_images(pkg["image_prompts"], genre["image_style"], work / "img")
+
+    params = variation(pkg["title"])
+    print(f"[3/5] マスキングノイズ合成… {params.color} / "
+          f"{params.low_hz}Hz・{params.mid_hz}Hz強調 / 上限{params.ceiling_hz}Hz")
+    audio = synthesize_masking_noise(work / "noise.m4a", seconds, params)
+
+    print("[4/5] レンダリング（静止画＋長時間音源）…")
+    video = render_ambient(imgs[0], audio, work / "video.mp4", seconds)
+    print(f"      video: {video} ({video.stat().st_size/1e6:.0f} MB)")
+
+    thumb = work / "thumbnail.png"
+    try:
+        make_thumbnail(pkg["thumbnail_text"], pkg["thumbnail_prompt"], thumb)
+    except Exception as e:  # noqa: BLE001
+        print(f"      thumbnail failed: {e}")
+        thumb = None
+
+    result = {"genre": genre_key, "mode": "ambient", "work_dir": str(work),
+              "video": str(video), "title": pkg["title"], "duration_s": seconds,
+              "noise_params": params_record(params)}
+
+    if do_upload:
+        print("[5/5] upload (YouTube, scheduled)…")
+        from youtube_upload import upload_video, next_publish_at
+        pub = next_publish_at(genre["publish_hour_jst"])
+        vid = upload_video(video, pkg["title"], _description(genre, pkg), pkg["tags"],
+                           genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
+        result["video_id"] = vid
+        result["publish_at_jst"] = pub.isoformat()
+        print(f"      scheduled publish: {pub.isoformat()} (JST)  https://youtu.be/{vid}")
+    else:
+        print("[5/5] upload skipped (--no-upload)")
+
+    (work / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
+    return result
+
+
+def run_guide(genre_key: str, topic: str | None, do_upload: bool,
+              ambient_seconds: int | None = None) -> dict:
+    """L3: a spoken explainer that dissolves into an ambient bed.
+
+    The bridge between L1 and L2 — someone who came for the explanation stays
+    asleep on the same video, so the watch time of an explainer lands closer to
+    that of a noise track.
+    """
+    from llm_script import generate_script
+    from tts import synthesize_timed, audio_duration
+    from images import generate_images
+    from ambient import (variation, synthesize_masking_noise,
+                         combine_narration_and_ambient, assemble_guide, params_record)
+    from thumbnail import make_thumbnail
+
+    genre = GENRES[genre_key]
+    ambient_seconds = ambient_seconds or config.GUIDE_AMBIENT_SECONDS
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    work = OUTPUT_DIR / f"{genre_key}_guide_{stamp}"
+    work.mkdir(parents=True, exist_ok=True)
+    print(f"== {genre['label']} / 入眠ガイド（解説＋{ambient_seconds/3600:.1f}h） == {work}")
+
+    print("[1/6] 台本生成…")
+    avoid = []
+    if do_upload:
+        from youtube_upload import fetch_recent_titles
+        avoid = fetch_recent_titles()
+    pkg = generate_script(genre_key, topic, avoid_titles=avoid)
+
+    import compliance
+    pkg = compliance.enforce(pkg, genre)
+    print(f"      title: {pkg['title']}")
+
+    print("[2/6] TTS…")
+    narration_audio, sub_segments = synthesize_timed(pkg["narration"], work / "narration.mp3")
+    intro_s = audio_duration(narration_audio)
+    print(f"      解説パート: {intro_s/60:.1f} 分")
+
+    print(f"[3/6] 画像（{config.GUIDE_NUM_IMAGES}枚）…")
+    imgs = generate_images(pkg["image_prompts"][:config.GUIDE_NUM_IMAGES],
+                           genre["image_style"], work / "img")
+
+    params = variation(pkg["title"])
+    print(f"[4/6] アンビエント合成 {ambient_seconds/3600:.1f}h…")
+    bed = synthesize_masking_noise(work / "bed.m4a", ambient_seconds, params, fade_in=2)
+    crossfade = 8
+    combined = combine_narration_and_ambient(narration_audio, bed, work / "audio.m4a",
+                                             crossfade=crossfade)
+    total_s = intro_s + ambient_seconds - crossfade
+
+    print("[5/6] レンダリング（Ken Burns → 静止画）…")
+    video = assemble_guide(imgs, combined, intro_s, total_s, work / "video.mp4",
+                           sub_segments=sub_segments)
+    print(f"      video: {video} ({video.stat().st_size/1e6:.0f} MB)")
+
+    thumb = work / "thumbnail.png"
+    try:
+        make_thumbnail(pkg["thumbnail_text"] or pkg["title"], pkg["thumbnail_prompt"], thumb)
+    except Exception as e:  # noqa: BLE001
+        print(f"      thumbnail failed: {e}")
+        thumb = None
+
+    result = {"genre": genre_key, "mode": "guide", "work_dir": str(work),
+              "video": str(video), "title": pkg["title"], "topic": pkg["topic"],
+              "intro_s": intro_s, "ambient_s": ambient_seconds,
+              "noise_params": params_record(params)}
+
+    if do_upload:
+        print("[6/6] upload (YouTube, scheduled)…")
+        from youtube_upload import upload_video, next_publish_at
+        pub = next_publish_at(genre["publish_hour_jst"])
+        vid = upload_video(video, pkg["title"], _description(genre, pkg), pkg["tags"],
+                           genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
+        result["video_id"] = vid
+        result["publish_at_jst"] = pub.isoformat()
+        print(f"      scheduled publish: {pub.isoformat()} (JST)  https://youtu.be/{vid}")
     else:
         print("[6/6] upload skipped (--no-upload)")
 
@@ -274,6 +445,12 @@ def main() -> None:
     ap.add_argument("--intro-title", default=None, help="title/dedup key for --intro-seed")
     ap.add_argument("--teaser", action="store_true",
                     help="after the long-form upload, also build+upload a vertical teaser short linking to it")
+    ap.add_argument("--mode", choices=["narrated", "ambient", "guide"], default="narrated",
+                    help="narrated = the standard explainer (default); "
+                         "ambient = a masking-noise track (no narration); "
+                         "guide = a spoken intro that dissolves into an ambient bed")
+    ap.add_argument("--seconds", type=int, default=None,
+                    help="override the ambient length in seconds (--mode ambient/guide)")
     args = ap.parse_args()
 
     if args.check_auth:
@@ -283,7 +460,17 @@ def main() -> None:
         return
 
     do_upload = not args.no_upload
-    preflight(do_upload)  # stop now if a prerequisite is missing
+    # --mode ambient never speaks, so it must not be blocked on a TTS key.
+    preflight(do_upload, need_tts=args.mode != "ambient")
+
+    if args.mode in ("ambient", "guide"):
+        genre_key = args.genre or DEFAULT_GENRE
+        t0 = time.time()
+        fn = run_ambient if args.mode == "ambient" else run_guide
+        result = (fn(genre_key, do_upload, args.seconds) if args.mode == "ambient"
+                  else fn(genre_key, args.topic, do_upload, args.seconds))
+        print(f"\nDONE in {time.time()-t0:.0f}s -> {result.get('video_id', '(not uploaded)')}")
+        return
 
     state = _load_state()
     if args.rotate_date:
