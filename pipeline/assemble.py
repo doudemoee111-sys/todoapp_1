@@ -63,6 +63,27 @@ def _build_srt(narration: str, total: float, srt_path: Path) -> bool:
     return True
 
 
+def _srt_from_segments(segments, total: float, srt_path: Path) -> bool:
+    """Build an SRT from measured per-unit timings so each subtitle stays on
+    screen for exactly as long as its narration is spoken (no proportional
+    guessing). `segments` is [(text, start_sec, end_sec), ...]. Each cue is held
+    back-to-back until the next unit actually begins, so a viewer always has the
+    full time the voice takes to read a line — never cut short."""
+    segs = [s for s in (segments or []) if s and str(s[0]).strip()]
+    if not segs:
+        return False
+    lines = []
+    for i, (text, start, end) in enumerate(segs, 1):
+        # Hold this cue until the next unit starts (or clip end) so nothing
+        # disappears early; clamp to the true audio length.
+        nxt = segs[i][1] if i < len(segs) else total
+        end = min(total, max(end, nxt))
+        start = min(start, end)
+        lines.append(f"{i}\n{_ts(start)} --> {_ts(end)}\n{str(text).strip()}\n")
+    srt_path.write_text("\n".join(lines), encoding="utf-8")
+    return True
+
+
 def _ts(sec: float) -> str:
     h = int(sec // 3600); m = int((sec % 3600) // 60)
     s = int(sec % 60); ms = int((sec - int(sec)) * 1000)
@@ -72,7 +93,8 @@ def _ts(sec: float) -> str:
 def assemble(images: list[Path], audio_path: str | Path, out_path: str | Path,
              narration: str = "", subtitles: bool = True,
              width: int = VIDEO_W, height: int = VIDEO_H,
-             font_size: int = 18, margin_v: int = 40) -> Path:
+             font_size: int = 26, margin_v: int = 60,
+             sub_segments=None) -> Path:
     audio_path = Path(audio_path)
     out_path = Path(out_path)
     dur = audio_duration(audio_path)
@@ -97,12 +119,17 @@ def assemble(images: list[Path], audio_path: str | Path, out_path: str | Path,
           "-i", str(listfile), "-c", "copy", str(silent)])
 
     # 3. mux audio (+ optional burned subtitles)
+    #    Prefer measured per-unit timings (sub_segments) so each line stays on
+    #    screen exactly as long as it is spoken; fall back to proportional split.
     srt = tmp / "subs.srt"
-    have_subs = subtitles and narration and _build_srt(narration, dur, srt)
+    if subtitles and sub_segments:
+        have_subs = _srt_from_segments(sub_segments, dur, srt)
+    else:
+        have_subs = bool(subtitles and narration and _build_srt(narration, dur, srt))
     if have_subs:
         try:
             style = (f"FontName={_JP_FONT},FontSize={font_size},PrimaryColour=&H00FFFFFF,"
-                     f"OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,"
+                     f"OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,"
                      f"MarginV={margin_v},Alignment=2")
             vf = f"subtitles={srt.as_posix()}:force_style='{style}'"
             _run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(silent), "-i", str(audio_path),

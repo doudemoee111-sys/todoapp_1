@@ -28,7 +28,7 @@ NARRATION_TARGET_CHARS = 3200   # ~8-10 min of JP narration at normal TTS speed
 # ---- Teaser short ("CM" for a mystery long-form) ----------------------------
 SHORT_W, SHORT_H = 1080, 1920   # vertical 9:16 (YouTube Shorts)
 SHORT_NUM_IMAGES = 6            # fewer, punchy scenes for a ~50s teaser
-SHORT_FONT_SIZE = 30            # larger burned subtitles for vertical/mobile
+SHORT_FONT_SIZE = 36            # larger burned subtitles for vertical/mobile
 TEASER_TARGET_CHARS = 170       # ~45-55s of narration
 
 # ---- TTS --------------------------------------------------------------------

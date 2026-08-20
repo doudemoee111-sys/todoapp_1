@@ -108,7 +108,7 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
         narration: str | None = None, title: str | None = None,
         make_teaser: bool = False) -> dict:
     from llm_script import generate_script, build_from_narration
-    from tts import synthesize, audio_duration
+    from tts import synthesize_timed, audio_duration
     from images import generate_images
     from assemble import assemble
     from thumbnail import make_thumbnail
@@ -139,12 +139,13 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     print(f"      title: {pkg['title']}")
     print(f"      narration chars: {len(pkg['narration'])}  image prompts: {len(pkg['image_prompts'])}")
 
-    # 2. TTS
+    # 2. TTS — synthesize per subtitle-unit and measure each unit's real
+    #    duration, so burned subtitles stay in sync with the voice.
     print(f"[2/6] TTS ({config.TTS_PROVIDER})…")
     audio = work / "narration.mp3"
-    synthesize(pkg["narration"], audio)
+    audio, sub_segments = synthesize_timed(pkg["narration"], audio)
     dur = audio_duration(audio)
-    print(f"      audio duration: {dur:.1f}s ({dur/60:.1f} min)")
+    print(f"      audio duration: {dur:.1f}s ({dur/60:.1f} min), {len(sub_segments)} subtitle units")
 
     # 3. Images
     print(f"[3/6] images (Stability, {len(pkg['image_prompts'])})…")
@@ -153,7 +154,8 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     # 4. Assemble
     print("[4/6] assemble video (ffmpeg)…")
     video = work / "video.mp4"
-    assemble(imgs, audio, video, narration=pkg["narration"], subtitles=subtitles)
+    assemble(imgs, audio, video, narration=pkg["narration"], subtitles=subtitles,
+             sub_segments=sub_segments)
     print(f"      video: {video}")
 
     # 5. Thumbnail
@@ -197,7 +199,7 @@ def _build_and_upload_teaser(genre_key: str, source_pkg: dict, long_video_id: st
     """Build a vertical teaser short for a just-uploaded long-form and schedule
     it at the same time, linking back to the full video (description + comment)."""
     from llm_script import generate_teaser
-    from tts import synthesize
+    from tts import synthesize_timed
     from images import generate_images
     from assemble import assemble
     from youtube_upload import upload_video, post_comment
@@ -210,12 +212,13 @@ def _build_and_upload_teaser(genre_key: str, source_pkg: dict, long_video_id: st
     tdir = work / "teaser"
     tdir.mkdir(exist_ok=True)
     audio = tdir / "narration.mp3"
-    synthesize(t["narration"], audio)
+    audio, sub_segments = synthesize_timed(t["narration"], audio)
     imgs = generate_images(t["image_prompts"], genre["image_style"], tdir / "img",
                            aspect="9:16", width=SHORT_W, height=SHORT_H)
     video = tdir / "teaser.mp4"
     assemble(imgs, audio, video, narration=t["narration"], subtitles=True,
-             width=SHORT_W, height=SHORT_H, font_size=SHORT_FONT_SIZE, margin_v=140)
+             width=SHORT_W, height=SHORT_H, font_size=SHORT_FONT_SIZE, margin_v=140,
+             sub_segments=sub_segments)
 
     title = t["title"] if "#Shorts" in t["title"] else (t["title"][:88] + " #Shorts")
     desc = (f"{t['narration'][:70]}…\n\n"

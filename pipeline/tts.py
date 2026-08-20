@@ -128,6 +128,82 @@ def synthesize(text: str, out_path: str | Path) -> Path:
     return _synthesize_google(text, out_path)
 
 
+def _split_subtitle_units(text: str, max_len: int = 40, min_len: int = 12) -> list[str]:
+    """Split narration into readable subtitle-sized units.
+
+    One sentence per unit; long sentences are split at Japanese commas so a
+    subtitle is never a wall of text, and tiny fragments are merged into the
+    previous unit so each line stays on screen long enough to read.
+    """
+    sents = [s.strip() for s in re.split(r"(?<=[。！？\n])", text) if s.strip()]
+    units: list[str] = []
+    for s in sents:
+        if len(s) <= max_len:
+            units.append(s)
+            continue
+        cur = ""
+        for p in re.split(r"(?<=、)", s):
+            if cur and len(cur + p) > max_len:
+                units.append(cur)
+                cur = p
+            else:
+                cur += p
+        if cur.strip():
+            units.append(cur)
+    merged: list[str] = []
+    for u in units:
+        if merged and len(u) < min_len and len(merged[-1]) + len(u) <= max_len + 12:
+            merged[-1] += u
+        else:
+            merged.append(u)
+    return merged or [text.strip()]
+
+
+def _synth_unit_bytes(text: str, api_key, sa_client, use_openai: bool, seg: Path) -> None:
+    if use_openai:
+        from openai import OpenAI
+        client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        with client.audio.speech.with_streaming_response.create(
+                model="tts-1", voice=OPENAI_TTS_VOICE, input=text) as resp:
+            resp.stream_to_file(seg)
+    elif api_key:
+        seg.write_bytes(_google_synth_chunk_apikey(text, api_key))
+    elif sa_client is not None:
+        seg.write_bytes(_google_synth_chunk_sa(text, sa_client))
+    else:
+        raise RuntimeError("Google Cloud TTS の認証情報がありません（GOOGLE_TTS_API_KEY 等）。")
+
+
+def synthesize_timed(text: str, out_path: str | Path):
+    """Synthesize the narration one subtitle-unit at a time and measure each
+    unit's REAL audio duration, so burned subtitles stay perfectly in sync with
+    the voice (no proportional guessing). Returns (audio_path, segments) where
+    segments = [(text, start_sec, end_sec), ...].
+    """
+    out_path = Path(out_path)
+    use_openai = (TTS_PROVIDER == "openai")
+    api_key = os.environ.get("GOOGLE_TTS_API_KEY")
+    sa_client = None
+    if not use_openai and not api_key and os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+        from google.cloud import texttospeech as tts
+        sa_client = tts.TextToSpeechClient()
+
+    units = _split_subtitle_units(text)
+    tmpdir = Path(tempfile.mkdtemp(prefix="tts_timed_"))
+    seg_files: list[Path] = []
+    segments: list[tuple[str, float, float]] = []
+    t = 0.0
+    for i, u in enumerate(units):
+        seg = tmpdir / f"seg_{i:04d}.mp3"
+        _synth_unit_bytes(u, api_key, sa_client, use_openai, seg)
+        d = audio_duration(seg)
+        segments.append((u.strip(), t, t + d))
+        t += d
+        seg_files.append(seg)
+    _concat_audio(seg_files, out_path)
+    return out_path, segments
+
+
 def audio_duration(path: str | Path) -> float:
     out = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
