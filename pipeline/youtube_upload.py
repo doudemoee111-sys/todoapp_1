@@ -32,12 +32,16 @@ def _service():
     return build("youtube", "v3", credentials=creds, cache_discovery=False)
 
 
-def check_auth() -> str:
-    """Verify the YouTube OAuth credential actually works, without uploading.
+class ChannelMismatch(RuntimeError):
+    """The credential authorises a different channel than this run expects."""
+
+
+def current_channel() -> dict:
+    """Verify the OAuth credential works and report which channel it controls.
 
     Forces a token refresh (channels.list triggers it) so an expired/revoked
     refresh token fails here cheaply, instead of after ~15 min of video build.
-    Returns the authorized channel's title on success.
+    Returns {"id": ..., "title": ...}.
     """
     yt = _service()
     try:
@@ -52,7 +56,42 @@ def check_auth() -> str:
         raise RuntimeError(
             "認証は通りましたが、このアカウントに YouTube チャンネルが見つかりません。"
             "投稿先チャンネルの Google アカウントで認可し直してください。")
-    return items[0]["snippet"]["title"]
+    return {"id": items[0]["id"], "title": items[0]["snippet"]["title"]}
+
+
+def assert_expected_channel(channel: dict | None = None) -> dict:
+    """Refuse to run when the credential points at the wrong channel.
+
+    Several channels are driven from the same `pipeline/` code, each with its
+    own environment holding its own YOUTUBE_* triple. Nothing in the code
+    itself used to notice when those triples got crossed — a swapped or stale
+    secret would happily upload one channel's video to another channel, and
+    the mistake is only visible after publication.
+
+    Set EXPECTED_CHANNEL_ID in an environment and that class of accident stops
+    being possible: the run aborts before any upload. Leave it unset and this
+    is a no-op, so environments that predate the guard behave exactly as before.
+
+    The channel *id* is the identifier to pin, not the title — a channel can be
+    renamed at any time, and a rename must not start failing production runs.
+    """
+    channel = channel or current_channel()
+    expected = os.environ.get("EXPECTED_CHANNEL_ID", "").strip()
+    if not expected:
+        return channel
+    if expected != channel["id"]:
+        raise ChannelMismatch(
+            "投稿先チャンネルが想定と違います。アップロードを中止しました。\n"
+            f"  想定 (EXPECTED_CHANNEL_ID): {expected}\n"
+            f"  実際に認証されたチャンネル : {channel['id']}（「{channel['title']}」）\n"
+            "この環境の YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET / YOUTUBE_REFRESH_TOKEN が、"
+            "別チャンネル用の値になっている可能性があります。3点とも同じチャンネルのものに揃えてください。")
+    return channel
+
+
+def check_auth() -> str:
+    """Back-compat wrapper: returns the authorised channel's title."""
+    return current_channel()["title"]
 
 
 def post_comment(video_id: str, text: str) -> bool:

@@ -65,6 +65,16 @@ def preflight(do_upload: bool, need_tts: bool = True) -> None:
         raise PreflightError(
             "事前チェック(preflight)に失敗しました。以下を解消してから再実行してください:\n  - "
             + "\n  - ".join(problems))
+
+    # Channel guard. Only engages when EXPECTED_CHANNEL_ID is set, so
+    # environments that predate it are untouched. Runs here rather than at
+    # upload time so a crossed credential costs one API unit instead of a
+    # full generation.
+    if do_upload and os.environ.get("EXPECTED_CHANNEL_ID", "").strip():
+        from youtube_upload import assert_expected_channel
+        ch = assert_expected_channel()
+        print(f"[preflight] 投稿先チャンネル確認: 「{ch['title']}」({ch['id']})")
+
     print(f"[preflight] OK — credentials{'（upload込み）' if do_upload else ''}・"
           f"ffmpeg・コード すべて揃っています。")
 
@@ -454,9 +464,14 @@ def main() -> None:
     args = ap.parse_args()
 
     if args.check_auth:
-        from youtube_upload import check_auth
-        title = check_auth()
-        print(f"[check-auth] OK — 認証成功。投稿先チャンネル: 「{title}」")
+        from youtube_upload import current_channel, assert_expected_channel
+        ch = current_channel()
+        assert_expected_channel(ch)     # raises when it is the wrong channel
+        print(f"[check-auth] OK — 認証成功。投稿先チャンネル: 「{ch['title']}」")
+        print(f"[check-auth] channelId: {ch['id']}")
+        if not os.environ.get("EXPECTED_CHANNEL_ID", "").strip():
+            print("[check-auth] ヒント: この channelId を環境変数 EXPECTED_CHANNEL_ID に設定すると、"
+                  "認証情報が他チャンネルのものに入れ替わったとき、投稿前に中断します。")
         return
 
     do_upload = not args.no_upload
