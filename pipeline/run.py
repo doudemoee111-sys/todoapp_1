@@ -173,13 +173,36 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     # 6. Upload (scheduled)
     if do_upload:
         print("[6/6] upload (YouTube, scheduled)…")
-        from youtube_upload import upload_video, next_publish_at
+        from youtube_upload import (upload_video, next_publish_at,
+                                    ensure_playlist, add_to_playlist)
+
+        # 6a. Related-video boost: align metadata to the popular-video cluster so
+        #     we surface in their "next up / suggested" rail.
+        try:
+            from related_boost import build_related_boost, merge_boost
+            merge_boost(pkg, build_related_boost(genre_key, pkg["topic"], pkg["title"]))
+        except Exception as e:  # noqa: BLE001
+            print(f"      [related] 関連動画最適化はスキップ: {e}")
+
         pub = next_publish_at(genre["publish_hour_jst"])
         vid = upload_video(video, pkg["title"], pkg["description"], pkg["tags"],
                            genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
         result["video_id"] = vid
         result["publish_at_jst"] = pub.isoformat()
         print(f"      scheduled publish: {pub.isoformat()} (JST)  https://youtu.be/{vid}")
+
+        # 6b. Playlist回遊: chain into the genre playlist (session watch-time boost).
+        pl_title = genre.get("playlist_title") or f"【保存版】{genre['label']}まとめ"
+        pl_id = ensure_playlist(pl_title, genre.get("channel_tagline", ""))
+        if pl_id and add_to_playlist(vid, pl_id):
+            result["playlist"] = pl_title
+
+        # 6c. External promotion (best-effort; only if configured).
+        try:
+            from social_promote import promote_everywhere
+            result["promo"] = promote_everywhere(pkg["title"], vid, pkg, genre_key, publish_at_jst=pub)
+        except Exception as e:  # noqa: BLE001
+            print(f"      [promo] 外部シェアはスキップ: {e}")
 
         # 7. Teaser short ("CM" for this long-form): same topic, linked back.
         if make_teaser:

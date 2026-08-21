@@ -110,6 +110,50 @@ def fetch_recent_titles(max_results: int = 40) -> list[str]:
         return []
 
 
+def ensure_playlist(title: str, description: str = "") -> str | None:
+    """Return the id of the channel's playlist named `title`, creating it if
+    absent. Playlists chain our videos into a binge session — higher session
+    watch-time is a strong signal for the suggested-video algorithm, so each new
+    upload is appended to its genre playlist. Best-effort: returns None on error."""
+    try:
+        yt = _service()
+        req = yt.playlists().list(part="snippet", mine=True, maxResults=50)
+        while req is not None:
+            resp = req.execute()
+            for pl in resp.get("items", []):
+                if (pl.get("snippet") or {}).get("title") == title:
+                    return pl["id"]
+            req = yt.playlists().list_next(req, resp)
+        created = yt.playlists().insert(
+            part="snippet,status",
+            body={"snippet": {"title": title[:150], "description": description[:5000]},
+                  "status": {"privacyStatus": "public"}},
+        ).execute()
+        print(f"  [playlist] 新規プレイリスト作成: 「{title}」")
+        return created["id"]
+    except Exception as e:  # noqa: BLE001
+        print(f"  [playlist] プレイリスト準備に失敗（回遊設定はスキップ）: {e}")
+        return None
+
+
+def add_to_playlist(video_id: str, playlist_id: str) -> bool:
+    """Append a video to a playlist (best-effort)."""
+    if not playlist_id:
+        return False
+    try:
+        yt = _service()
+        yt.playlistItems().insert(
+            part="snippet",
+            body={"snippet": {"playlistId": playlist_id,
+                              "resourceId": {"kind": "youtube#video", "videoId": video_id}}},
+        ).execute()
+        print(f"  [playlist] 動画をプレイリストに追加（回遊導線）")
+        return True
+    except Exception as e:  # noqa: BLE001
+        print(f"  [playlist] プレイリスト追加に失敗: {e}")
+        return False
+
+
 def next_publish_at(hour_jst: int, min_lead_hours: int = 3) -> datetime:
     """Next occurrence of hour_jst (JST) that is at least min_lead_hours from now.
 
