@@ -303,18 +303,24 @@ def _description(genre: dict, pkg: dict, sub_segments=None,
     a viewer who finishes has somewhere on this channel to go next.
     """
     parts = []
-    if genre.get("description_prefix"):
-        parts.append(genre["description_prefix"].rstrip())
 
-    # Directly under the lead block, so the disclosure and the links sit as high
-    # as the fold allows. Empty until assets/affiliate_links.json has a URL, and
-    # a 薬機法 violation in a hand-written label stops the run rather than
-    # publishing it — the labels are static, so a failure here means the file
-    # needs an edit, not a retry.
+    # The affiliate block goes FIRST, above the channel's own lead line. YouTube
+    # folds a description after roughly two lines on mobile, and under the 2023
+    # ステマ規制 the advertising has to be identifiable — a disclosure the viewer
+    # must tap "もっと見る" to reach is not. The hook lives in the title and the
+    # thumbnail anyway; the first description line is a poor place to spend it,
+    # and it is the affiliate, not the advertiser, who is sanctioned here.
+    #
+    # Empty until assets/affiliate_links.json has a URL. A 薬機法 violation in a
+    # hand-written label stops the run rather than publishing it: the labels are
+    # static, so a failure means the file needs an edit, not a retry.
     from affiliate import description_block
-    links = description_block()
+    links = description_block(pkg.get("axis"))
     if links:
         parts.append(links)
+
+    if genre.get("description_prefix"):
+        parts.append(genre["description_prefix"].rstrip())
 
     chapters = _chapter_timestamps(pkg, sub_segments) if sub_segments else []
     if chapters:

@@ -39,11 +39,22 @@ def _load() -> dict:
         raise AffiliateError(f"assets/affiliate_links.json が壊れています: {e}") from e
 
 
-def active_links(data: dict | None = None) -> list[dict]:
+def active_links(axis: int | None = None, data: dict | None = None) -> list[dict]:
+    """Links allowed under this video's topic axis (see config.py topic_axes).
+
+    A link with no "axes" key runs everywhere. A link WITH one runs only on the
+    axes it names, and is withheld when the axis is unknown — a hand-picked topic
+    or an ambient video. Withholding is the safe default: the whole reason a link
+    is gated is that it is wrong somewhere, and "somewhere" is exactly what an
+    unknown axis cannot rule out.
+    """
     data = _load() if data is None else data
     out = []
     for link in data.get("links") or []:
         if not link.get("enabled"):
+            continue
+        allowed = link.get("axes")
+        if allowed is not None and (axis is None or axis not in allowed):
             continue
         if not (link.get("url") or "").strip():
             print(f"  [affiliate] URL未設定のため出力しません: {link.get('label', '')}")
@@ -76,10 +87,10 @@ def _check_labels(links: list[dict]) -> None:
             "（生成台本と違い、ここは自動リライトしません）")
 
 
-def description_block() -> str:
+def description_block(axis: int | None = None) -> str:
     """The block to place near the top of a description. '' when unconfigured."""
     data = _load()
-    links = active_links(data)
+    links = active_links(axis, data)
     if not links:
         return ""
     _check_labels(links)
@@ -93,12 +104,18 @@ def description_block() -> str:
     return "\n".join(lines)
 
 
-def comment_block() -> str:
+def comment_block(axis: int | None = None) -> str:
     """The same links for a pinned comment, where the fold does not apply."""
-    block = description_block()
+    block = description_block(axis)
     return f"{block}\n\n（リンクは予告なく変更・終了することがあります）" if block else ""
 
 
 if __name__ == "__main__":
-    out = description_block()
-    print(out or "有効なリンクがありません（url を入れて enabled を true にしてください）")
+    import sys
+    from config import GENRES
+    axes = GENRES["sleep"]["topic_axes"]
+    wanted = [int(a) for a in sys.argv[1:]] or list(range(len(axes)))
+    for i in wanted:
+        out = description_block(i)
+        print(f"\n=== 切り口 {i}: {axes[i]} ===")
+        print(out or "（この回に出すリンクはありません）")

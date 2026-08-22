@@ -46,6 +46,19 @@ def _avoid_block(avoid_titles: list[str] | None) -> str:
             + joined)
 
 
+def _axis_index(genre: dict, offset: int = 0) -> int | None:
+    """Which sub-territory this run is steered onto, or None if the genre has none.
+
+    Returned rather than kept local because the affiliate links are gated on it:
+    a supplement belongs under "the sleep you are losing", never under "how to
+    get an apnea diagnosis". See assets/affiliate_links.json.
+    """
+    axes = genre.get("topic_axes")
+    if not axes:
+        return None
+    return (date.today().toordinal() + offset) % len(axes)
+
+
 def _axis_block(genre: dict, offset: int = 0) -> str:
     """Steer topic selection onto one of the genre's sub-territories.
 
@@ -56,18 +69,19 @@ def _axis_block(genre: dict, offset: int = 0) -> str:
     several weeks, which a random pick does not guarantee. offset lets a retry
     move to the next axis instead of re-asking the same one.
     """
-    axes = genre.get("topic_axes")
-    if not axes:
+    idx = _axis_index(genre, offset)
+    if idx is None:
         return ""
-    axis = axes[(date.today().toordinal() + offset) % len(axes)]
+    axis = genre["topic_axes"][idx]
     return (f"\n\n【今回の切り口】今回は特に次の観点から題材を選んでください: {axis}\n"
             "視聴者像（いびきをかく本人ではなく、隣で寝ている家族・パートナー）は変えないこと。")
 
 
 def _pick_topic(genre: dict, avoid_titles: list[str] | None = None, offset: int = 0) -> str:
     axis_block = _axis_block(genre, offset)
-    if axis_block:
-        print(f"  [topic] 切り口: {genre['topic_axes'][(date.today().toordinal() + offset) % len(genre['topic_axes'])]}")
+    idx = _axis_index(genre, offset)
+    if axis_block and idx is not None:
+        print(f"  [topic] 切り口({idx}): {genre['topic_axes'][idx]}")
     out = _chat(
         [{"role": "system", "content": "あなたは日本のYouTubeで大人気の動画作家です。"},
          {"role": "user", "content": genre["topic_seed_prompt"] + axis_block + _avoid_block(avoid_titles)
@@ -302,16 +316,19 @@ JSON: {{"narration": str, "title": str, "image_prompts": [str, ...], "hashtags":
     return teaser
 
 
-def _select_topic(genre: dict, avoid_titles: list[str], max_retries: int = 4) -> str:
+def _select_topic(genre: dict, avoid_titles: list[str],
+                  max_retries: int = 4) -> tuple[str, int | None]:
     """Pick a topic, re-picking if it duplicates a recent one (semantic check).
 
     Continues (does not abort) after max_retries so a run never fails outright —
     a slightly-close final candidate beats posting nothing for the day.
     """
+    used = 0
     topic = _pick_topic(genre, avoid_titles)
     for attempt in range(1, max_retries + 1):
         if not _is_duplicate(topic, avoid_titles, genre):
             break
+        used = attempt
         print(f"  [dedup] テーマ「{topic}」は最近と重複 → 再選定 ({attempt}/{max_retries})")
         # Advance the axis on each retry. Re-asking the same axis mostly returns
         # a re-skin of the topic just rejected, which is how the retry budget got
@@ -320,15 +337,18 @@ def _select_topic(genre: dict, avoid_titles: list[str], max_retries: int = 4) ->
     else:
         print(f"  [dedup] {max_retries}回再選定しても重複を回避しきれず、最後の候補「{topic}」で続行します。")
     print(f"  [dedup] 採用テーマ: {topic}（回避対象 {len(avoid_titles)} 件）")
-    return topic
+    return topic, _axis_index(genre, used)
 
 
 def generate_script(genre_key: str, topic: str | None = None,
                     avoid_titles: list[str] | None = None) -> dict:
     genre = GENRES[genre_key]
     avoid_titles = avoid_titles or []
+    # None when the topic was supplied by hand: the run is then outside the
+    # rotation, so no link may claim it matches this video's subject.
+    axis = None
     if not topic:
-        topic = _select_topic(genre, avoid_titles)
+        topic, axis = _select_topic(genre, avoid_titles)
 
     outline = _outline(genre, topic)
     title = outline.get("title", topic)[:100]
@@ -348,6 +368,7 @@ def generate_script(genre_key: str, topic: str | None = None,
 
     return {
         "topic": topic,
+        "axis": axis,
         "title": title,
         "chapters": chapters,
         "narration": full_narration,
