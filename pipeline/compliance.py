@@ -54,6 +54,13 @@ NG_PATTERNS: list[tuple[str, str]] = [
     (r"効果があ(る|ります)", "効果の断定"),
     (r"(解消|根治|克服)(します|できます)", "効果の断定"),
     (r"予防(できます|します)", "予防効果の断定"),
+    # 結果の約束。商品名も症状名も出さずに、買った先の結果だけを言う形。
+    # サムネイルの数文字に収まるぶん、いちばん使われやすい。
+    (r"朝まで(熟睡|ぐっすり)", "結果の約束"),
+    (r"ぐっすり眠れ(る|ます)", "結果の約束"),
+    (r"もう[^。、]{0,8}(悩まない|困らない|起こされない)", "結果の約束"),
+    (r"(いびき|無呼吸|不眠)(解消法|撃退|完全攻略)", "効果の断定（解消の約束）"),
+    (r"[^。、]{0,6}を救う", "過度な訴求"),
     # An adverb between が and the verb is exactly what strengthens the claim,
     # and the bare form let 「いびきが完全になくなります」 through. Bounded and
     # punctuation-stopped so it does not reach across clauses.
@@ -193,7 +200,8 @@ def review(pkg: dict, use_llm: bool = True) -> Report:
     """Check every viewer-facing field of a script package."""
     rep = Report()
     for where, key in (("title", "title"), ("narration", "narration"),
-                       ("description", "description")):
+                       ("description", "description"),
+                       ("thumbnail_text", "thumbnail_text")):
         text = (pkg.get(key) or "").strip()
         if not text:
             continue
@@ -266,7 +274,8 @@ def enforce(pkg: dict, genre: dict, use_llm: bool = True) -> dict:
         narration_findings = [f for f in rep.findings if f.where == "narration"]
         if narration_findings:
             pkg["narration"] = rewrite(pkg["narration"], narration_findings)
-        for where, key in (("title", "title"), ("description", "description")):
+        for where, key in (("title", "title"), ("description", "description"),
+                           ("thumbnail_text", "thumbnail_text")):
             fs = [f for f in rep.findings if f.where == where]
             if fs and pkg.get(key):
                 pkg[key] = rewrite(pkg[key], fs)

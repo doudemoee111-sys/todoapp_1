@@ -121,29 +121,48 @@ def _is_duplicate(topic: str, avoid_titles: list[str], genre: dict | None = None
         return False  # 判定に失敗したら重複扱いにせず続行(生成を止めない)
 
 
-def _outline(genre: dict, topic: str) -> dict:
-    n_ch = 8
+def _outline(genre: dict, topic: str, shape: dict | None = None) -> dict:
+    from originality import editorial_note, avoid_bookends_block
+
+    # Chapter count varies per video. A catalogue where every entry has exactly
+    # eight chapters reads as a template even when each one is fine on its own.
+    n_ch = (shape or {}).get("chapters", 8)
+    note = editorial_note()
+    voice = (f"\n\n【このチャンネルの人が書いた方針】以下は運営者本人の言葉です。"
+             f"構成と語り口はこれに従ってください。一般論に流れそうになったら、"
+             f"ここに書かれている立場に戻ること。\n{note}" if note else "")
+
     user = f"""日本のYouTube長尺解説動画の構成案をJSONで作成してください。
 
 テーマ: {topic}
 ジャンル: {genre['label']}
-トーン: {genre['narration_style']}
+トーン: {genre['narration_style']}{voice}{avoid_bookends_block()}
 
 要件:
-- chapters は{n_ch}個。導入(フック)→本編→まとめ→締め(登録誘導)の流れ。
+- chapters は{n_ch}個。導入(フック)→本編→まとめ→締めの流れ。
 - 各chapterは heading(短い見出し) と summary(その章で語る内容の要点、2〜3文) を持つ。
-- title: 100文字以内のクリックしたくなる日本語（虚偽・過度な煽りは避ける）。
+- **各章は、この動画でしか出てこない具体を必ず1つ含むこと。** 数値、検査や器具の
+  正式名称、時刻や場面の描写など。どのいびき動画にも書ける一般論だけの章を作らない。
+- title: 100文字以内。テーマ固有の語を必ず入れる。次を守ること。
+  ・**いびきをかく本人ではなく、隣で眠れない家族に向けて書く。**「いびき解消法」は
+    本人が打つ検索語で、このチャンネルの視聴者のものではない。
+  ・「知らないと危険」「衝撃の事実」のような、どの動画にも使える煽り文句は使わない。
+  ・「〜を救う」「〜地獄」のような恐怖・救済の言葉を使わない。夜に見る人が対象で、
+    不安をあおらないことをチャンネルの方針にしている。
+  ・「朝まで熟睡」のような、結果を約束する言葉は使わない（薬機法チェックで止まる）。
 - thumbnail_text: サムネ用の大きな日本語(10文字前後、改行\\n可)。
-- thumbnail_prompt: サムネ背景の英語画像プロンプト。
-- description: 日本語200〜400文字（要約＋登録誘導）。
+  タイトルと同じ制約がかかる。恐怖語と結果の約束は使えない。
+  視聴者が「これは自分のことだ」と思う場面の言葉にする。
+- thumbnail_prompt: サムネ背景の英語画像プロンプト。この動画固有の情景にすること。
+- description: 日本語200〜400文字。要約は動画の中身を具体的に書く。
 - tags: 日本語のタグを12〜15個。次の3種類を混ぜること。
   ・実際に検索されそうな複数語のフレーズを半数以上（例:「いびき 家族 眠れない」「いびき 受診 何科」）。
   ・テーマ固有の語（この動画でしか使わない具体語）。
   ・ジャンルの一般語。
   「夜」「安心」のような単語だけの汎用語は、検索されないので入れない。
 
-JSON: {{"title":str,"chapters":[{{"heading":str,"summary":str}}],
-"thumbnail_text":str,"thumbnail_prompt":str,"description":str,"tags":[str]}}"""
+JSON: {{{{"title":str,"chapters":[{{{{"heading":str,"summary":str}}}}],
+"thumbnail_text":str,"thumbnail_prompt":str,"description":str,"tags":[str]}}}}"""
     data = json.loads(_chat(
         [{"role": "system", "content": "構成作家。出力はJSONのみ。"},
          {"role": "user", "content": user}], json_mode=True))
@@ -151,8 +170,9 @@ JSON: {{"title":str,"chapters":[{{"heading":str,"summary":str}}],
 
 
 def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
-                    heading: str, summary: str, prev_tail: str) -> str:
-    per = max(420, genre.get("narration_target", NARRATION_TARGET_CHARS) // total)
+                    heading: str, summary: str, prev_tail: str,
+                    per_chars: int | None = None) -> str:
+    per = per_chars or max(420, genre.get("narration_target", NARRATION_TARGET_CHARS) // total)
     ctx = f"直前の章の終わり: {prev_tail[-120:]}" if prev_tail else "これは最初の章です。"
     # The opening instruction belongs to chapter 1 only. It used to live in
     # narration_style, which is injected into every chapter prompt, so all 8
@@ -167,6 +187,12 @@ def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
     else:
         role = ("動画のまとめと、チャンネル登録・高評価のお願いで締める。"
                 "冒頭の問題提起を再現せず、ここまでで語った内容を受けてまとめる。")
+    from originality import editorial_note, TEMPLATE_TELLS
+    note = editorial_note()
+    voice = (f"\n\nこのチャンネルの運営者本人が書いた方針:\n{note}\n"
+             "一般論に流れそうになったら、ここに書かれている立場に戻ること。" if note else "")
+    banned = "、".join(f"「{t}」" for t in TEMPLATE_TELLS[:12])
+
     user = f"""次の動画の第{idx+1}章のナレーション本文だけを書いてください。
 
 動画タイトル: {title}
@@ -180,14 +206,23 @@ def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
 - 話し言葉で、耳で聞いて自然に分かる文体。{genre['narration_style']}
 - 箇条書き記号・見出し・「※」・絵文字は使わない。地の文の連続した語りにする。
 - {role}
-- 見出しや章番号は本文に含めない。ナレーションの読み上げ文だけを出力。"""
+- 見出しや章番号は本文に含めない。ナレーションの読み上げ文だけを出力。
+
+【この章に必ず入れること】
+- この動画でしか出てこない具体を1つ以上。数値、検査や器具の正式名称、時刻や場面の描写など。
+  どのいびき動画にも当てはまる一般論だけで章を終えない。
+- 出典のある話は「〜という研究があります」「〜学会の資料では」と、根拠の所在を示す。
+
+【使ってはいけない言い回し】{banned}
+これらはどの生成動画にも出てくる言い方で、見た人にはすぐ分かる。別の言い方にすること。{voice}"""
     out = _chat([{"role": "system", "content": "プロのナレーション脚本家。"},
                  {"role": "user", "content": user}], temperature=0.85)
     return out.strip()
 
 
-def _image_prompts(genre: dict, title: str, headings: list[str]) -> list[str]:
-    user = f"""動画「{title}」({genre['label']})のための画像生成プロンプトを英語でちょうど{NUM_IMAGES}個、JSON配列で作成。
+def _image_prompts(genre: dict, title: str, headings: list[str],
+                   count: int = NUM_IMAGES) -> list[str]:
+    user = f"""動画「{title}」({genre['label']})のための画像生成プロンプトを英語でちょうど{count}個、JSON配列で作成。
 
 章の流れ: {' / '.join(headings)}
 
@@ -195,32 +230,33 @@ def _image_prompts(genre: dict, title: str, headings: list[str]) -> list[str]:
 - 動画の流れ順に、情景・被写体・構図を1文で具体的に描く英語プロンプト。
 - 実在人物の顔のクローズアップや特定人物の再現は避け、象徴的・情景的に。
 - テキストやロゴを含めない。
-JSON: {{"prompts":[str, ...]}}（要素数はちょうど{NUM_IMAGES}）"""
+JSON: {{"prompts":[str, ...]}}（要素数はちょうど{count}）"""
     data = json.loads(_chat([{"role": "system", "content": "アートディレクター。JSONのみ。"},
                              {"role": "user", "content": user}], json_mode=True))
     prompts = data.get("prompts", [])
-    if len(prompts) > NUM_IMAGES:
-        prompts = prompts[:NUM_IMAGES]
-    while 0 < len(prompts) < NUM_IMAGES:
+    if len(prompts) > count:
+        prompts = prompts[:count]
+    while 0 < len(prompts) < count:
         prompts.append(prompts[len(prompts) % len(prompts) if prompts else 0])
-    return prompts or [genre["image_style"]] * NUM_IMAGES
+    return prompts or [genre["image_style"]] * count
 
 
-def _image_prompts_from_narration(genre: dict, title: str, narration: str) -> list[str]:
+def _image_prompts_from_narration(genre: dict, title: str, narration: str,
+                                  count: int = NUM_IMAGES) -> list[str]:
     """Image prompts for a video whose narration is supplied (not LLM-outlined)."""
-    user = f"""次のナレーション本文をもとに、動画「{title}」({genre['label']})用の画像生成プロンプトを英語でちょうど{NUM_IMAGES}個、JSON配列で作成。
+    user = f"""次のナレーション本文をもとに、動画「{title}」({genre['label']})用の画像生成プロンプトを英語でちょうど{count}個、JSON配列で作成。
 本文の流れ順に、各場面の情景・被写体・構図を1文の具体的な英語で描く。実在人物の顔のクローズアップや特定人物の再現は避け、象徴的・情景的に。テキストやロゴは含めない。
 本文:
 {narration[:6000]}
-JSON: {{"prompts":[str, ...]}}（要素数はちょうど{NUM_IMAGES}）"""
+JSON: {{"prompts":[str, ...]}}（要素数はちょうど{count}）"""
     data = json.loads(_chat([{"role": "system", "content": "アートディレクター。JSONのみ。"},
                              {"role": "user", "content": user}], json_mode=True))
     prompts = data.get("prompts", [])
-    if len(prompts) > NUM_IMAGES:
-        prompts = prompts[:NUM_IMAGES]
-    while 0 < len(prompts) < NUM_IMAGES:
+    if len(prompts) > count:
+        prompts = prompts[:count]
+    while 0 < len(prompts) < count:
         prompts.append(prompts[len(prompts) % len(prompts)])
-    return prompts or [genre["image_style"]] * NUM_IMAGES
+    return prompts or [genre["image_style"]] * count
 
 
 def _desc_and_tags(genre: dict, title: str, narration: str) -> tuple[str, list[str]]:
@@ -350,7 +386,13 @@ def generate_script(genre_key: str, topic: str | None = None,
     if not topic:
         topic, axis = _select_topic(genre, avoid_titles)
 
-    outline = _outline(genre, topic)
+    # Shape this video differently from the last one. See originality.py.
+    from originality import (variance, check_template_tells, record_bookends)
+    shape = variance(topic, genre.get("narration_target", NARRATION_TARGET_CHARS))
+    print(f"  [originality] 構成 {shape['chapters']}章 / "
+          f"{shape['narration_chars']}字 / 画像{shape['num_images']}枚")
+
+    outline = _outline(genre, topic, shape)
     title = outline.get("title", topic)[:100]
     chapters_meta = outline.get("chapters", [])
     total = len(chapters_meta)
@@ -358,13 +400,21 @@ def generate_script(genre_key: str, topic: str | None = None,
     chapters, prev_tail = [], ""
     for i, cm in enumerate(chapters_meta):
         narration = _expand_chapter(genre, topic, title, i, total,
-                                    cm.get("heading", ""), cm.get("summary", ""), prev_tail)
+                                    cm.get("heading", ""), cm.get("summary", ""), prev_tail,
+                                    per_chars=max(420, shape["narration_chars"] // max(1, total)))
         chapters.append({"heading": cm.get("heading", ""), "narration": narration})
         prev_tail = narration
 
     full_narration = "\n".join(c["narration"] for c in chapters).strip()
     headings = [c["heading"] for c in chapters]
-    image_prompts = _image_prompts(genre, title, headings)
+    image_prompts = _image_prompts(genre, title, headings, shape["num_images"])
+
+    # A stock phrase is not an error, so this does not abort — but it should be
+    # visible in the log, because the fix is a prompt change, not a retry.
+    tells = check_template_tells(full_narration)
+    if tells:
+        print(f"  [originality] 警告: 定型句が残っています → {'、'.join(tells)}")
+    record_bookends(title, full_narration)
 
     return {
         "topic": topic,
