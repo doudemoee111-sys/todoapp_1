@@ -21,6 +21,7 @@ affiliate — not the advertiser — is the one sanctioned for it.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 LINKS_FILE = Path(__file__).resolve().parent / "assets" / "affiliate_links.json"
@@ -69,6 +70,38 @@ def active_links(axis: int | None = None, data: dict | None = None) -> list[dict
     return out
 
 
+_MEDIA_ID = re.compile(r"[?&]a8mat=([A-Za-z0-9]+)")
+
+
+def media_id(url: str) -> str:
+    """The first a8mat block, which identifies the registered site (media).
+
+    A8 issues a link per registered site. Posting a link that was issued for a
+    different site breaks the tracking and the terms, and the conversions are
+    simply not credited — the failure is silent, which is why it is checked here
+    rather than left to be noticed in a report months later.
+    """
+    m = _MEDIA_ID.search(url or "")
+    return m.group(1) if m else ""
+
+
+def _check_media(links: list[dict], data: dict) -> None:
+    expected = (data.get("expected_media_id") or "").strip()
+    ids = {media_id(link["url"]) for link in links}
+    if expected:
+        wrong = [l for l in links if media_id(l["url"]) != expected]
+        if wrong:
+            detail = "\n".join(
+                f"  - {l.get('program') or l.get('label')}: {media_id(l['url'])}" for l in wrong)
+            raise AffiliateError(
+                f"想定と違うメディアIDのリンクが有効になっています（想定: {expected}）。\n"
+                f"{detail}\n"
+                "A8で『このYouTubeチャンネル』を選んで発行し直したリンクに差し替えてください。")
+    elif len(ids) > 1:
+        print(f"  [affiliate] 警告: 有効なリンクのメディアIDが混在しています {sorted(ids)}。"
+              "別サイト向けに発行したリンクが混ざっていないか確認してください。")
+
+
 def _check_labels(links: list[dict]) -> None:
     """Reuse the narration's 薬機法 dictionary on the hand-written ad copy."""
     try:
@@ -93,6 +126,7 @@ def description_block(axis: int | None = None) -> str:
     links = active_links(axis, data)
     if not links:
         return ""
+    _check_media(links, data)
     _check_labels(links)
     lines = [data.get("disclosure", "※本動画には広告（アフィリエイトリンク）を含みます。"), ""]
     lines.append("▼ 関連リンク")
