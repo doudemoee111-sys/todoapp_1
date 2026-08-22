@@ -106,7 +106,7 @@ def _date_genre(d: "date | None" = None) -> str:
 
 def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
         narration: str | None = None, title: str | None = None,
-        make_teaser: bool = False) -> dict:
+        make_teaser: bool = False, publish_now: bool = False) -> dict:
     from llm_script import generate_script, build_from_narration
     from tts import synthesize_timed, audio_duration
     from images import generate_images
@@ -184,12 +184,21 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
         except Exception as e:  # noqa: BLE001
             print(f"      [related] 関連動画最適化はスキップ: {e}")
 
-        pub = next_publish_at(genre["publish_hour_jst"])
-        vid = upload_video(video, pkg["title"], pkg["description"], pkg["tags"],
-                           genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
-        result["video_id"] = vid
-        result["publish_at_jst"] = pub.isoformat()
-        print(f"      scheduled publish: {pub.isoformat()} (JST)  https://youtu.be/{vid}")
+        if publish_now:
+            # Immediate public post (make-up for a missed day). The channel guard
+            # in upload_video still blocks the wrong channel.
+            vid = upload_video(video, pkg["title"], pkg["description"], pkg["tags"],
+                               genre["youtube_category_id"], None, thumb, "public")
+            result["video_id"] = vid
+            result["published"] = "public (即時公開)"
+            print(f"      published NOW (public)  https://youtu.be/{vid}")
+        else:
+            pub = next_publish_at(genre["publish_hour_jst"])
+            vid = upload_video(video, pkg["title"], pkg["description"], pkg["tags"],
+                               genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
+            result["video_id"] = vid
+            result["publish_at_jst"] = pub.isoformat()
+            print(f"      scheduled publish: {pub.isoformat()} (JST)  https://youtu.be/{vid}")
 
         # 6b. Playlist回遊: chain into the genre playlist (session watch-time boost).
         pl_title = genre.get("playlist_title") or f"【保存版】{genre['label']}まとめ"
@@ -298,6 +307,8 @@ def main() -> None:
     ap.add_argument("--intro-title", default=None, help="title/dedup key for --intro-seed")
     ap.add_argument("--teaser", action="store_true",
                     help="after the long-form upload, also build+upload a vertical teaser short linking to it")
+    ap.add_argument("--publish-now", action="store_true",
+                    help="publish immediately as public (make-up for a missed day) instead of scheduling")
     args = ap.parse_args()
 
     if args.check_auth:
@@ -339,7 +350,8 @@ def main() -> None:
 
     t0 = time.time()
     result = run(genre_key, args.topic, do_upload=do_upload, subtitles=not args.no_subtitles,
-                 narration=narration, title=title_override, make_teaser=args.teaser)
+                 narration=narration, title=title_override, make_teaser=args.teaser,
+                 publish_now=args.publish_now)
     state["last_genre"] = genre_key
     _save_state(state)
     print(f"\nDONE in {time.time()-t0:.0f}s -> {result.get('video_id', '(not uploaded)')}")
