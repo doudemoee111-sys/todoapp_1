@@ -4,6 +4,7 @@ import os
 import textwrap
 from pathlib import Path
 
+from config import GENRES
 from http_retry import request_with_retry
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
@@ -81,5 +82,8 @@ def make_thumbnail(text: str, bg_prompt: str, out_path: str | Path,
 
 
 if __name__ == "__main__":
-    make_thumbnail("宇宙の\n最大の謎", "a glowing spiral galaxy in deep space", "output/_thumb_test.png")
+    make_thumbnail("眠れないのは\n私の方",
+                   "a quiet dark bedroom at night, moonlight on an empty pillow",
+                   "output/_thumb_test.png",
+                   style=GENRES["sleep"]["image_style"])
     print("thumbnail written")

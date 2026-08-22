@@ -65,6 +65,6 @@ def generate_images(prompts: list[str], style: str, out_dir: str | Path,
 
 if __name__ == "__main__":
     from config import GENRES
-    ps = ["a vast spiral galaxy glowing in deep space",
+    ps = ["a quiet dark bedroom at night, moonlight through a gap in the curtains",
           "a lone astronaut floating near a giant ringed planet"]
-    generate_images(ps, GENRES["space"]["image_style"], "output/_img_test")
+    generate_images(ps, GENRES["sleep"]["image_style"], "output/_img_test")

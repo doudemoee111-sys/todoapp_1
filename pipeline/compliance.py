@@ -1,7 +1,7 @@
 """Medical-claim / 薬機法 gate for generated scripts.
 
 Runs between script generation and TTS, and only for genres that opt in with
-``"compliance": "medical"``. The existing space / urban / mystery genres never
+``"compliance": "medical"``. A genre without that key is never
 touch it, so their runs are byte-for-byte unchanged.
 
 Why this exists: the sleep channel talks about snoring and sleep apnea, which

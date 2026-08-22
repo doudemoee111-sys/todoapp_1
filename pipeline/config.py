@@ -45,16 +45,6 @@ GUIDE_AMBIENT_SECONDS = int(os.environ.get("GUIDE_AMBIENT_SECONDS", "7200"))  # 
 # sleep explainer and, worse, skipped the medical gate. Keep the mystery values
 # byte-identical to what shipped so its shorts do not change.
 TEASER_PROFILES = {
-    "mystery": {
-        "framing": "長尺ミステリー解説動画",
-        "hook": "冒頭3秒で最大の謎・衝撃をチラ見せする強烈なフックから入る(挨拶は一切しない)。",
-        "withhold": "核心・結末はあえて見せきらない(寸止め)。緊張感を高める。",
-        "cta_spoken": "最後に「事件の全貌・結末は本編で。概要欄と固定コメントのリンクから今すぐ」と本編へ強く誘導する。",
-        "image_hint": "暗く映画的でミステリアスな情景を1文で具体的に。実在人物の顔クローズアップは避け象徴的に。",
-        "desc_cta": "▼ 事件の全貌・結末は本編で（約15分）",
-        "comment_cta": "👇 事件の全貌・結末はこちら（本編・約15分）",
-        "hashtags": ["#Shorts", "#未解決事件", "#ミステリー"],
-    },
     "sleep": {
         "framing": "長尺の睡眠・いびき解説動画",
         "hook": ("冒頭3秒で「隣のいびきで夜中に目が覚めてしまう」という具体的な場面描写から入る"
@@ -68,11 +58,11 @@ TEASER_PROFILES = {
         "hashtags": ["#Shorts", "#いびき", "#睡眠", "#睡眠時無呼吸", "#快眠"],
     },
 }
-TEASER_DEFAULT = TEASER_PROFILES["mystery"]
+TEASER_DEFAULT = TEASER_PROFILES["sleep"]
 
 
 def teaser_profile(genre_key: str) -> dict:
-    """Teaser copy for a genre, falling back to the original mystery wording."""
+    """Teaser copy for a genre. Only the sleep channel lives on this branch."""
     return TEASER_PROFILES.get(genre_key, TEASER_DEFAULT)
 
 
@@ -101,70 +91,6 @@ STABILITY_ENDPOINT = "https://api.stability.ai/v2beta/stable-image/generate/core
 # ---- Genres -----------------------------------------------------------------
 # publish_hour is JST (Asia/Tokyo) derived from the research (median-view peak).
 GENRES = {
-    # 既存3ジャンルにも "channel_id" を入れておくと、睡眠チャンネルの環境で
-    # 誤って実行されたときに投稿前で止まる。値は既存チャンネルの channelId
-    # （`python3 run.py --check-auth` が表示する UC... ）を入れる。
-    # 未記入の間は環境変数 EXPECTED_CHANNEL_ID による照合のみが働く。
-    "space": {
-        "key": "space",
-        "label": "宇宙・科学解説",
-        "publish_hour_jst": 19,
-        "youtube_category_id": "27",   # Education
-        "image_style": (
-            "cinematic ultra-detailed space and science illustration, deep cosmos, "
-            "nebulae, planets, galaxies, realistic astrophotography style, dramatic "
-            "lighting, 8k, no text, no watermark"
-        ),
-        "topic_seed_prompt": (
-            "日本のYouTubeで再生数が伸びやすい『宇宙・科学解説』の長尺動画テーマを1つ提案してください。"
-            "視聴者の知的好奇心を強く刺激し、8〜10分でしっかり語れる具体的で意外性のあるテーマにしてください。"
-            "実在の存命人物の肖像を必要としない、事実ベースで語れるテーマにすること。"
-        ),
-        "narration_style": "落ち着いた知的なトーンで、視聴者に語りかけるように。専門用語はかみ砕いて説明する。",
-        "tags": ["宇宙", "科学", "解説", "宇宙の謎", "天文", "サイエンス", "ゆっくり解説風", "宇宙開発"],
-    },
-    "urban": {
-        "key": "urban",
-        "label": "都市伝説解説",
-        "publish_hour_jst": 20,
-        "youtube_category_id": "24",   # Entertainment
-        "image_style": (
-            "moody atmospheric mysterious illustration, dark cinematic tone, fog, "
-            "eerie symbolic imagery, dramatic shadows, film grain, 8k, no text, no watermark"
-        ),
-        "topic_seed_prompt": (
-            "日本のYouTubeで再生数が伸びやすい『都市伝説・ミステリー解説』の長尺動画テーマを1つ提案してください。"
-            "8〜10分で語れる、興味を強く引く題材にしてください。特定の実在人物を誹謗中傷しない、"
-            "エンタメとして楽しめる内容にすること。"
-        ),
-        "narration_style": "少しミステリアスで引き込むトーン。緊張感を持たせつつ聞き取りやすく。",
-        "tags": ["都市伝説", "ミステリー", "解説", "怖い話", "不思議", "オカルト", "考察"],
-    },
-    "mystery": {
-        "key": "mystery",
-        "label": "未解決事件・ミステリー解説",
-        "publish_hour_jst": 19,
-        "youtube_category_id": "24",   # Entertainment
-        "narration_target": 3900,      # ~15 min of JP narration
-        "image_style": (
-            "dark cinematic documentary illustration, moody atmospheric, muted "
-            "desaturated tones, fog and deep shadow, film grain, tense mysterious "
-            "mood, realistic, 8k, no text, no watermark"
-        ),
-        "topic_seed_prompt": (
-            "日本のYouTubeで再生数が伸びやすい『未解決事件・ミステリー解説』の長尺動画テーマを1つ提案してください。"
-            "実在の未解決事件・失踪・謎の現象など、公表された事実をもとに約15分しっかり語れて、"
-            "意外性と考察の余地がある題材にすること。存命の個人を誹謗中傷せず、事実の範囲で扱えるテーマにすること。"
-        ),
-        "opening_style": (
-            "冒頭は挨拶を一切せず、事件の核心や結末の一部をチラ見せして視聴者を引き込む。"
-        ),
-        "narration_style": (
-            "落ち着いた低めのトーンで、緊張感を保ちながら語る。『謎の提示→状況説明→"
-            "意外な事実の発覚→結論と独自の考察』という起承転結のストーリーテリングで構成する。"
-        ),
-        "tags": ["未解決事件", "ミステリー", "解説", "都市伝説", "謎", "考察", "実話", "怖い話", "事件"],
-    },
     # --- Sleep channel -------------------------------------------------------
     # Posted to its OWN channel (separate YOUTUBE_REFRESH_TOKEN), not mixed in
     # with space/urban/mystery: YouTube learns a viewer cluster per channel, and
@@ -263,16 +189,20 @@ GENRES = {
     },
 }
 
-# Rotation order when running in "alternate" mode.
-# The sleep genre is deliberately absent: it lives on its own channel and its
-# schedule is driven by four dedicated cron triggers (L1 火/土, L3 木, L2 日),
-# not by the day-of-week rotation used by the entertainment channel.
-ROTATION = ["space", "urban"]
-# Phase offset for date-based rotation (--rotate-date). Chosen so 2026-08-15
-# resolves to "space" (the first hand-posted video) and the next day to
-# "urban", keeping the automated schedule alternating in step with it.
-ROTATION_PHASE = int(os.environ.get("ROTATION_PHASE", "1"))
-DEFAULT_GENRE = "space"   # ユーザー指定: まず宇宙・科学から
+# This branch drives ONE channel: 睡眠・安眠チャンネル2.
+#
+# The entertainment channel's genres (space / urban / mystery) used to live in
+# this same file, and twice that came close to costing a channel: a run started
+# in this environment would have built one of them and tried to upload it here.
+# They are removed from this branch rather than commented out — a commented-out
+# genre is one uncomment away from shipping. They remain on the branch that
+# serves that channel, and in this file's history.
+#
+# Consequently there is nothing to rotate between. --alternate and --rotate-date
+# still work; they resolve to the only genre there is.
+ROTATION = ["sleep"]
+ROTATION_PHASE = int(os.environ.get("ROTATION_PHASE", "0"))
+DEFAULT_GENRE = "sleep"
 
 # ---- Upload -----------------------------------------------------------------
 # "private" + publishAt => YouTube schedules it public at that time.

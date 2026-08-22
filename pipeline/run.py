@@ -1,11 +1,14 @@
 """End-to-end orchestrator: one video from topic -> upload.
 
+This branch serves ONE channel: 睡眠・安眠チャンネル2. The entertainment
+channel's genres are not defined here; see config.py.
+
 Usage:
-  python run.py --genre space               # make + schedule-upload a space video
-  python run.py --genre urban
-  python run.py --alternate                 # pick next genre from rotation state
-  python run.py --genre space --no-upload   # build only (skip YouTube)
-  python run.py --genre space --topic "..." # force a specific topic
+  python run.py                              # narrated video, scheduled upload
+  python run.py --mode guide                 # 解説 + アンビエント（入眠ガイド）
+  python run.py --mode ambient --seconds 300 # マスキング音源
+  python run.py --no-upload                  # build only (skip YouTube)
+  python run.py --topic "..."                # force a specific topic
 
 Stages: script (OpenAI) -> TTS (Google) -> images (Stability) -> assemble (ffmpeg)
         -> thumbnail -> upload (YouTube, scheduled at genre's JST peak hour).
@@ -121,15 +124,9 @@ def _next_genre(state: dict) -> str:
 def _date_genre(d: "date | None" = None) -> str:
     """Stateless daily rotation: pick the genre from the calendar day.
 
-    Consecutive days advance by one ordinal, so with a 2-genre ROTATION the
-    genre alternates every day without needing a persisted state file. This is
-    what the daily scheduled run uses, because each run is a fresh ephemeral
-    session with no state.json carried over.
-
-    ROTATION_PHASE offsets the cycle so the automated schedule stays in step
-    with videos already posted by hand. The first manual video (2026-08-15)
-    was "space", so the phase is set to make that day resolve to "space" and
-    the next day resolve to "urban", giving clean day-by-day alternation.
+    Kept because --rotate-date is still a valid flag, but on this branch ROTATION
+    holds a single genre, so it always resolves to that one. It mattered when
+    this file also carried the entertainment channel's genres; it no longer does.
     """
     from datetime import date as _date
     d = d or _date.today()
@@ -628,6 +625,23 @@ def _load_narration(path: str) -> str:
     return "\n".join(out).strip()
 
 
+def _assert_known_genre(key: str) -> str:
+    """Fail with an explanation, not a KeyError, when a genre is not on this branch.
+
+    The likely cause is a trigger or a command left over from the entertainment
+    channel. Running one here would build that channel's video against this
+    channel's credentials — the exact accident this branch is arranged to
+    prevent — so it stops before spending anything.
+    """
+    if key in GENRES:
+        return key
+    raise PreflightError(
+        f"ジャンル「{key}」はこのブランチには存在しません。\n"
+        f"  このブランチは睡眠・安眠チャンネル2の専用です（利用可能: {', '.join(GENRES)}）。\n"
+        "  space / urban / mystery は別チャンネルのジャンルです。\n"
+        "  そちらのブランチと環境で実行してください。")
+
+
 def _resolve_genre(args, state: dict) -> str:
     """The one place that decides which genre this invocation runs.
 
@@ -636,14 +650,14 @@ def _resolve_genre(args, state: dict) -> str:
     fixed weekday schedule instead.
     """
     if args.genre:
-        return args.genre
+        return _assert_known_genre(args.genre)
     if args.mode in ("ambient", "guide"):
-        return DEFAULT_GENRE
+        return _assert_known_genre(DEFAULT_GENRE)
     if args.rotate_date:
-        return _date_genre()
+        return _assert_known_genre(_date_genre())
     if args.alternate:
-        return _next_genre(state)
-    return DEFAULT_GENRE
+        return _assert_known_genre(_next_genre(state))
+    return _assert_known_genre(DEFAULT_GENRE)
 
 
 def main() -> None:

@@ -432,7 +432,7 @@ def generate_script(genre_key: str, topic: str | None = None,
 
 if __name__ == "__main__":
     import sys
-    g = sys.argv[1] if len(sys.argv) > 1 else "space"
+    g = sys.argv[1] if len(sys.argv) > 1 else "sleep"
     pkg = generate_script(g)
     print("title:", pkg["title"])
     print("chapters:", len(pkg["chapters"]))
