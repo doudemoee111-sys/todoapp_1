@@ -210,7 +210,12 @@ JSON: {{"prompts":[str, ...]}}（要素数はちょうど{NUM_IMAGES}）"""
 
 
 def _desc_and_tags(genre: dict, title: str, narration: str) -> tuple[str, list[str]]:
-    user = f"""動画「{title}」({genre['label']})のYouTube概要欄(日本語200〜400字、内容要約＋チャンネル登録の誘導)と、日本語中心のタグ10〜15個をJSONで作成。
+    user = f"""動画「{title}」({genre['label']})のYouTube概要欄(日本語200〜400字、内容要約＋チャンネル登録の誘導)と、日本語のタグ12〜15個をJSONで作成。
+タグは次の3種類を混ぜること。
+・実際に検索されそうな複数語のフレーズを半数以上（例:「いびき 家族 眠れない」「いびき 受診 何科」）。
+・テーマ固有の語（この動画でしか使わない具体語）。
+・ジャンルの一般語。
+「夜」「安心」のような単語だけの汎用語は、検索されないので入れない。
 本文冒頭: {narration[:800]}
 JSON: {{"description": str, "tags": [str, ...]}}"""
     try:

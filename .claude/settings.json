@@ -11,7 +11,9 @@
       "Bash(python3 set_thumbnail.py:*)",
       "Bash(python3 pipeline/set_thumbnail.py:*)",
       "Bash(python3 unschedule.py:*)",
-      "Bash(python3 pipeline/unschedule.py:*)"
+      "Bash(python3 pipeline/unschedule.py:*)",
+      "Bash(python3 refresh_metadata.py:*)",
+      "Bash(python3 pipeline/refresh_metadata.py:*)"
     ]
   }
 }

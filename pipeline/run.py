@@ -184,6 +184,12 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     audio = work / "narration.mp3"
     audio, sub_segments = synthesize_timed(pkg["narration"], audio)
     dur = audio_duration(audio)
+    # Persist the measurements: rebuilding a description later (chapters) needs
+    # them, and re-synthesising just to recover timings costs an API round-trip
+    # and risks drifting from the audio that was actually published.
+    (work / "segments.json").write_text(json.dumps(
+        [{"text": t, "start": a, "end": b} for t, a, b in sub_segments],
+        ensure_ascii=False, indent=2))
     print(f"      audio duration: {dur:.1f}s ({dur/60:.1f} min), {len(sub_segments)} subtitle units")
 
     # 3. Images
