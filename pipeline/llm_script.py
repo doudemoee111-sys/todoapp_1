@@ -76,15 +76,27 @@ def _pick_topic(genre: dict, avoid_titles: list[str] | None = None, offset: int 
     return out.strip().splitlines()[0].strip("　 「」\"'")
 
 
-def _is_duplicate(topic: str, avoid_titles: list[str]) -> bool:
-    """Ask the model whether `topic` is essentially the same subject as any
-    recent title — catches paraphrases and re-skins, not just exact matches."""
+def _is_duplicate(topic: str, avoid_titles: list[str], genre: dict | None = None) -> bool:
+    """Ask the model whether `topic` is essentially the same video as a recent one.
+
+    The judge used to be told that a shared central subject means duplicate. On a
+    single-genre channel the central subject is the genre, so once a few videos
+    existed everything read as a duplicate: five distinct axes (伝え方 / 受診 /
+    治療 / 生活習慣 / 姿勢) were all rejected against three titles, and only one
+    of those rejections was right. The test is now whether a viewer would see the
+    same video, not whether the subject matches.
+    """
     if not avoid_titles:
         return False
     joined = "\n".join(f"- {t}" for t in avoid_titles[:20])
-    user = (f"新しい動画テーマ案: 「{topic}」\n\n最近の動画タイトル:\n{joined}\n\n"
-            "このテーマ案は、上のいずれかと『本質的に同じ題材・内容』ですか？"
-            "言い回しや切り口が違っても、中心となる題材が同じなら duplicate とみなします。"
+    label = (genre or {}).get("label", "")
+    preamble = (f"このチャンネルは「{label}」の単一ジャンルです。すべての動画が同じ大テーマを扱うのは"
+                "前提であり、それ自体は重複ではありません。\n\n") if label else ""
+    user = (preamble
+            + f"新しい動画テーマ案: 「{topic}」\n\n最近の動画タイトル:\n{joined}\n\n"
+            "このテーマ案は、上のいずれかと『視聴者にとって同じ動画』になりますか？\n"
+            "- true: 扱う切り口・視聴者が得る情報がほぼ同じで、両方見る意味がない。\n"
+            "- false: 大テーマは同じでも切り口や場面が異なり、両方見る価値がある。\n"
             'JSONで {"duplicate": true または false} のみ出力。')
     try:
         data = json.loads(_chat(
@@ -289,7 +301,7 @@ def _select_topic(genre: dict, avoid_titles: list[str], max_retries: int = 4) ->
     """
     topic = _pick_topic(genre, avoid_titles)
     for attempt in range(1, max_retries + 1):
-        if not _is_duplicate(topic, avoid_titles):
+        if not _is_duplicate(topic, avoid_titles, genre):
             break
         print(f"  [dedup] テーマ「{topic}」は最近と重複 → 再選定 ({attempt}/{max_retries})")
         # Advance the axis on each retry. Re-asking the same axis mostly returns

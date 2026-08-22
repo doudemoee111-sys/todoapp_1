@@ -54,7 +54,10 @@ NG_PATTERNS: list[tuple[str, str]] = [
     (r"効果があ(る|ります)", "効果の断定"),
     (r"(解消|根治|克服)(します|できます)", "効果の断定"),
     (r"予防(できます|します)", "予防効果の断定"),
-    (r"(症状|いびき|無呼吸)が(なくな|消え)", "症状消失の断定"),
+    # An adverb between が and the verb is exactly what strengthens the claim,
+    # and the bare form let 「いびきが完全になくなります」 through. Bounded and
+    # punctuation-stopped so it does not reach across clauses.
+    (r"(症状|いびき|無呼吸)が[^。、]{0,4}(なくな|消え)", "症状消失の断定"),
     # 最上級・唯一性（景表法）
     (r"(日本|世界)一", "最上級表現"),
     (r"No\.?1|ナンバーワン", "最上級表現（根拠の併記なしでは不可）"),
@@ -104,11 +107,30 @@ def _excerpt(text: str, m: re.Match, span: int = 24) -> str:
     return text[a:b].replace("\n", " ")
 
 
+# A claim that is immediately negated is a disclaimer, not a claim — and the
+# medical genre is told to write exactly these. Without this guard the dictionary
+# flagged 「すべての方に同じ効果があるわけではない」 as 効果の断定; every rewrite
+# produced the same correct hedge, so the run burned all three rounds and aborted.
+# Kept to the fixed disclaimer idioms and a short window so a real claim followed
+# much later by an unrelated negative is still caught; the LLM pass sees it too.
+_NEGATOR = re.compile(
+    r"(わけ|もの)では(ない|なく|ありま)|とは限(らない|りません)|"
+    r"保証(する|できる)ものでは|というわけでは"
+)
+_NEGATION_WINDOW = 14
+
+
+def _is_negated(text: str, m: re.Match) -> bool:
+    return bool(_NEGATOR.search(text[m.end():m.end() + _NEGATION_WINDOW]))
+
+
 def scan(text: str, where: str) -> list[Finding]:
     """Dictionary pass. Deterministic, free, and runs first."""
     out: list[Finding] = []
     for rx, why in _COMPILED:
         for m in rx.finditer(text):
+            if _is_negated(text, m):
+                continue
             out.append(Finding(where, _excerpt(text, m), why))
     return out
 
