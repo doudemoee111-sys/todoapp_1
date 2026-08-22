@@ -52,7 +52,30 @@ def check_auth() -> str:
         raise RuntimeError(
             "認証は通りましたが、このアカウントに YouTube チャンネルが見つかりません。"
             "投稿先チャンネルの Google アカウントで認可し直してください。")
-    return items[0]["snippet"]["title"]
+    title = items[0]["snippet"]["title"]
+    _assert_expected_channel(title)
+    return title
+
+
+class WrongChannelError(RuntimeError):
+    """The authorized token points at a channel this pipeline must NOT post to."""
+
+
+def _assert_expected_channel(title: str) -> None:
+    """Guard against posting to the wrong channel. The sleep channel is a
+    SEPARATE org/project and must never receive this pipeline's videos. If the
+    token authorizes anything other than the expected channel, stop hard."""
+    from config import EXPECTED_CHANNEL_TITLE
+    exp = (EXPECTED_CHANNEL_TITLE or "").strip()
+    if not exp:
+        return  # guard disabled
+    t = (title or "").strip()
+    if exp not in t and t not in exp:
+        raise WrongChannelError(
+            f"投稿先チャンネルが期待と異なります（認証されたチャンネル: 「{t}」／"
+            f"期待: 「{exp}」）。この自動化は『{exp}』専用です。睡眠チャンネル等の別組織へは"
+            "投稿しません。env_01H7 の YOUTUBE_REFRESH_TOKEN が正しいチャンネルの認可か確認して"
+            "ください（3点一致・『{exp}』のGoogleアカウントで再発行）。処理を中断しました。")
 
 
 def post_comment(video_id: str, text: str) -> bool:
@@ -172,6 +195,14 @@ def upload_video(video_path: str | Path, title: str, description: str, tags: lis
                  thumbnail_path: str | Path | None = None,
                  privacy: str = "private") -> str:
     yt = _service()
+    # Hard channel guard: never upload to the wrong channel (別組織の睡眠チャンネル等)。
+    try:
+        me = yt.channels().list(part="snippet", mine=True).execute()
+        _assert_expected_channel(me["items"][0]["snippet"]["title"])
+    except WrongChannelError:
+        raise
+    except Exception as e:  # noqa: BLE001  (channel read failed — do not block upload on a transient read error)
+        print(f"  [guard] チャンネル確認をスキップ（読み取り失敗: {e}）")
     status_body = {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}
     # publishAt (予約公開) は private の時だけ有効。public/unlisted で即時公開する
     # 場合や publish_at 未指定の場合は付けない(付けると API が弾く/無視するため)。

@@ -18,6 +18,13 @@ STATE_FILE = ROOT / "state.json"
 OUTPUT_DIR.mkdir(exist_ok=True)
 ASSETS_DIR.mkdir(exist_ok=True)
 
+# ---- Channel guard (別組織の睡眠チャンネルへの誤投稿を防ぐ安全装置) -----------
+# この自動化が投稿してよいのは「世界の雑学王」チャンネルだけ。睡眠チャンネルは
+# 別組織・別プロジェクトで管理しており、ここからは絶対に投稿しない。認証トークンが
+# 万一この期待チャンネル以外を指していたら、check_auth / アップロード時に停止する。
+# 名称ゆらぎに備え env で上書き可（YOUTUBE_EXPECTED_CHANNEL）。空文字にすると無効化。
+EXPECTED_CHANNEL_TITLE = os.environ.get("YOUTUBE_EXPECTED_CHANNEL", "世界の雑学王")
+
 # ---- Video spec -------------------------------------------------------------
 VIDEO_W, VIDEO_H = 1920, 1080
 FPS = 30
