@@ -212,6 +212,42 @@ def assemble_guide(images: list[Path], combined_audio: str | Path, intro_seconds
         segs.append(seg)
         print(f"  [guide] intro segment {i+1}/{len(images)}")
 
+    def _concat(parts: list[Path], dest: Path) -> Path:
+        listfile = dest.with_suffix(".txt")
+        listfile.write_text("".join(f"file '{p}'\n" for p in parts))
+        _run([_ffmpeg(), "-y", "-hide_banner", "-loglevel", "error",
+              "-f", "concat", "-safe", "0", "-i", str(listfile),
+              "-c", "copy", str(dest)])
+        return dest
+
+    intro = _concat(segs, tmp / "intro.mp4") if len(segs) > 1 else segs[0]
+
+    # Subtitles cover the spoken intro only; the ambient tail stays clean so the
+    # screen is dark and still for someone falling asleep.
+    #
+    # They are burned HERE, onto the intro alone, before the hours-long tail is
+    # attached. Doing it after the concat re-encodes the whole video and undoes
+    # the stream-copy the rest of this function is built around: measured on this
+    # pipeline, a 1080p30 subtitle burn runs at about 2.3x real time, so a 2-hour
+    # guide costs ~50 minutes there against ~4 minutes for a 10-minute intro.
+    srt = tmp / "subs.srt"
+    if sub_segments and _srt_from_segments(sub_segments, intro_seconds, srt):
+        style = (f"FontName={_JP_FONT},FontSize=26,PrimaryColour=&H00FFFFFF,"
+                 f"OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,"
+                 f"MarginV=60,Alignment=2")
+        subbed = tmp / "intro_sub.mp4"
+        try:
+            _run([_ffmpeg(), "-y", "-hide_banner", "-loglevel", "error",
+                  "-i", str(intro),
+                  "-vf", f"subtitles={srt.as_posix()}:force_style='{style}'",
+                  "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                  "-pix_fmt", "yuv420p", "-an", str(subbed)])
+            intro = subbed
+        except subprocess.CalledProcessError:
+            # The video is still worth publishing without subtitles.
+            print("  [guide] 字幕焼き込みに失敗 → 字幕なしで続行します")
+
+    parts = [intro]
     if tail > 1:
         loop = tmp / "tail_loop.mp4"
         # crf 20 / preset medium to match _ken_burns_segment's output exactly.
@@ -222,42 +258,16 @@ def assemble_guide(images: list[Path], combined_audio: str | Path, intro_seconds
         _run([_ffmpeg(), "-y", "-hide_banner", "-loglevel", "error",
               "-stream_loop", str(loops), "-i", str(loop), "-t", f"{tail:.3f}",
               "-c", "copy", str(tail_file)])
-        segs.append(tail_file)
+        parts.append(tail_file)
         print(f"  [guide] ambient tail {tail/3600:.2f}h")
 
-    listfile = tmp / "list.txt"
-    listfile.write_text("".join(f"file '{s}'\n" for s in segs))
-    silent = tmp / "silent.mp4"
-    _run([_ffmpeg(), "-y", "-hide_banner", "-loglevel", "error",
-          "-f", "concat", "-safe", "0", "-i", str(listfile), "-c", "copy", str(silent)])
+    silent = _concat(parts, tmp / "silent.mp4") if len(parts) > 1 else intro
 
-    # Subtitles cover the spoken intro only; the ambient tail stays clean so the
-    # screen is dark and still for someone falling asleep.
-    srt = tmp / "subs.srt"
-    have_subs = bool(sub_segments) and _srt_from_segments(sub_segments, intro_seconds, srt)
-    cmd = [_ffmpeg(), "-y", "-hide_banner", "-loglevel", "error",
-           "-i", str(silent), "-i", str(combined_audio)]
-    if have_subs:
-        style = (f"FontName={_JP_FONT},FontSize=26,PrimaryColour=&H00FFFFFF,"
-                 f"OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,"
-                 f"MarginV=60,Alignment=2")
-        cmd += ["-vf", f"subtitles={srt.as_posix()}:force_style='{style}'",
-                "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p"]
-    else:
-        cmd += ["-c:v", "copy"]
-    cmd += ["-map", "0:v", "-map", "1:a", "-c:a", "aac", "-b:a", AMBIENT_AUDIO_BITRATE,
-            "-shortest", "-movflags", "+faststart", str(out_path)]
-    try:
-        _run(cmd)
-    except subprocess.CalledProcessError:
-        # Burning subtitles over a multi-hour video is the one step that can be
-        # too slow or fail; the video itself is still worth publishing.
-        print("  [guide] 字幕焼き込みに失敗 → 字幕なしで結合します")
-        _run([_ffmpeg(), "-y", "-hide_banner", "-loglevel", "error",
-              "-i", str(silent), "-i", str(combined_audio),
-              "-map", "0:v", "-map", "1:a", "-c:v", "copy",
-              "-c:a", "aac", "-b:a", AMBIENT_AUDIO_BITRATE,
-              "-shortest", "-movflags", "+faststart", str(out_path)])
+    _run([_ffmpeg(), "-y", "-hide_banner", "-loglevel", "error",
+          "-i", str(silent), "-i", str(combined_audio),
+          "-map", "0:v", "-map", "1:a", "-c:v", "copy",
+          "-c:a", "aac", "-b:a", AMBIENT_AUDIO_BITRATE,
+          "-shortest", "-movflags", "+faststart", str(out_path)])
     return out_path
 
 
