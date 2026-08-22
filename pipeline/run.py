@@ -306,6 +306,16 @@ def _description(genre: dict, pkg: dict, sub_segments=None,
     if genre.get("description_prefix"):
         parts.append(genre["description_prefix"].rstrip())
 
+    # Directly under the lead block, so the disclosure and the links sit as high
+    # as the fold allows. Empty until assets/affiliate_links.json has a URL, and
+    # a 薬機法 violation in a hand-written label stops the run rather than
+    # publishing it — the labels are static, so a failure here means the file
+    # needs an edit, not a retry.
+    from affiliate import description_block
+    links = description_block()
+    if links:
+        parts.append(links)
+
     chapters = _chapter_timestamps(pkg, sub_segments) if sub_segments else []
     if chapters:
         parts.append("\n".join(["【目次】"] + [f"{_fmt_ts(t)} {h}" for t, h in chapters]))
