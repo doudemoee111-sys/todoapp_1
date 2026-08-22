@@ -194,16 +194,20 @@ def fetch_recent_videos(max_results: int = 5) -> list[tuple[str, str]]:
         return []
 
 
-def add_to_playlist(video_id: str, playlist_title: str, description: str = "") -> str | None:
-    """Put the video in the channel's playlist of this name, creating it once.
+def ensure_playlist(playlist_title: str, description: str = "") -> str | None:
+    """The channel's playlist of this name, created if it does not exist yet.
 
-    A playlist is the most direct suggested-video lever available from the API:
-    it gives YouTube an explicit "these belong together" signal and gives a
-    finishing viewer a next video on this channel rather than someone else's.
+    Split out from add_to_playlist because the id is needed BEFORE the upload,
+    not after: a description written without it can only offer bare video URLs,
+    and a bare URL does not start the playlist. A viewer who arrives through
+    `watch?v=…&list=…` gets the next video played automatically when this one
+    ends, which is the co-viewing signal that suggested-video placement is
+    actually built from. Fetching it afterwards is too late to put in the
+    description of the video being uploaded.
 
     Looked up by title rather than a stored id because every scheduled run
-    starts from a fresh container with no local state. Best-effort: a failure
-    here must not undo an upload that already succeeded.
+    starts from a fresh container with no local state. Best-effort: returns
+    None on any failure, and every caller treats that as "no playlist link".
     """
     try:
         yt = _service()
@@ -224,6 +228,26 @@ def add_to_playlist(video_id: str, playlist_title: str, description: str = "") -
             }).execute()
             playlist_id = created["id"]
             print(f"  [playlist] 再生リストを新規作成: 「{playlist_title}」")
+        return playlist_id
+    except Exception as e:  # noqa: BLE001
+        print(f"  [playlist] 再生リストを取得できませんでした（続行）: {e}")
+        return None
+
+
+def add_to_playlist(video_id: str, playlist_title: str, description: str = "") -> str | None:
+    """Put the video in the channel's playlist of this name, creating it once.
+
+    A playlist is the most direct suggested-video lever available from the API:
+    it gives YouTube an explicit "these belong together" signal and gives a
+    finishing viewer a next video on this channel rather than someone else's.
+
+    Best-effort: a failure here must not undo an upload that already succeeded.
+    """
+    try:
+        yt = _service()
+        playlist_id = ensure_playlist(playlist_title, description)
+        if playlist_id is None:
+            return None
 
         # A playlist created moments ago is not consistently readable yet: the
         # first insert after creation returns 409 SERVICE_UNAVAILABLE. That is

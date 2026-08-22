@@ -219,17 +219,23 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     # 6. Upload (scheduled)
     if do_upload:
         print("[6/6] upload (YouTube, scheduled)…")
-        from youtube_upload import upload_video, fetch_recent_videos, add_to_playlist
+        from youtube_upload import (upload_video, fetch_recent_videos,
+                                    add_to_playlist, ensure_playlist)
         pub = _publish_at(genre)
         related = fetch_recent_videos(3)
+        # Resolved BEFORE the upload so the description can carry &list= links.
+        playlist_id = (ensure_playlist(genre["playlist_title"],
+                                       genre.get("playlist_description", ""))
+                       if genre.get("playlist_title") else None)
         vid = upload_video(video, pkg["title"],
-                           _description(genre, pkg, sub_segments, related), pkg["tags"],
+                           _description(genre, pkg, sub_segments, related, playlist_id), pkg["tags"],
                            genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
         result["video_id"] = vid
         result["publish_at_jst"] = pub.isoformat()
         if genre.get("playlist_title"):
             add_to_playlist(vid, genre["playlist_title"],
                             genre.get("playlist_description", ""))
+        _series_comment(vid, related, playlist_id)
         print(f"      scheduled publish: {pub.isoformat()} (JST)  https://youtu.be/{vid}")
 
         # 7. Teaser short ("CM" for this long-form): same topic, linked back.
@@ -288,8 +294,25 @@ def _fmt_ts(sec: float) -> str:
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
+def playlist_url(playlist_id: str | None) -> str:
+    return f"https://www.youtube.com/playlist?list={playlist_id}" if playlist_id else ""
+
+
+def watch_url(video_id: str, playlist_id: str | None = None) -> str:
+    """A watch link that keeps the viewer inside the series when possible.
+
+    Plain string building, kept out of youtube_upload deliberately: that module
+    constructs an API client on import, and a description should be renderable
+    (and checkable) without credentials installed.
+    """
+    if playlist_id:
+        return f"https://www.youtube.com/watch?v={video_id}&list={playlist_id}"
+    return f"https://youtu.be/{video_id}"
+
+
 def _description(genre: dict, pkg: dict, sub_segments=None,
-                 related: list[tuple[str, str]] | None = None) -> str:
+                 related: list[tuple[str, str]] | None = None,
+                 playlist_id: str | None = None) -> str:
     """Final description: lead block, chapters, summary, then links to siblings.
 
     The lead block goes first because YouTube folds the description after the
@@ -331,9 +354,17 @@ def _description(genre: dict, pkg: dict, sub_segments=None,
         parts.append(pkg["description"].strip())
 
     if related:
+        # &list= rather than a bare youtu.be link: entering through the playlist
+        # is what makes the next video auto-play when this one ends. A bare link
+        # drops the viewer out of the series at the very moment they were most
+        # likely to keep watching.
         parts.append("\n".join(
             ["▼ このチャンネルの他の動画"]
-            + [f"・{t}\n  https://youtu.be/{v}" for t, v in related]))
+            + [f"・{t}\n  {watch_url(v, playlist_id)}" for t, v in related]))
+
+    if playlist_id:
+        parts.append(f"▼ 続けて見る（再生リスト・自動で次が再生されます）\n"
+                     f"{playlist_url(playlist_id)}")
 
     return "\n\n".join(parts).strip()
 
@@ -394,17 +425,23 @@ def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> 
 
     if do_upload:
         print("[5/5] upload (YouTube, scheduled)…")
-        from youtube_upload import upload_video, fetch_recent_videos, add_to_playlist
+        from youtube_upload import (upload_video, fetch_recent_videos,
+                                    add_to_playlist, ensure_playlist)
         pub = _publish_at(genre)
         related = fetch_recent_videos(3)
+        # Resolved BEFORE the upload so the description can carry &list= links.
+        playlist_id = (ensure_playlist(genre["playlist_title"],
+                                       genre.get("playlist_description", ""))
+                       if genre.get("playlist_title") else None)
         vid = upload_video(video, pkg["title"],
-                           _description(genre, pkg, None, related), pkg["tags"],
+                           _description(genre, pkg, None, related, playlist_id), pkg["tags"],
                            genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
         result["video_id"] = vid
         result["publish_at_jst"] = pub.isoformat()
         if genre.get("playlist_title"):
             add_to_playlist(vid, genre["playlist_title"],
                             genre.get("playlist_description", ""))
+        _series_comment(vid, related, playlist_id)
         print(f"      scheduled publish: {pub.isoformat()} (JST)  https://youtu.be/{vid}")
     else:
         print("[5/5] upload skipped (--no-upload)")
@@ -483,23 +520,51 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
 
     if do_upload:
         print("[6/6] upload (YouTube, scheduled)…")
-        from youtube_upload import upload_video, fetch_recent_videos, add_to_playlist
+        from youtube_upload import (upload_video, fetch_recent_videos,
+                                    add_to_playlist, ensure_playlist)
         pub = _publish_at(genre)
         related = fetch_recent_videos(3)
+        # Resolved BEFORE the upload so the description can carry &list= links.
+        playlist_id = (ensure_playlist(genre["playlist_title"],
+                                       genre.get("playlist_description", ""))
+                       if genre.get("playlist_title") else None)
         vid = upload_video(video, pkg["title"],
-                           _description(genre, pkg, sub_segments, related), pkg["tags"],
+                           _description(genre, pkg, sub_segments, related, playlist_id), pkg["tags"],
                            genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
         result["video_id"] = vid
         result["publish_at_jst"] = pub.isoformat()
         if genre.get("playlist_title"):
             add_to_playlist(vid, genre["playlist_title"],
                             genre.get("playlist_description", ""))
+        _series_comment(vid, related, playlist_id)
         print(f"      scheduled publish: {pub.isoformat()} (JST)  https://youtu.be/{vid}")
     else:
         print("[6/6] upload skipped (--no-upload)")
 
     (work / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
     return result
+
+
+def _series_comment(video_id: str, related, playlist_id: str | None) -> None:
+    """Put the next step in a comment as well as the description.
+
+    The description is folded on mobile and the sibling links sit below the
+    fold; the top comment is visible without tapping anything. Pinning still has
+    to be done by hand — the Data API has no pin endpoint — so this prints a
+    reminder rather than pretending it is finished.
+    """
+    from youtube_upload import post_comment
+    lines = []
+    if related:
+        title, vid = related[0]
+        lines.append(f"👇 続けて見るなら\n・{title}\n  {watch_url(vid, playlist_id)}")
+    if playlist_id:
+        lines.append(f"▼ 再生リスト（自動で次が再生されます）\n{playlist_url(playlist_id)}")
+    if not lines:
+        return
+    if post_comment(video_id, "\n\n".join(lines)):
+        print("  [comment] 次の動画への導線をコメントしました"
+              "（固定はStudioで手動: コメント右上の︙→「固定」）")
 
 
 def _build_and_upload_teaser(genre_key: str, source_pkg: dict, long_video_id: str,
