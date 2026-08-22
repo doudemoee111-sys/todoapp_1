@@ -251,6 +251,11 @@ GENRES = {
         # Prepended to every description, above the LLM-written summary. The
         # affiliate line has to sit in the first two lines to survive YouTube's
         # description fold on mobile.
+        "playlist_title": "いびきに悩む家族のための睡眠ガイド",
+        "playlist_description": (
+            "隣のいびきで眠れない家族・パートナーに向けた解説シリーズ。"
+            "観察のしかた、寝室の整え方、受診の目安までを1本ずつ扱います。"
+        ),
         "description_prefix": (
             "▼ いびき・睡眠の記録に使えるものと、受診の目安はこちら\n"
             "（リンクは順次このチャンネルの固定コメントにも掲載します）\n"

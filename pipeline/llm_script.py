@@ -122,7 +122,11 @@ def _outline(genre: dict, topic: str) -> dict:
 - thumbnail_text: サムネ用の大きな日本語(10文字前後、改行\\n可)。
 - thumbnail_prompt: サムネ背景の英語画像プロンプト。
 - description: 日本語200〜400文字（要約＋登録誘導）。
-- tags: 日本語中心のキーワード10〜15個。
+- tags: 日本語のタグを12〜15個。次の3種類を混ぜること。
+  ・実際に検索されそうな複数語のフレーズを半数以上（例:「いびき 家族 眠れない」「いびき 受診 何科」）。
+  ・テーマ固有の語（この動画でしか使わない具体語）。
+  ・ジャンルの一般語。
+  「夜」「安心」のような単語だけの汎用語は、検索されないので入れない。
 
 JSON: {{"title":str,"chapters":[{{"heading":str,"summary":str}}],
 "thumbnail_text":str,"thumbnail_prompt":str,"description":str,"tags":[str]}}"""

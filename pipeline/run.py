@@ -212,12 +212,17 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     # 6. Upload (scheduled)
     if do_upload:
         print("[6/6] upload (YouTube, scheduled)…")
-        from youtube_upload import upload_video
+        from youtube_upload import upload_video, fetch_recent_videos, add_to_playlist
         pub = _publish_at(genre)
-        vid = upload_video(video, pkg["title"], _description(genre, pkg), pkg["tags"],
+        related = fetch_recent_videos(3)
+        vid = upload_video(video, pkg["title"],
+                           _description(genre, pkg, sub_segments, related), pkg["tags"],
                            genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
         result["video_id"] = vid
         result["publish_at_jst"] = pub.isoformat()
+        if genre.get("playlist_title"):
+            add_to_playlist(vid, genre["playlist_title"],
+                            genre.get("playlist_description", ""))
         print(f"      scheduled publish: {pub.isoformat()} (JST)  https://youtu.be/{vid}")
 
         # 7. Teaser short ("CM" for this long-form): same topic, linked back.
@@ -233,16 +238,81 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     return result
 
 
-def _description(genre: dict, pkg: dict) -> str:
-    """Final description text: the genre's fixed lead block, then the summary.
+def _chapter_timestamps(pkg: dict, sub_segments) -> list[tuple[float, str]]:
+    """(start_seconds, heading) per chapter, from the measured subtitle timings.
+
+    YouTube turns a timestamp list in the description into chapter markers, which
+    give the video key-moment entries in search and let a viewer jump to the part
+    they came for. The timings are real measurements from synthesize_timed, not a
+    proportional guess, so they line up with the burned subtitles.
+
+    Matching is done on whitespace-stripped text because the subtitle units are
+    re-split and stripped copies of the narration.
+    """
+    chapters = [c for c in (pkg.get("chapters") or []) if c.get("heading")]
+    if len(chapters) < 3 or not sub_segments:
+        return []   # YouTube ignores a chapter list shorter than 3 anyway
+
+    def bare(t: str) -> str:
+        return "".join((t or "").split())
+
+    # Character offset where each chapter starts, in the whitespace-free narration.
+    bounds, acc = [], 0
+    for c in chapters:
+        bounds.append(acc)
+        acc += len(bare(c["narration"]))
+
+    out, ci, pos = [], 0, 0
+    for text, start, _end in sub_segments:
+        while ci < len(bounds) and pos >= bounds[ci]:
+            out.append((start if ci else 0.0, chapters[ci]["heading"]))
+            ci += 1
+        pos += len(bare(text))
+    while ci < len(chapters):      # trailing chapters the units never reached
+        out.append((sub_segments[-1][1], chapters[ci]["heading"]))
+        ci += 1
+    return out
+
+
+def _fmt_ts(sec: float) -> str:
+    sec = int(sec)
+    h, rem = divmod(sec, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+def _description(genre: dict, pkg: dict, sub_segments=None,
+                 related: list[tuple[str, str]] | None = None) -> str:
+    """Final description: lead block, chapters, summary, then links to siblings.
 
     The lead block goes first because YouTube folds the description after the
     first two lines on mobile — anything below the fold is effectively unread
     by someone lying in bed.
+
+    Chapters come next: YouTube reads a timestamp list starting at 0:00 as
+    chapter markers, which surface as key moments in search and let a viewer
+    jump to the part they came for instead of bouncing.
+
+    The sibling links are the cheapest suggested-video lever available here —
+    a viewer who finishes has somewhere on this channel to go next.
     """
-    prefix = genre.get("description_prefix") or ""
-    body = pkg.get("description") or ""
-    return f"{prefix}\n{body}".strip() if prefix else body
+    parts = []
+    if genre.get("description_prefix"):
+        parts.append(genre["description_prefix"].rstrip())
+
+    chapters = _chapter_timestamps(pkg, sub_segments) if sub_segments else []
+    if chapters:
+        parts.append("\n".join(["【目次】"] + [f"{_fmt_ts(t)} {h}" for t, h in chapters]))
+
+    if pkg.get("description"):
+        parts.append(pkg["description"].strip())
+
+    if related:
+        parts.append("\n".join(
+            ["▼ このチャンネルの他の動画"]
+            + [f"・{t}\n  https://youtu.be/{v}" for t, v in related]))
+
+    return "\n\n".join(parts).strip()
 
 
 def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> dict:
@@ -300,12 +370,17 @@ def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> 
 
     if do_upload:
         print("[5/5] upload (YouTube, scheduled)…")
-        from youtube_upload import upload_video
+        from youtube_upload import upload_video, fetch_recent_videos, add_to_playlist
         pub = _publish_at(genre)
-        vid = upload_video(video, pkg["title"], _description(genre, pkg), pkg["tags"],
+        related = fetch_recent_videos(3)
+        vid = upload_video(video, pkg["title"],
+                           _description(genre, pkg, None, related), pkg["tags"],
                            genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
         result["video_id"] = vid
         result["publish_at_jst"] = pub.isoformat()
+        if genre.get("playlist_title"):
+            add_to_playlist(vid, genre["playlist_title"],
+                            genre.get("playlist_description", ""))
         print(f"      scheduled publish: {pub.isoformat()} (JST)  https://youtu.be/{vid}")
     else:
         print("[5/5] upload skipped (--no-upload)")
@@ -383,12 +458,17 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
 
     if do_upload:
         print("[6/6] upload (YouTube, scheduled)…")
-        from youtube_upload import upload_video
+        from youtube_upload import upload_video, fetch_recent_videos, add_to_playlist
         pub = _publish_at(genre)
-        vid = upload_video(video, pkg["title"], _description(genre, pkg), pkg["tags"],
+        related = fetch_recent_videos(3)
+        vid = upload_video(video, pkg["title"],
+                           _description(genre, pkg, sub_segments, related), pkg["tags"],
                            genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
         result["video_id"] = vid
         result["publish_at_jst"] = pub.isoformat()
+        if genre.get("playlist_title"):
+            add_to_playlist(vid, genre["playlist_title"],
+                            genre.get("playlist_description", ""))
         print(f"      scheduled publish: {pub.isoformat()} (JST)  https://youtu.be/{vid}")
     else:
         print("[6/6] upload skipped (--no-upload)")

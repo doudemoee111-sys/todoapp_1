@@ -6,12 +6,14 @@ publishes it automatically at the scheduled time (JST peak hour).
 """
 from __future__ import annotations
 import os
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from google.oauth2.credentials import Credentials
 from google.auth.exceptions import RefreshError
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 
 JST = timezone(timedelta(hours=9))
@@ -150,6 +152,101 @@ def post_comment(video_id: str, text: str) -> bool:
     except Exception as e:  # noqa: BLE001
         print(f"  [comment] コメント投稿はスキップ（スコープ不足の可能性: {e}）。概要欄リンクは有効です。")
         return False
+
+
+def fetch_recent_videos(max_results: int = 5) -> list[tuple[str, str]]:
+    """(title, videoId) of the channel's most recent uploads, newest first.
+
+    Feeds the "other videos" block in the description. Best-effort like
+    fetch_recent_titles: an empty list just means the block is omitted, never a
+    failed run.
+    """
+    try:
+        yt = _service()
+        items = yt.channels().list(part="contentDetails", mine=True).execute().get("items", [])
+        if not items:
+            return []
+        uploads = items[0]["contentDetails"]["relatedPlaylists"]["uploads"]
+        # Over-fetch: unlisted/private uploads are dropped below, and a replaced
+        # video that is now plain private would otherwise become a dead link in
+        # every later description.
+        resp = yt.playlistItems().list(part="contentDetails", playlistId=uploads,
+                                       maxResults=max(max_results * 4, 10)).execute()
+        ids = [(it.get("contentDetails") or {}).get("videoId")
+               for it in resp.get("items", [])]
+        ids = [i for i in ids if i]
+        if not ids:
+            return []
+        det = yt.videos().list(part="snippet,status", id=",".join(ids[:50])).execute()
+        out = []
+        for v in det.get("items", []):
+            st, sn = v.get("status", {}), v.get("snippet", {})
+            # public now, or private with a publishAt (it will be public shortly)
+            if st.get("privacyStatus") != "public" and not st.get("publishAt"):
+                continue
+            if sn.get("title"):
+                out.append((sn["title"], v["id"]))
+            if len(out) >= max_results:
+                break
+        return out
+    except Exception as e:  # noqa: BLE001
+        print(f"  [related] 既存動画の取得をスキップ: {e}")
+        return []
+
+
+def add_to_playlist(video_id: str, playlist_title: str, description: str = "") -> str | None:
+    """Put the video in the channel's playlist of this name, creating it once.
+
+    A playlist is the most direct suggested-video lever available from the API:
+    it gives YouTube an explicit "these belong together" signal and gives a
+    finishing viewer a next video on this channel rather than someone else's.
+
+    Looked up by title rather than a stored id because every scheduled run
+    starts from a fresh container with no local state. Best-effort: a failure
+    here must not undo an upload that already succeeded.
+    """
+    try:
+        yt = _service()
+        playlist_id = None
+        req = yt.playlists().list(part="snippet", mine=True, maxResults=50)
+        while req is not None and playlist_id is None:
+            resp = req.execute()
+            for pl in resp.get("items", []):
+                if (pl.get("snippet") or {}).get("title") == playlist_title:
+                    playlist_id = pl["id"]
+                    break
+            req = yt.playlists().list_next(req, resp)
+
+        if playlist_id is None:
+            created = yt.playlists().insert(part="snippet,status", body={
+                "snippet": {"title": playlist_title, "description": description},
+                "status": {"privacyStatus": "public"},
+            }).execute()
+            playlist_id = created["id"]
+            print(f"  [playlist] 再生リストを新規作成: 「{playlist_title}」")
+
+        # A playlist created moments ago is not consistently readable yet: the
+        # first insert after creation returns 409 SERVICE_UNAVAILABLE. That is
+        # exactly the path the very first scheduled run takes, so retry rather
+        # than silently leaving the opening video out of its own series.
+        for attempt in range(4):
+            try:
+                yt.playlistItems().insert(part="snippet", body={
+                    "snippet": {"playlistId": playlist_id,
+                                "resourceId": {"kind": "youtube#video", "videoId": video_id}},
+                }).execute()
+                break
+            except HttpError as e:
+                if e.resp.status != 409 or attempt == 3:
+                    raise
+                wait = 2 ** attempt
+                print(f"  [playlist] 反映待ち（409）… {wait}s 後に再試行 ({attempt+1}/3)")
+                time.sleep(wait)
+        print(f"  [playlist] 「{playlist_title}」に追加しました")
+        return playlist_id
+    except Exception as e:  # noqa: BLE001
+        print(f"  [playlist] 追加をスキップ（本編は投稿済み）: {e}")
+        return None
 
 
 def fetch_recent_titles(max_results: int = 40) -> list[str]:
