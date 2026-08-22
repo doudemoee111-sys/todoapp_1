@@ -23,14 +23,19 @@ def _font(size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.load_default()
 
 
-def _bg(prompt: str, out: Path) -> None:
+def _bg(prompt: str, out: Path, style: str = "") -> None:
     api_key = os.environ.get("STABILITY_API_KEY")
     resp = request_with_retry(
         "POST",
         STABILITY_ENDPOINT,
         headers={"Authorization": f"Bearer {api_key}", "Accept": "image/*"},
         files={"none": ""},
-        data={"prompt": f"{prompt}. dramatic, high contrast, eye-catching, cinematic, 8k, no text",
+        # The genre's style has to reach the thumbnail too. Without it this
+        # asked for "dramatic, cinematic, 8k" and got a photoreal human face on
+        # a channel whose style string says "illustration ... no faces" — which
+        # broke the look and put a realistic depiction of a scene that never
+        # happened on the most-seen surface the channel has.
+        data={"prompt": f"{prompt}. {style} high contrast, eye-catching, no text".strip(),
               "aspect_ratio": "16:9", "output_format": "png"},
         timeout=120,
     )
@@ -40,10 +45,11 @@ def _bg(prompt: str, out: Path) -> None:
         Image.new("RGB", (1280, 720), (11, 16, 38)).save(out)
 
 
-def make_thumbnail(text: str, bg_prompt: str, out_path: str | Path) -> Path:
+def make_thumbnail(text: str, bg_prompt: str, out_path: str | Path,
+                   style: str = "") -> Path:
     out_path = Path(out_path)
     raw = out_path.with_name("_thumb_bg.png")
-    _bg(bg_prompt, raw)
+    _bg(bg_prompt, raw, style)
 
     img = Image.open(raw).convert("RGB").resize((1280, 720))
     # darken for text legibility
