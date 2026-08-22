@@ -199,6 +199,32 @@ GENRES = {
             "diagram aesthetic, restful and non-alarming, subtle grain, 8k, "
             "no text, no watermark, no faces"
         ),
+        # One seed prompt asked the same question every run, so the model kept
+        # returning the same few topics and _is_duplicate rejected them until the
+        # retry budget ran out (seen at video 3, with only 2 videos to avoid).
+        # Rotating an axis in widens the well without moving the audience: every
+        # entry is still a problem the partner of a snorer has, not the snorer.
+        "topic_axes": [
+            "いびきが鳴る仕組みと、単純いびきと睡眠時無呼吸の違い",
+            "隣で寝ている人が気づける観察のポイント（呼吸の止まり方、体位、時間帯）",
+            "寝室の環境づくり（音・光・温度・湿度・寝具の配置）",
+            "音から自分を守る方法（耳栓やホワイトノイズの選び方と、その限界）",
+            "同じ部屋で寝るか、別室にするかの判断と、その関係への影響",
+            "相手を責めずに切り出す伝え方と、受診をすすめる会話の進め方",
+            "受診の実際（何科にかかるか、簡易検査と精密検査の流れ）",
+            "治療にどんな選択肢があるかの全体像（効果を断定せず、種類の紹介にとどめる）",
+            "生活習慣といびきの関係（体重・飲酒・喫煙・就寝前の習慣）",
+            "寝る姿勢と枕（横向き寝、枕の高さ）",
+            "起こされる側の睡眠負債と、日中への影響、自分自身のケア",
+            "経過の記録のとり方（録音やアプリ、受診時に役立てる残し方）",
+            "家族の年代によるいびきの違い（子ども、高齢の家族で気をつける点）",
+            "季節や体調による変動（鼻づまり、花粉、風邪をひいたとき）",
+            "いびきをきっかけに気づかれることがある他の睡眠の問題（歯ぎしり、脚のむずむず、寝言）",
+        ],
+        # 15, not 14: the rotation steps by calendar day and the schedule repeats
+        # weekly, so an axis count sharing a factor with 7 makes each weekday
+        # revisit the same few axes forever. 14 reached only 6 of them. 15 is
+        # coprime with 7, so every weekday walks the whole list.
         "topic_seed_prompt": (
             "『いびき・睡眠時無呼吸・夜中の目覚め』をテーマにした、日本のYouTube長尺解説動画の"
             "テーマを1つ提案してください。\n"

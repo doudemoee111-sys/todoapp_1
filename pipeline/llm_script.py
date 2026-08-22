@@ -13,6 +13,7 @@ Returns a dict:
 """
 from __future__ import annotations
 import json
+from datetime import date
 import os
 from openai import OpenAI
 
@@ -45,10 +46,31 @@ def _avoid_block(avoid_titles: list[str] | None) -> str:
             + joined)
 
 
-def _pick_topic(genre: dict, avoid_titles: list[str] | None = None) -> str:
+def _axis_block(genre: dict, offset: int = 0) -> str:
+    """Steer topic selection onto one of the genre's sub-territories.
+
+    Without this the same seed prompt is asked every run and the model returns
+    the same handful of topics, so _is_duplicate rejects them until the retry
+    budget is spent. Rotation is by calendar day, not random: consecutive runs
+    (Tue/Thu/Sat) land on different axes and the cycle walks the whole list over
+    several weeks, which a random pick does not guarantee. offset lets a retry
+    move to the next axis instead of re-asking the same one.
+    """
+    axes = genre.get("topic_axes")
+    if not axes:
+        return ""
+    axis = axes[(date.today().toordinal() + offset) % len(axes)]
+    return (f"\n\n【今回の切り口】今回は特に次の観点から題材を選んでください: {axis}\n"
+            "視聴者像（いびきをかく本人ではなく、隣で寝ている家族・パートナー）は変えないこと。")
+
+
+def _pick_topic(genre: dict, avoid_titles: list[str] | None = None, offset: int = 0) -> str:
+    axis_block = _axis_block(genre, offset)
+    if axis_block:
+        print(f"  [topic] 切り口: {genre['topic_axes'][(date.today().toordinal() + offset) % len(genre['topic_axes'])]}")
     out = _chat(
         [{"role": "system", "content": "あなたは日本のYouTubeで大人気の動画作家です。"},
-         {"role": "user", "content": genre["topic_seed_prompt"] + _avoid_block(avoid_titles)
+         {"role": "user", "content": genre["topic_seed_prompt"] + axis_block + _avoid_block(avoid_titles)
           + "\nテーマ名だけを1行で出力。"}],
         temperature=1.0)
     return out.strip().splitlines()[0].strip("　 「」\"'")
@@ -270,7 +292,10 @@ def _select_topic(genre: dict, avoid_titles: list[str], max_retries: int = 4) ->
         if not _is_duplicate(topic, avoid_titles):
             break
         print(f"  [dedup] テーマ「{topic}」は最近と重複 → 再選定 ({attempt}/{max_retries})")
-        topic = _pick_topic(genre, avoid_titles)
+        # Advance the axis on each retry. Re-asking the same axis mostly returns
+        # a re-skin of the topic just rejected, which is how the retry budget got
+        # spent with only two videos on the channel.
+        topic = _pick_topic(genre, avoid_titles, offset=attempt)
     else:
         print(f"  [dedup] {max_retries}回再選定しても重複を回避しきれず、最後の候補「{topic}」で続行します。")
     print(f"  [dedup] 採用テーマ: {topic}（回避対象 {len(avoid_titles)} 件）")
