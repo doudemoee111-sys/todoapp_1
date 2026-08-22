@@ -42,7 +42,9 @@ def _ken_burns_segment(img: Path, dur: float, idx: int, out: Path,
     )
     _run(["ffmpeg", "-y", "-loglevel", "error", "-loop", "1", "-i", str(img),
           "-t", f"{dur:.3f}", "-vf", vf,
-          "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+          # preset=veryfast: スライドショー(静止画+ズーム)では medium と体感差が無く、
+          # エンコード時間を大幅短縮。30セグメント分の合計時間を削減する。
+          "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
           "-pix_fmt", "yuv420p", "-r", str(FPS), "-t", f"{dur:.3f}", str(out)])
 
 
@@ -165,9 +167,12 @@ def assemble(images: list[Path], audio_path: str | Path, out_path: str | Path,
     if have_subs:
         try:
             vf = f"subtitles={ass.as_posix()}"
+            # ★最重要のボトルネック対策: 約10分の動画にASS字幕を焼き込む「全体再エンコード」。
+            # preset=medium は重く、生成セッションの時間枠を圧迫していた(診断で特定)。
+            # preset=veryfast で画質はほぼ同等のまま、この工程を大幅に高速化する。
             _run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(silent), "-i", str(audio_path),
                   "-vf", vf, "-map", "0:v", "-map", "1:a",
-                  "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
+                  "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
                   "-c:a", "aac", "-b:a", "192k", "-shortest", str(out_path)])
             return out_path
         except subprocess.CalledProcessError:
