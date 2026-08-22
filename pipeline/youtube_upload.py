@@ -59,33 +59,69 @@ def current_channel() -> dict:
     return {"id": items[0]["id"], "title": items[0]["snippet"]["title"]}
 
 
-def assert_expected_channel(channel: dict | None = None) -> dict:
+def expected_channel_id(genre: dict | None = None) -> tuple[str, str]:
+    """Which channel this run is allowed to post to, and where that came from.
+
+    Two sources, and the genre wins:
+
+    * ``genre["channel_id"]`` in config.py — travels with `git pull`, cannot be
+      forgotten when an environment is set up, and shows in a diff.
+    * ``EXPECTED_CHANNEL_ID`` in the environment — the fallback for genres that
+      have not declared one yet.
+
+    Returns ("", "") when neither is set. If both are set and disagree, that is
+    a configuration error rather than a credential error, and it is raised as
+    such: silently trusting either one would hide a real mistake.
+    """
+    from_genre = (genre or {}).get("channel_id") or ""
+    from_env = os.environ.get("EXPECTED_CHANNEL_ID", "").strip()
+    if from_genre and from_env and from_genre != from_env:
+        raise ChannelMismatch(
+            "設定が矛盾しています。アップロードを中止しました。\n"
+            f"  config.py のジャンル定義  : {from_genre}\n"
+            f"  環境変数 EXPECTED_CHANNEL_ID: {from_env}\n"
+            "どちらかが誤りです。この環境で動かすべきチャンネルを確認し、片方に揃えてください。")
+    if from_genre:
+        return from_genre, "config.py のジャンル定義"
+    if from_env:
+        return from_env, "環境変数 EXPECTED_CHANNEL_ID"
+    return "", ""
+
+
+def assert_expected_channel(channel: dict | None = None,
+                            genre: dict | None = None) -> dict:
     """Refuse to run when the credential points at the wrong channel.
 
-    Several channels are driven from the same `pipeline/` code, each with its
-    own environment holding its own YOUTUBE_* triple. Nothing in the code
-    itself used to notice when those triples got crossed — a swapped or stale
-    secret would happily upload one channel's video to another channel, and
-    the mistake is only visible after publication.
+    Several channels are driven from the same `pipeline/` code, each needing
+    its own environment with its own YOUTUBE_* triple. Nothing used to notice
+    when those got crossed — a shared environment whose token had been
+    overwritten would happily upload one channel's video to the other, and the
+    mistake only became visible once the upload was already scheduled. That
+    happened twice.
 
-    Set EXPECTED_CHANNEL_ID in an environment and that class of accident stops
-    being possible: the run aborts before any upload. Leave it unset and this
-    is a no-op, so environments that predate the guard behave exactly as before.
+    Relying on an environment variable to prevent it was not enough: the
+    variable has to be remembered at setup time, and it was not. So a genre can
+    now name its channel in config.py, where it cannot be forgotten. When
+    either source names a channel the check is mandatory and the run aborts
+    before uploading.
 
-    The channel *id* is the identifier to pin, not the title — a channel can be
-    renamed at any time, and a rename must not start failing production runs.
+    The channel *id* is what gets pinned, never the title — a channel can be
+    renamed at any moment (this one was), and a rename must not break
+    production.
     """
     channel = channel or current_channel()
-    expected = os.environ.get("EXPECTED_CHANNEL_ID", "").strip()
+    expected, source = expected_channel_id(genre)
     if not expected:
         return channel
     if expected != channel["id"]:
         raise ChannelMismatch(
             "投稿先チャンネルが想定と違います。アップロードを中止しました。\n"
-            f"  想定 (EXPECTED_CHANNEL_ID): {expected}\n"
+            f"  想定 ({source}): {expected}\n"
             f"  実際に認証されたチャンネル : {channel['id']}（「{channel['title']}」）\n"
             "この環境の YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET / YOUTUBE_REFRESH_TOKEN が、"
-            "別チャンネル用の値になっている可能性があります。3点とも同じチャンネルのものに揃えてください。")
+            "別チャンネル用の値になっている可能性があります。\n"
+            "1つの環境は1チャンネル専用です。共有せず、チャンネルごとに環境を分けてください"
+            "（pipeline/assets/CHANNELS.md を参照）。")
     return channel
 
 

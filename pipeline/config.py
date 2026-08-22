@@ -59,6 +59,10 @@ STABILITY_ENDPOINT = "https://api.stability.ai/v2beta/stable-image/generate/core
 # ---- Genres -----------------------------------------------------------------
 # publish_hour is JST (Asia/Tokyo) derived from the research (median-view peak).
 GENRES = {
+    # 既存3ジャンルにも "channel_id" を入れておくと、睡眠チャンネルの環境で
+    # 誤って実行されたときに投稿前で止まる。値は既存チャンネルの channelId
+    # （`python3 run.py --check-auth` が表示する UC... ）を入れる。
+    # 未記入の間は環境変数 EXPECTED_CHANNEL_ID による照合のみが働く。
     "space": {
         "key": "space",
         "label": "宇宙・科学解説",
@@ -136,6 +140,15 @@ GENRES = {
         # Turns on compliance.py. Without this key the gate is skipped entirely,
         # which is how the existing genres stay unaffected.
         "compliance": "medical",
+        # Which channel this genre is allowed to post to. Declaring it here
+        # rather than in an environment variable is deliberate: an env var has
+        # to be remembered, and twice now it was not — a shared environment got
+        # one channel's token written over another's and nothing noticed until
+        # the upload was already scheduled. A value in the code cannot be
+        # forgotten, travels with `git pull`, and is reviewable in a diff.
+        # When set, the check is mandatory: the run aborts before uploading if
+        # the credentials authorise a different channel.
+        "channel_id": "UCrCoZaskQrz6nBkRmS1SAJQ",   # 睡眠・安眠チャンネル2
         "image_style": (
             "calm dark nocturnal illustration, deep navy and charcoal tones, soft "
             "low-key lighting, quiet bedroom and night-time imagery, clean medical "

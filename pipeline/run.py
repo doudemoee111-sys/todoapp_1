@@ -28,7 +28,7 @@ class PreflightError(RuntimeError):
     """Raised when the run can't possibly succeed, before any work is done."""
 
 
-def preflight(do_upload: bool, need_tts: bool = True) -> None:
+def preflight(do_upload: bool, need_tts: bool = True, genre: dict | None = None) -> None:
     """Fail fast, and loudly, if a prerequisite is missing.
 
     Scheduled runs execute in fresh, ephemeral sessions, so the whole
@@ -66,14 +66,21 @@ def preflight(do_upload: bool, need_tts: bool = True) -> None:
             "事前チェック(preflight)に失敗しました。以下を解消してから再実行してください:\n  - "
             + "\n  - ".join(problems))
 
-    # Channel guard. Only engages when EXPECTED_CHANNEL_ID is set, so
-    # environments that predate it are untouched. Runs here rather than at
-    # upload time so a crossed credential costs one API unit instead of a
-    # full generation.
-    if do_upload and os.environ.get("EXPECTED_CHANNEL_ID", "").strip():
-        from youtube_upload import assert_expected_channel
-        ch = assert_expected_channel()
-        print(f"[preflight] 投稿先チャンネル確認: 「{ch['title']}」({ch['id']})")
+    # Channel guard. Engages when the genre names its channel in config.py or
+    # the environment sets EXPECTED_CHANNEL_ID; a genre with neither is left
+    # exactly as it was. Runs here rather than at upload time so a crossed
+    # credential costs one API unit instead of a full generation.
+    if do_upload:
+        from youtube_upload import assert_expected_channel, expected_channel_id
+        want, source = expected_channel_id(genre)
+        if want:
+            ch = assert_expected_channel(genre=genre)
+            print(f"[preflight] 投稿先チャンネル確認: 「{ch['title']}」({ch['id']}) "
+                  f"— {source} と一致")
+        else:
+            print("[preflight] 警告: 投稿先チャンネルが固定されていません。"
+                  "config.py のジャンルに channel_id を入れるか、環境変数 "
+                  "EXPECTED_CHANNEL_ID を設定してください")
 
     print(f"[preflight] OK — credentials{'（upload込み）' if do_upload else ''}・"
           f"ffmpeg・コード すべて揃っています。")
@@ -435,6 +442,24 @@ def _load_narration(path: str) -> str:
     return "\n".join(out).strip()
 
 
+def _resolve_genre(args, state: dict) -> str:
+    """The one place that decides which genre this invocation runs.
+
+    --rotate-date and --alternate only make sense for the daily entertainment
+    rotation, so they are ignored for the sleep modes, which are driven by a
+    fixed weekday schedule instead.
+    """
+    if args.genre:
+        return args.genre
+    if args.mode in ("ambient", "guide"):
+        return DEFAULT_GENRE
+    if args.rotate_date:
+        return _date_genre()
+    if args.alternate:
+        return _next_genre(state)
+    return DEFAULT_GENRE
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--genre", choices=list(GENRES.keys()))
@@ -465,8 +490,9 @@ def main() -> None:
 
     if args.check_auth:
         from youtube_upload import current_channel, assert_expected_channel
+        g = GENRES.get(args.genre) if args.genre else None
         ch = current_channel()
-        assert_expected_channel(ch)     # raises when it is the wrong channel
+        assert_expected_channel(ch, genre=g)   # raises when it is the wrong channel
         print(f"[check-auth] OK — 認証成功。投稿先チャンネル: 「{ch['title']}」")
         print(f"[check-auth] channelId: {ch['id']}")
         if not os.environ.get("EXPECTED_CHANNEL_ID", "").strip():
@@ -475,27 +501,23 @@ def main() -> None:
         return
 
     do_upload = not args.no_upload
+    state = _load_state()
+
+    # Resolve the genre once, before anything else: preflight needs it to know
+    # which channel this run is allowed to post to, and every path below needs
+    # the same answer. Deciding it twice is how the two disagree.
+    genre_key = _resolve_genre(args, state)
+
     # --mode ambient never speaks, so it must not be blocked on a TTS key.
-    preflight(do_upload, need_tts=args.mode != "ambient")
+    preflight(do_upload, need_tts=args.mode != "ambient", genre=GENRES[genre_key])
 
     if args.mode in ("ambient", "guide"):
-        genre_key = args.genre or DEFAULT_GENRE
         t0 = time.time()
         fn = run_ambient if args.mode == "ambient" else run_guide
         result = (fn(genre_key, do_upload, args.seconds) if args.mode == "ambient"
                   else fn(genre_key, args.topic, do_upload, args.seconds))
         print(f"\nDONE in {time.time()-t0:.0f}s -> {result.get('video_id', '(not uploaded)')}")
         return
-
-    state = _load_state()
-    if args.rotate_date:
-        genre_key = _date_genre()
-    elif args.alternate:
-        genre_key = _next_genre(state)
-    elif args.genre:
-        genre_key = args.genre
-    else:
-        genre_key = DEFAULT_GENRE
 
     # Optional: build from a provided narration (hand-written script).
     narration = None

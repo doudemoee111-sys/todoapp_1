@@ -165,10 +165,29 @@ def check_youtube(rep: Report) -> None:
     rep.add(OK, "YouTube 認証", f"成功 — 投稿先「{ch['title']}」")
     rep.add(OK, "  channelId", ch["id"])
 
+    # Which genres are pinned to this channel in config.py? That answers the
+    # question the environment cannot: *what is this environment for*.
+    try:
+        from config import GENRES
+        bound = [k for k, g in GENRES.items() if g.get("channel_id") == ch["id"]]
+        declared = [k for k, g in GENRES.items() if g.get("channel_id")]
+    except Exception:  # noqa: BLE001
+        bound, declared = [], []
+    if bound:
+        rep.add(OK, "  この環境の用途", f"config.py のジャンル {', '.join(bound)} 専用の環境です")
+    elif declared:
+        rep.add(WARN, "  この環境の用途",
+                f"config.py で channel_id を宣言しているジャンル（{', '.join(declared)}）とは"
+                f"別のチャンネルです。それらをこの環境で実行すると投稿前に中断します")
+
     expected = os.environ.get("EXPECTED_CHANNEL_ID", "").strip()
     if not expected:
-        rep.add(WARN, "  チャンネル固定",
-                f"未設定 — 上の channelId を EXPECTED_CHANNEL_ID に入れると取り違えを防げます")
+        if bound:
+            rep.add(OK, "  チャンネル固定",
+                    "config.py 側で固定済み — 環境変数は無くても取り違えは止まります")
+        else:
+            rep.add(WARN, "  チャンネル固定",
+                    "未設定 — 上の channelId を EXPECTED_CHANNEL_ID に入れると取り違えを防げます")
     elif expected == ch["id"]:
         rep.add(OK, "  チャンネル固定", "一致 — 別チャンネルの資格情報が入ったら投稿前に中断します")
     else:
