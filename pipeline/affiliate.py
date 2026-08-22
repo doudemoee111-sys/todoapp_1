@@ -71,6 +71,7 @@ def active_links(axis: int | None = None, data: dict | None = None) -> list[dict
 
 
 _MEDIA_ID = re.compile(r"[?&]a8mat=([A-Za-z0-9]+)")
+_ACCOUNT_PREFIX_LEN = 5
 
 
 def media_id(url: str) -> str:
@@ -86,30 +87,48 @@ def media_id(url: str) -> str:
 
 
 def _check_media(links: list[dict], data: dict) -> None:
-    """Stop a link issued for some other registered site from being published.
+    """Stop a link that came from a different A8 account from being published.
 
-    expected_media_id accepts a list because A8 handed out two different first
-    blocks for the same registered site, confirmed by the account holder. A list
-    keeps the check useful — a third, genuinely foreign ID still stops the run —
-    without a warning that fires on every video and stops being read.
+    The first a8mat block was initially read here as the registered site's ID,
+    and the check was an exact allowlist. Three links later the blocks read
+    4BABTD, 4BABTE, 4BABTF — incrementing in the order the links were created —
+    so the trailing characters are a per-link counter, not the site. An exact
+    allowlist would therefore reject every new link the account holder generates.
+
+    What is stable across all of them is the leading run, so that is what is
+    compared. This still catches the failure worth catching — a link pasted from
+    a different A8 account, whose prefix differs from the first character — while
+    staying quiet about a difference that carries no meaning.
     """
-    expected = data.get("expected_media_id") or ""
-    allowed = {expected} if isinstance(expected, str) else set(expected)
-    allowed.discard("")
-    ids = {media_id(link["url"]) for link in links}
-    if allowed:
-        wrong = [l for l in links if media_id(l["url"]) not in allowed]
-        if wrong:
-            detail = "\n".join(
-                f"  - {l.get('program') or l.get('label')}: {media_id(l['url'])}" for l in wrong)
-            raise AffiliateError(
-                f"想定外のメディアIDのリンクが有効になっています（想定: {sorted(allowed)}）。\n"
-                f"{detail}\n"
-                "A8で『睡眠・安眠チャンネル2』を選んで発行し直したリンクに差し替えるか、"
-                "正しいIDなら assets/affiliate_links.json の expected_media_id に追加してください。")
-    elif len(ids) > 1:
-        print(f"  [affiliate] 警告: 有効なリンクのメディアIDが混在しています {sorted(ids)}。"
-              "別サイト向けに発行したリンクが混ざっていないか確認してください。")
+    expected = data.get("account_prefix") or ""
+    if not expected:
+        prefixes = {media_id(l["url"])[:_ACCOUNT_PREFIX_LEN] for l in links}
+        if len(prefixes) > 1:
+            print(f"  [affiliate] 警告: リンクの先頭が一致しません {sorted(prefixes)}。"
+                  "別アカウントのリンクが混ざっていないか確認してください。")
+        return
+    wrong = [l for l in links if not media_id(l["url"]).startswith(expected)]
+    if wrong:
+        detail = "\n".join(
+            f"  - {l.get('program') or l.get('label')}: {media_id(l['url'])}" for l in wrong)
+        raise AffiliateError(
+            f"別アカウントと思われるリンクが有効になっています（想定の先頭: {expected}）。\n"
+            f"{detail}\n"
+            "A8で『睡眠・安眠チャンネル2』のアカウントから発行し直すか、"
+            "正しいものなら assets/affiliate_links.json の account_prefix を見直してください。")
+
+
+def _warn_crowded(links: list[dict], axis: int | None) -> None:
+    """Three links is a recommendation; five is a shop.
+
+    Not enforced — dropping a link silently would lose revenue in a way nobody
+    would notice — but said out loud, because the crowding happens gradually as
+    programmes are added one at a time and no single addition looks wrong.
+    """
+    if len(links) > 3:
+        names = "、".join(l.get("program", l["label"]).split("（")[0] for l in links)
+        print(f"  [affiliate] 警告: 切り口{axis} にリンクが{len(links)}件あります（{names}）。"
+              "概要欄が物販に見えるため、2〜3件に絞ることを検討してください。")
 
 
 def _check_labels(links: list[dict]) -> None:
@@ -138,6 +157,7 @@ def description_block(axis: int | None = None) -> str:
         return ""
     _check_media(links, data)
     _check_labels(links)
+    _warn_crowded(links, axis)
     lines = [data.get("disclosure", "※本動画には広告（アフィリエイトリンク）を含みます。"), ""]
     lines.append("▼ 関連リンク")
     for link in links:
