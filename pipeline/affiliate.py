@@ -86,17 +86,27 @@ def media_id(url: str) -> str:
 
 
 def _check_media(links: list[dict], data: dict) -> None:
-    expected = (data.get("expected_media_id") or "").strip()
+    """Stop a link issued for some other registered site from being published.
+
+    expected_media_id accepts a list because A8 handed out two different first
+    blocks for the same registered site, confirmed by the account holder. A list
+    keeps the check useful — a third, genuinely foreign ID still stops the run —
+    without a warning that fires on every video and stops being read.
+    """
+    expected = data.get("expected_media_id") or ""
+    allowed = {expected} if isinstance(expected, str) else set(expected)
+    allowed.discard("")
     ids = {media_id(link["url"]) for link in links}
-    if expected:
-        wrong = [l for l in links if media_id(l["url"]) != expected]
+    if allowed:
+        wrong = [l for l in links if media_id(l["url"]) not in allowed]
         if wrong:
             detail = "\n".join(
                 f"  - {l.get('program') or l.get('label')}: {media_id(l['url'])}" for l in wrong)
             raise AffiliateError(
-                f"想定と違うメディアIDのリンクが有効になっています（想定: {expected}）。\n"
+                f"想定外のメディアIDのリンクが有効になっています（想定: {sorted(allowed)}）。\n"
                 f"{detail}\n"
-                "A8で『このYouTubeチャンネル』を選んで発行し直したリンクに差し替えてください。")
+                "A8で『睡眠・安眠チャンネル2』を選んで発行し直したリンクに差し替えるか、"
+                "正しいIDなら assets/affiliate_links.json の expected_media_id に追加してください。")
     elif len(ids) > 1:
         print(f"  [affiliate] 警告: 有効なリンクのメディアIDが混在しています {sorted(ids)}。"
               "別サイト向けに発行したリンクが混ざっていないか確認してください。")
