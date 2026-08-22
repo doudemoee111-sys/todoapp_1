@@ -9,7 +9,9 @@
       "Bash(python3 pipeline/doctor.py:*)",
       "Bash(python3 compliance.py:*)",
       "Bash(python3 set_thumbnail.py:*)",
-      "Bash(python3 pipeline/set_thumbnail.py:*)"
+      "Bash(python3 pipeline/set_thumbnail.py:*)",
+      "Bash(python3 unschedule.py:*)",
+      "Bash(python3 pipeline/unschedule.py:*)"
     ]
   }
 }
