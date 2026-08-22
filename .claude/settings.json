@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash pipeline/setup.sh:*)",
+      "Bash(python3 run.py:*)",
+      "Bash(python3 -u run.py:*)",
+      "Bash(python3 pipeline/run.py:*)",
+      "Bash(python3 doctor.py:*)",
+      "Bash(python3 pipeline/doctor.py:*)",
+      "Bash(python3 compliance.py:*)"
+    ]
+  }
+}
