@@ -48,6 +48,12 @@ def active_links(data: dict | None = None) -> list[dict]:
         if not (link.get("url") or "").strip():
             print(f"  [affiliate] URL未設定のため出力しません: {link.get('label', '')}")
             continue
+        # A URL with no heading is the other half of the same mistake: a bare
+        # link under no explanation is worse than no link, and it cannot be
+        # checked for 薬機法 because there is no copy to check.
+        if not (link.get("label") or "").strip():
+            print(f"  [affiliate] 見出し未設定のため出力しません: {link['url'][:48]}…")
+            continue
         out.append(link)
     return out
 
