@@ -85,7 +85,12 @@ TEASER_TARGET_CHARS = 170       # ~45-55s of narration
 # ---- TTS --------------------------------------------------------------------
 # provider: "google" (chosen) with fallback "openai" for smoke tests.
 TTS_PROVIDER = os.environ.get("TTS_PROVIDER", "google")
-GOOGLE_TTS_VOICE = os.environ.get("GOOGLE_TTS_VOICE", "ja-JP-Neural2-B")  # natural JP female
+# Chirp3-HD is Google's newest JP tier (30 voices) and is markedly less
+# mechanical than Neural2, which the narration was judged on. Chirp3-HD takes
+# plain text and speakingRate exactly as Neural2 did — the only thing that
+# changes is the voice name — but it does not accept SSML, so keep synthesis
+# on input.text. Higher billing tier than Neural2.
+GOOGLE_TTS_VOICE = os.environ.get("GOOGLE_TTS_VOICE", "ja-JP-Chirp3-HD-Umbriel")  # calm JP male
 GOOGLE_TTS_SPEAKING_RATE = float(os.environ.get("GOOGLE_TTS_RATE", "1.05"))
 OPENAI_TTS_VOICE = os.environ.get("OPENAI_TTS_VOICE", "onyx")
 
