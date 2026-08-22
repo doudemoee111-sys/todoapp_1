@@ -39,7 +39,44 @@ GUIDE_NUM_IMAGES = 10           # L3 intro: fewer images than a full explainer
 GUIDE_NARRATION_CHARS = 3000    # ~9-10 min spoken before the bed takes over
 GUIDE_AMBIENT_SECONDS = int(os.environ.get("GUIDE_AMBIENT_SECONDS", "7200"))  # 2h tail
 
-# ---- Teaser short ("CM" for a mystery long-form) ----------------------------
+# ---- Teaser short ("CM" for a long-form) ------------------------------------
+# Per-genre copy for the teaser. Everything here used to be hard-coded for the
+# mystery channel ("事件の全貌・結末は本編で"), which reads as nonsense under a
+# sleep explainer and, worse, skipped the medical gate. Keep the mystery values
+# byte-identical to what shipped so its shorts do not change.
+TEASER_PROFILES = {
+    "mystery": {
+        "framing": "長尺ミステリー解説動画",
+        "hook": "冒頭3秒で最大の謎・衝撃をチラ見せする強烈なフックから入る(挨拶は一切しない)。",
+        "withhold": "核心・結末はあえて見せきらない(寸止め)。緊張感を高める。",
+        "cta_spoken": "最後に「事件の全貌・結末は本編で。概要欄と固定コメントのリンクから今すぐ」と本編へ強く誘導する。",
+        "image_hint": "暗く映画的でミステリアスな情景を1文で具体的に。実在人物の顔クローズアップは避け象徴的に。",
+        "desc_cta": "▼ 事件の全貌・結末は本編で（約15分）",
+        "comment_cta": "👇 事件の全貌・結末はこちら（本編・約15分）",
+        "hashtags": ["#Shorts", "#未解決事件", "#ミステリー"],
+    },
+    "sleep": {
+        "framing": "長尺の睡眠・いびき解説動画",
+        "hook": ("冒頭3秒で「隣のいびきで夜中に目が覚めてしまう」という具体的な場面描写から入る"
+                 "(挨拶は一切しない)。夜に見る人を想定し、不安をあおらない。"),
+        "withhold": "気づきのきっかけまでは見せ、具体的な手順の全体は本編に残す。",
+        "cta_spoken": "最後に「続きと具体的な手順は本編で。概要欄と固定コメントのリンクから」と本編へ誘導する。",
+        "image_hint": ("夜の寝室の静かな情景を1文で具体的に。人物の顔は写さない。"
+                       "暗い紺とチャコールの落ち着いた色調で、不安をあおる表現は避ける。"),
+        "desc_cta": "▼ 具体的な手順と受診の目安は本編で（約10分）",
+        "comment_cta": "👇 続きと具体的な手順はこちら（本編・約10分）",
+        "hashtags": ["#Shorts", "#いびき", "#睡眠", "#睡眠時無呼吸", "#快眠"],
+    },
+}
+TEASER_DEFAULT = TEASER_PROFILES["mystery"]
+
+
+def teaser_profile(genre_key: str) -> dict:
+    """Teaser copy for a genre, falling back to the original mystery wording."""
+    return TEASER_PROFILES.get(genre_key, TEASER_DEFAULT)
+
+
+# ---- Teaser short geometry --------------------------------------------------
 SHORT_W, SHORT_H = 1080, 1920   # vertical 9:16 (YouTube Shorts)
 SHORT_NUM_IMAGES = 6            # fewer, punchy scenes for a ~50s teaser
 SHORT_FONT_SIZE = 36            # larger burned subtitles for vertical/mobile

@@ -406,9 +406,10 @@ def _build_and_upload_teaser(genre_key: str, source_pkg: dict, long_video_id: st
     from images import generate_images
     from assemble import assemble
     from youtube_upload import upload_video, post_comment
-    from config import SHORT_W, SHORT_H, SHORT_FONT_SIZE
+    from config import SHORT_W, SHORT_H, SHORT_FONT_SIZE, teaser_profile
 
     genre = GENRES[genre_key]
+    prof = teaser_profile(genre_key)
     long_url = f"https://youtu.be/{long_video_id}"
     print("[7/7] teaser short (CM) generation…")
     t = generate_teaser(genre_key, source_pkg["topic"], source_pkg["narration"])
@@ -425,11 +426,11 @@ def _build_and_upload_teaser(genre_key: str, source_pkg: dict, long_video_id: st
 
     title = t["title"] if "#Shorts" in t["title"] else (t["title"][:88] + " #Shorts")
     desc = (f"{t['narration'][:70]}…\n\n"
-            f"▼ 事件の全貌・結末は本編で（約15分）\n{long_url}\n\n"
-            + " ".join(t.get("hashtags") or ["#Shorts", "#未解決事件", "#ミステリー"]))
+            f"{prof['desc_cta']}\n{long_url}\n\n"
+            + " ".join(t.get("hashtags") or prof["hashtags"]))
     vid = upload_video(video, title, desc, t["tags"], genre["youtube_category_id"],
                        publish_at_jst, None, UPLOAD_PRIVACY)
-    post_comment(vid, f"👇 事件の全貌・結末はこちら（本編・約15分）\n{long_url}")
+    post_comment(vid, f"{prof['comment_cta']}\n{long_url}")
     url = f"https://youtu.be/{vid}"
     print(f"[7/7] teaser done {url} -> links to {long_url}")
     return {"video_id": vid, "url": url, "title": title, "links_to": long_url}

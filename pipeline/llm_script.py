@@ -208,19 +208,22 @@ def generate_teaser(genre_key: str, source_topic: str, source_narration: str) ->
     (寸止め), and drives viewers to the full video — like a trailer before a film.
     Returns: {narration, title, image_prompts, hashtags, tags}.
     """
+    from config import teaser_profile
+
     genre = GENRES[genre_key]
-    user = f"""次の長尺ミステリー解説動画の「予告編ショート(縦型・約{TEASER_TARGET_CHARS}文字)」の台本をJSONで作成してください。CM＋映画のように、続きを本編で見たくさせるのが目的です。
+    prof = teaser_profile(genre_key)
+    user = f"""次の{prof["framing"]}の「予告編ショート(縦型・約{TEASER_TARGET_CHARS}文字)」の台本をJSONで作成してください。CM＋映画のように、続きを本編で見たくさせるのが目的です。
 
 長尺のテーマ: {source_topic}
 長尺の内容(冒頭抜粋): {source_narration[:1200]}
 
 要件:
 - narration: 話し言葉のナレーション。合計{TEASER_TARGET_CHARS}文字前後(約45〜55秒)。
-  ・冒頭3秒で最大の謎・衝撃をチラ見せする強烈なフックから入る(挨拶は一切しない)。
-  ・核心・結末はあえて見せきらない(寸止め)。緊張感を高める。
-  ・最後に「事件の全貌・結末は本編で。概要欄と固定コメントのリンクから今すぐ」と本編へ強く誘導する。
+  ・{prof["hook"]}
+  ・{prof["withhold"]}
+  ・{prof["cta_spoken"]}
 - title: 25文字前後のフックの効いた日本語タイトル。末尾に半角スペース+『#Shorts』を付ける。
-- image_prompts: 縦型(9:16)用の英語画像プロンプトをちょうど{SHORT_NUM_IMAGES}個。暗く映画的でミステリアスな情景を1文で具体的に。実在人物の顔クローズアップは避け象徴的に。テキスト/ロゴは含めない。
+- image_prompts: 縦型(9:16)用の英語画像プロンプトをちょうど{SHORT_NUM_IMAGES}個。{prof["image_hint"]}テキスト/ロゴは含めない。
 - hashtags: 日本語中心のハッシュタグ5個前後(#Shorts を必ず含む)。
 JSON: {{"narration": str, "title": str, "image_prompts": [str, ...], "hashtags": [str, ...]}}"""
     data = json.loads(_chat([{"role": "system", "content": "YouTube予告編(CM)の脚本家。出力はJSONのみ。"},
@@ -228,13 +231,23 @@ JSON: {{"narration": str, "title": str, "image_prompts": [str, ...], "hashtags":
     prompts = (data.get("image_prompts") or [])[:SHORT_NUM_IMAGES]
     while 0 < len(prompts) < SHORT_NUM_IMAGES:
         prompts.append(prompts[len(prompts) % len(prompts)])
-    return {
+    teaser = {
         "narration": (data.get("narration") or "").strip(),
         "title": (data.get("title") or source_topic)[:100],
         "image_prompts": prompts or [genre["image_style"]] * SHORT_NUM_IMAGES,
-        "hashtags": data.get("hashtags") or ["#Shorts"],
+        "hashtags": data.get("hashtags") or prof["hashtags"],
         "tags": (genre["tags"] + ["Shorts", "予告編"])[:15],
     }
+
+    # The long-form script is gated for 薬機法; the teaser was not, so a claim the
+    # gate would have caught could still be published in the short that fronts it.
+    # enforce() is a no-op for genres that do not declare compliance.
+    import compliance
+    gated = compliance.enforce({"narration": teaser["narration"],
+                                "title": teaser["title"]}, genre)
+    teaser["narration"] = gated["narration"]
+    teaser["title"] = gated["title"][:100]
+    return teaser
 
 
 def _select_topic(genre: dict, avoid_titles: list[str], max_retries: int = 4) -> str:
