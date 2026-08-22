@@ -28,6 +28,21 @@ class PreflightError(RuntimeError):
     """Raised when the run can't possibly succeed, before any work is done."""
 
 
+# Set by --publish-at. None means "use the genre's fixed peak hour", which is the
+# scheduled-run behaviour; an explicit value is for the manual case where that
+# slot is already taken (a re-run after a partial failure, or a second video on
+# a day whose slot is filled).
+PUBLISH_AT_OVERRIDE: datetime | None = None
+
+
+def _publish_at(genre: dict) -> datetime:
+    """When to schedule this video, honouring --publish-at over the genre default."""
+    from youtube_upload import next_publish_at
+    if PUBLISH_AT_OVERRIDE is not None:
+        return PUBLISH_AT_OVERRIDE
+    return next_publish_at(genre["publish_hour_jst"])
+
+
 def preflight(do_upload: bool, need_tts: bool = True, genre: dict | None = None) -> None:
     """Fail fast, and loudly, if a prerequisite is missing.
 
@@ -197,8 +212,8 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     # 6. Upload (scheduled)
     if do_upload:
         print("[6/6] upload (YouTube, scheduled)…")
-        from youtube_upload import upload_video, next_publish_at
-        pub = next_publish_at(genre["publish_hour_jst"])
+        from youtube_upload import upload_video
+        pub = _publish_at(genre)
         vid = upload_video(video, pkg["title"], _description(genre, pkg), pkg["tags"],
                            genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
         result["video_id"] = vid
@@ -285,8 +300,8 @@ def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> 
 
     if do_upload:
         print("[5/5] upload (YouTube, scheduled)…")
-        from youtube_upload import upload_video, next_publish_at
-        pub = next_publish_at(genre["publish_hour_jst"])
+        from youtube_upload import upload_video
+        pub = _publish_at(genre)
         vid = upload_video(video, pkg["title"], _description(genre, pkg), pkg["tags"],
                            genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
         result["video_id"] = vid
@@ -368,8 +383,8 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
 
     if do_upload:
         print("[6/6] upload (YouTube, scheduled)…")
-        from youtube_upload import upload_video, next_publish_at
-        pub = next_publish_at(genre["publish_hour_jst"])
+        from youtube_upload import upload_video
+        pub = _publish_at(genre)
         vid = upload_video(video, pkg["title"], _description(genre, pkg), pkg["tags"],
                            genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
         result["video_id"] = vid
@@ -486,7 +501,22 @@ def main() -> None:
                          "guide = a spoken intro that dissolves into an ambient bed")
     ap.add_argument("--seconds", type=int, default=None,
                     help="override the ambient length in seconds (--mode ambient/guide)")
+    ap.add_argument("--publish-at", default=None, metavar="'YYYY-MM-DD HH:MM'",
+                    help="schedule publication at this JST time instead of the genre's peak hour; "
+                         "use when that slot is already taken")
     args = ap.parse_args()
+
+    if args.publish_at:
+        from youtube_upload import JST
+        try:
+            when = datetime.strptime(args.publish_at, "%Y-%m-%d %H:%M").replace(tzinfo=JST)
+        except ValueError:
+            raise SystemExit(f"--publish-at は 'YYYY-MM-DD HH:MM'（JST）の形式で指定してください: {args.publish_at!r}")
+        if when <= datetime.now(JST):
+            raise SystemExit(f"--publish-at は未来の時刻を指定してください（JST 現在 "
+                             f"{datetime.now(JST):%Y-%m-%d %H:%M}、指定 {when:%Y-%m-%d %H:%M}）。")
+        globals()["PUBLISH_AT_OVERRIDE"] = when
+        print(f"[publish-at] 予約公開を {when:%Y-%m-%d %H:%M} JST に固定します（ジャンル既定の時刻は使いません）")
 
     if args.check_auth:
         from youtube_upload import current_channel, assert_expected_channel
