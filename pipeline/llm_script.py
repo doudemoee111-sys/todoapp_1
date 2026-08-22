@@ -102,10 +102,19 @@ def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
                     heading: str, summary: str, prev_tail: str) -> str:
     per = max(420, genre.get("narration_target", NARRATION_TARGET_CHARS) // total)
     ctx = f"直前の章の終わり: {prev_tail[-120:]}" if prev_tail else "これは最初の章です。"
-    role = ("最初の章。挨拶や自己紹介は一切せず、事件・テーマの核心や結末の一部をチラ見せする強いフックから入り、"
-            "『この続きは最後まで見たくなる』引きを作る。" if idx == 0
-            else "自然に前の章から続ける。" if idx < total - 1
-            else "動画のまとめと、チャンネル登録・高評価のお願いで締める。")
+    # The opening instruction belongs to chapter 1 only. It used to live in
+    # narration_style, which is injected into every chapter prompt, so all 8
+    # chapters opened with the same sentence (7-8 identical hooks per video).
+    if idx == 0:
+        role = ("最初の章。挨拶や自己紹介は一切せず、テーマの核心や結末の一部をチラ見せする強いフックから入り、"
+                "『この続きは最後まで見たくなる』引きを作る。" + genre.get("opening_style", ""))
+    elif idx < total - 1:
+        role = ("自然に前の章から続ける。この章は動画の途中なので、動画全体の導入・問題提起・"
+                "視聴者への呼びかけをやり直さない。第1章で提示した場面や問いかけを言い直さず、"
+                "この章の内容そのものから始める。")
+    else:
+        role = ("動画のまとめと、チャンネル登録・高評価のお願いで締める。"
+                "冒頭の問題提起を再現せず、ここまでで語った内容を受けてまとめる。")
     user = f"""次の動画の第{idx+1}章のナレーション本文だけを書いてください。
 
 動画タイトル: {title}
