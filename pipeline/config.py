@@ -117,6 +117,21 @@ GENRES = {
     },
 }
 
+# ---- Branch scope guard (別ブランチ=睡眠チャンネルのジャンル混入を無料で停止) -----
+# このブランチ(claude/web-automation-setup-ifetgk)は「世界の雑学王」専用。睡眠チャンネル
+# は別組織・別ブランチ(claude/youtube-sleep-content-automation-4k28y3)で管理され、その
+# ジャンル(sleep 等)はここには存在しない。睡眠部門がコード側で当チャンネルのジャンル
+# (space/urban/mystery)を弾いたのと対になる相互アイソレーションとして、こちらでは睡眠系
+# ジャンルを弾く。万一この環境に睡眠側のトリガーが混ざって sleep を要求してきても、API を
+# 一切叩かず(=1円も使わず)に停止する。チャンネルガード(EXPECTED_CHANNEL_TITLE)と二段構え。
+BRANCH_LABEL = "世界の雑学王"
+FOREIGN_GENRE_OWNERS = {
+    "sleep": "睡眠・安眠チャンネル2（別組織・別ブランチ claude/youtube-sleep-content-automation-4k28y3）",
+    "ambient": "睡眠・安眠チャンネル2（別組織・別ブランチ）",
+    "narrated": "睡眠・安眠チャンネル2（別組織・別ブランチ）",
+    "guide": "睡眠・安眠チャンネル2（別組織・別ブランチ）",
+}
+
 # Rotation order when running in "alternate" mode.
 ROTATION = ["space", "urban"]
 # Phase offset for date-based rotation (--rotate-date). Chosen so 2026-08-15

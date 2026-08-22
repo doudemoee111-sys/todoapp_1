@@ -28,6 +28,34 @@ class PreflightError(RuntimeError):
     """Raised when the run can't possibly succeed, before any work is done."""
 
 
+class WrongBranchGenreError(RuntimeError):
+    """A genre belonging to another channel/branch was requested on this one."""
+
+
+def assert_genre_scope(genre_key: str) -> None:
+    """混在防止(コード側の相互アイソレーション)。
+
+    このブランチは「世界の雑学王」専用。睡眠チャンネルは別組織・別ブランチで管理して
+    おり、その sleep 等のジャンルはここには存在しない。存在しないジャンルを要求されたら、
+    API を一切叩かず(=1円も使わず)に停止する。睡眠部門が自ブランチで当チャンネルの
+    ジャンル(space/urban/mystery)を弾いたのと対になる措置。
+    """
+    if genre_key in GENRES:
+        return
+    from config import BRANCH_LABEL, FOREIGN_GENRE_OWNERS
+    avail = " / ".join(GENRES.keys())
+    owner = FOREIGN_GENRE_OWNERS.get(genre_key)
+    if owner:
+        raise WrongBranchGenreError(
+            f"ジャンル「{genre_key}」はこのブランチには存在しません。"
+            f"このブランチは『{BRANCH_LABEL}』専用です（利用可能: {avail}）。"
+            f"「{genre_key}」は別チャンネル（{owner}）のジャンルです。"
+            "混在防止のため、動画を生成せず・APIを一切呼ばずに停止しました。")
+    raise WrongBranchGenreError(
+        f"未知のジャンル「{genre_key}」です（利用可能: {avail}）。"
+        f"このブランチは『{BRANCH_LABEL}』専用です。")
+
+
 def preflight(do_upload: bool) -> None:
     """Fail fast, and loudly, if a prerequisite is missing.
 
@@ -289,7 +317,9 @@ def _load_narration(path: str) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--genre", choices=list(GENRES.keys()))
+    ap.add_argument("--genre",
+                    help="genre key (space/urban/mystery). 別チャンネルのジャンル(sleep等)は"
+                         "assert_genre_scope が無料で停止する")
     ap.add_argument("--alternate", action="store_true", help="pick next genre from rotation state (state.json)")
     ap.add_argument("--rotate-date", action="store_true",
                     help="pick genre deterministically from the calendar day (stateless; use this for daily scheduled runs)")
@@ -318,7 +348,6 @@ def main() -> None:
         return
 
     do_upload = not args.no_upload
-    preflight(do_upload)  # stop now if a prerequisite is missing
 
     state = _load_state()
     if args.rotate_date:
@@ -329,6 +358,16 @@ def main() -> None:
         genre_key = args.genre
     else:
         genre_key = DEFAULT_GENRE
+
+    # 混在防止: 別チャンネル(睡眠)のジャンルなら、preflight や API 呼び出しの前に
+    # 1円も使わず停止する。睡眠部門の相互アイソレーションと対になる措置。
+    try:
+        assert_genre_scope(genre_key)
+    except WrongBranchGenreError as e:
+        print(f"[scope] {e}")
+        return
+
+    preflight(do_upload)  # stop now if a prerequisite is missing
 
     # Optional: build from a provided narration (hand-written script).
     narration = None
