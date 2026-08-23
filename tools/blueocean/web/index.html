@@ -426,6 +426,114 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
   <b>EMSが逆にいちばん安くなる</b>ことがあります。固定送料では見えない逆転です。
 </p>
 
+<h2>データの取り方 ── 軸1（候補）</h2>
+<p>
+  軸1に要るのは<b>「国内で買える商品」と「eBayでの相場・競合数」</b>です。
+  eBay側は自動で取れます。国内側は人が探します。
+</p>
+
+<h3>A. eBayのAPIを使う（推奨・毎週回すならこちら）</h3>
+<ol class="steps">
+  <li><span class="no">1</span><span class="bd2"><b>eBayの開発者キーを取る（初回だけ）</b>
+    <a href="https://developer.ebay.com/" target="_blank" rel="noopener">eBay Developers Program</a> に登録し、
+    <a href="https://developer.ebay.com/my/keys" target="_blank" rel="noopener">Application Keys</a> で
+    <b>Production の App ID（Client ID）と Cert ID（Client Secret）</b>を控えます。
+    <em>使うのは Browse API（出品中の検索）です。個人の開発者アカウントで使えます。</em></span></li>
+
+  <li><span class="no">2</span><span class="bd2"><b>抽出条件を組み立てる</b>
+    「軸1」タブの<b>「抽出条件をつくる」</b>を開き、ジャンル・対象・荷姿・ジョブ名を選びます。
+    上に出る設定をコピーして <code>tools/blueocean/data/jobs.json</code> に保存します。
+    <em>ここで決めた条件が、以後ずっと同じ条件として使われます。</em></span></li>
+
+  <li><span class="no">3</span><span class="bd2"><b>コマンドを実行する</b>
+    <code>python -m blueocean.cli job --config data/jobs.json --name &lt;ジョブ名&gt;</code>
+    に、控えたキーを <code>--ebay-client-id</code> / <code>--ebay-client-secret</code> で渡します。
+    <em>2回目からはこのコマンドだけ。前回からの変化（BLUE→RED、採算割れ）だけが出ます。</em></span></li>
+
+  <li><span class="no">4</span><span class="bd2"><b>出てきたものを使う</b>
+    <code>out/&lt;名前&gt;-hunt.html</code> が<b>写真つきの照合シート</b>、
+    <code>out/&lt;名前&gt;-candidates.csv</code> が<b>候補CSV</b>です。
+    <em>シートを見ながら国内で探し、見つけたものを次の手順で表に入れます。</em></span></li>
+
+  <li><span class="no">5</span><span class="bd2"><b>候補CSVを表に読み込む</b>
+    候補CSVを開いて全部コピー →「軸1」タブの<b>「CSVで入れる／出す」</b>に貼り付け →
+    <b>「貼り付けたCSVを表に読み込む」</b>。
+    <em>この時点では仕入値が空なので、判定は最良でも PROBE です。</em></span></li>
+
+  <li><span class="no">6</span><span class="bd2"><b>仕入値・重量・寸法を入れる</b>
+    表の<b>「仕入(円)」</b>に値札の額、<b>重量と寸法</b>は梱包<b>後</b>の実測値。
+    入力した瞬間に判定と仕入上限が変わります。
+    <em>同型の落札実績を実際に見たときだけ「需要」にチェック。PROBE が BLUE に上がります。</em></span></li>
+</ol>
+
+<h3>B. APIを使わずに手で集める</h3>
+<p>
+  API未契約でも運用できます。<b>調べるのは1商品につき2つの数字だけ</b>です。
+</p>
+<ol class="steps">
+  <li><span class="no">1</span><span class="bd2"><b>eBayで商品名（英語）を検索する</b>
+    表の各行にある<b>「出品中の写真を見る ↗」</b>を押すと、その語でeBayの検索結果が開きます。</span></li>
+  <li><span class="no">2</span><span class="bd2"><b>競合数を読む</b>
+    検索結果の上に出る件数（<code>1,234 results</code>）が競合の出品数です。
+    <em>広い語だと数万件になって意味を失います。型番まで絞ってください。</em></span></li>
+  <li><span class="no">3</span><span class="bd2"><b>相場を読む</b>
+    <b>「落札済みの写真と価格 ↗」</b>（左メニューの Sold Items）で、実際に売れた価格を見ます。
+    <em>出品中の価格は「売れなかった価格」です。落札済みのほうを見てください。</em></span></li>
+  <li><span class="no">4</span><span class="bd2"><b>表に入れる</b>
+    「相場($)」と「競合」の欄に入れます。あとはAの手順6と同じです。</span></li>
+</ol>
+
+<h2>データの取り方 ── 軸2（出品後の反応）</h2>
+<p>
+  軸2に要るのは<b>閲覧・ウォッチ・販売数</b>です。
+  <b>これは eBay Seller Hub のレポートに全部入っています。</b>手で数える必要はありません。
+</p>
+
+<ol class="steps">
+  <li><span class="no">1</span><span class="bd2"><b>Seller Hub でレポートを出す</b>
+    <a href="https://www.ebay.com/sh/ovw" target="_blank" rel="noopener">Seller Hub</a> →
+    <b>Reports</b> タブ → 左メニューの <b>Downloads</b> → <b>Download report</b> →
+    Report source に <b>Listings</b>、Report type に <b>All active listings</b> → <b>Download</b>。
+    <em>CSVがメールまたはダウンロード一覧に届きます。</em></span></li>
+
+  <li><span class="no">2</span><span class="bd2"><b>そのまま貼り付ける</b>
+    「軸2」タブの入力欄に、レポートCSVを<b>加工せずそのまま</b>貼ります。
+    観測日（レポートを取った日）を選んで、<b>「eBayのレポートを取り込む」</b>を押します。
+    <em>必要な列だけ抜き出して変換し、前回までの行に追記します。同じ商品・同じ日は上書きされるので、取り直しても二重になりません。</em></span></li>
+
+  <li><span class="no">3</span><span class="bd2"><b>判定を読む</b>
+    PROMOTE／REPRICE／RETITLE／DROP／KEEP と、<b>前回からの増分</b>が出ます。
+    <em>累計142件の閲覧が、先週+3件なのか+80件なのかで意味がまるで違います。</em></span></li>
+
+  <li><span class="no">4</span><span class="bd2"><b>毎週これを繰り返す</b>
+    観測CSVは<b>消さずに足していきます。</b>行が増えるほど前回比が正確になります。
+    <em>Python版なら <code>python -m blueocean.cli ingest --report ebay.csv --observations data/observations.csv</code> の1行で済みます。</em></span></li>
+</ol>
+
+<h3>レポートの列と、軸2が使う列の対応</h3>
+<div class="termlist">
+  <div><span class="t">Custom label</span><span class="d">→ <code>sku</code>。空なら Item number を使います。<b>出品時にSKUを付けておくと軸1の候補と突き合わせられます</b></span></div>
+  <div><span class="t">Title</span><span class="d">→ <code>title</code>。判定にSKUだけでなく商品名が出ます</span></div>
+  <div><span class="t">Start Date</span><span class="d">→ <code>listed_on</code>。出品からの経過日数の計算に使います</span></div>
+  <div><span class="t">Views</span><span class="d">→ <code>views</code>。露出の量</span></div>
+  <div><span class="t">Watchers</span><span class="d">→ <code>watchers</code>。買う気のある人の数</span></div>
+  <div><span class="t">Sold quantity</span><span class="d">→ <code>sold</code>。1件でも売れたら当たり（PROMOTE）</span></div>
+  <div><span class="t">（取得した日）</span><span class="d">→ <code>observed_on</code>。前回比の起点になります</span></div>
+</div>
+<p>
+  列名は環境や時期で揺れます（<code>Custom label (SKU)</code>、<code>Watch count</code> など）。
+  <b>よくある別名は吸収します。</b>それでも見つからない列があれば「列が見つかりません」と出すので、
+  Report type が <b>All active listings</b> になっているか確認してください。
+</p>
+
+<h3>在庫切れ率も一緒に入れてください</h3>
+<p>
+  軸2の入力欄の下にある<b>「総注文数」と「セラー都合キャンセル」</b>は、
+  Seller Hub の <b>Orders</b> から数えます。ここが2%を超えると
+  <b>Below Standard</b> に落ち、落札手数料に6ポイント上乗せされます。
+  <b>利益率の前提そのものが崩れる</b>ので、毎週見てください。
+</p>
+
 <h2>仕入値はどこに入れるのか</h2>
 <p>
   <b>「軸1」タブの表の「仕入(円)」欄です。</b>行に直接入力すると、その場で判定と仕入上限が変わります。
@@ -1017,10 +1125,22 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
           <label>総注文数<input type="number" id="a2-orders" value="120" min="0"></label>
           <label>セラー都合キャンセル<input type="number" id="a2-cancel" value="5" min="0"></label>
         </div>
+        <div class="sgrid" style="grid-template-columns:1fr;padding:12px 0 0">
+          <label>観測日（レポートを取った日）<input type="date" id="a2-date"></label>
+        </div>
         <div class="btnrow">
           <button class="act" id="a2-run">判定する</button>
+          <button class="ghost" id="a2-ingest">eBayのレポートを取り込む</button>
           <button class="ghost" id="a2-reset">サンプルに戻す</button>
         </div>
+        <p class="hint" style="margin-top:12px;margin-bottom:0">
+          <b>Seller Hub の「All active listings」レポートをそのまま貼れます。</b>
+          「eBayのレポートを取り込む」を押すと、必要な列だけ抜き出して観測CSVに変換し、
+          前回までの行に追記します（同じ商品・同じ日は上書き）。
+          取り方は「使い方」タブに書いてあります。<br>
+          取り込んだ行は<b>この端末に貯まります</b>（サーバーには送りません）。
+          毎週レポートを貼って押すだけで前回比が出ます。消したいときは「サンプルに戻す」。
+        </p>
       </div>
     </div>
     <div>
@@ -1033,7 +1153,7 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
 
 <footer>
   <p>
-    Python版と同じ計算式を実装しています（テスト185件）。
+    Python版と同じ計算式を実装しています（テスト213件）。
     コード：<a href="https://github.com/doudemoee111-sys/todoapp_1/tree/claude/side-business-proposal-su9ie3/tools/blueocean">tools/blueocean</a>
   </p>
   <p>
@@ -2152,6 +2272,102 @@ figma（箱難あり）,1500,150,10,10,10,38
 アクリルスタンド 3点,500,60,15,10,2,
 クリアファイル・缶バッジ 詰め合わせ,300,120,22,16,2,`;
 
+
+/* ===== eBayレポートの取り込み（ingest.py と同一） =====
+   軸2に要る列は Seller Hub の「All active listings」レポートに全部入っている。
+   手で詰め替えさせる理由がないので、貼られたものがレポートなら自動で変換する。 */
+const ING_ALIAS = {
+  sku:      ["customlabel","customlabelsku","sku"],
+  item_id:  ["itemnumber","itemid","item"],
+  title:    ["title","itemtitle"],
+  listed_on:["startdate","starttime","startdatetime","listeddate"],
+  views:    ["views","viewcount","pageviews"],
+  watchers: ["watchers","watchcount"],
+  sold:     ["soldquantity","quantitysold","sold","totalsold"],
+};
+const MONTHS = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+const ingNorm = s => String(s||"").trim().toLowerCase().replace(/[^a-z0-9]/g,"");
+
+function ingPick(row, key){
+  const normed = {};
+  for (const k in row) if (k) normed[ingNorm(k)] = row[k];
+  for (const a of ING_ALIAS[key]) if (normed[a] !== undefined && String(normed[a]).trim())
+    return String(normed[a]).trim();
+  return "";
+}
+/* Aug-23-2026 10:12:33 PDT / 2026-08-23 / 08/23/2026 を吸収する */
+function ingDate(text){
+  const head = String(text||"").trim().split(/\s+/)[0].replace(/,$/,"");
+  if (!head) return null;
+  let m = head.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (m) return `${m[1]}-${String(m[2]).padStart(2,"0")}-${String(m[3]).padStart(2,"0")}`;
+  m = head.match(/^([A-Za-z]{3})[-\s](\d{1,2})[-,\s]+(\d{4})$/);
+  if (m && MONTHS[m[1].toLowerCase()])
+    return `${m[3]}-${String(MONTHS[m[1].toLowerCase()]).padStart(2,"0")}-${String(m[2]).padStart(2,"0")}`;
+  m = head.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (m) return `${m[3]}-${String(m[1]).padStart(2,"0")}-${String(m[2]).padStart(2,"0")}`;
+  return null;
+}
+const ingInt = t => { const n = parseFloat(String(t||"").replace(/,/g,"")); return isFinite(n) ? Math.trunc(n) : 0; };
+
+/* 貼られたテキストがeBayのレポートかどうかを見分ける */
+function looksLikeEbayReport(text){
+  const head = (text.split(/\r?\n/).slice(0,12).join(",")).toLowerCase();
+  const cells = head.split(",").map(ingNorm);
+  return cells.includes("itemnumber") ||
+    (cells.includes("customlabel") && (cells.includes("watchers") || cells.includes("views")));
+}
+function ingestEbayReport(text, observedOn){
+  const lines = text.split(/\r?\n/);
+  let start = 0;
+  for (let i = 0; i < Math.min(12, lines.length); i++){
+    const cells = lines[i].split(",").map(ingNorm);
+    if (cells.includes("itemnumber") || cells.includes("title")){ start = i; break; }
+  }
+  const rows = parseCsv(lines.slice(start).join("\n"));
+  const header = rows.length ? Object.keys(rows[0]).map(ingNorm) : [];
+  const missing = [["views","Views"],["watchers","Watchers"],["sold","Sold quantity"],
+                   ["listed_on","Start date"]]
+    .filter(([k]) => header.length && !ING_ALIAS[k].some(a => header.includes(a)))
+    .map(([,label]) => label);
+
+  const out = []; let noSku = 0, noDate = 0;
+  for (const r of rows){
+    const sku = ingPick(r,"sku") || ingPick(r,"item_id");
+    if (!sku){ noSku++; continue; }
+    const listed = ingDate(ingPick(r,"listed_on"));
+    if (!listed){ noDate++; continue; }
+    out.push({sku, title: ingPick(r,"title"), listed_on: listed, observed_on: observedOn,
+              views: String(ingInt(ingPick(r,"views"))),
+              watchers: String(ingInt(ingPick(r,"watchers"))),
+              sold: String(ingInt(ingPick(r,"sold")))});
+  }
+  return {rows: out, noSku, noDate, missing};
+}
+/* 同じSKU・同じ観測日は上書きし、それ以外は足す（取り直しても二重にならない） */
+function mergeObsRows(existing, fresh){
+  const key = o => o.sku + "|" + o.observed_on;
+  const map = new Map(existing.map(o => [key(o), o]));
+  fresh.forEach(o => map.set(key(o), o));
+  return [...map.values()].sort((a,b) =>
+    a.observed_on.localeCompare(b.observed_on) || a.sku.localeCompare(b.sku));
+}
+const OBS_COLS = ["sku","title","listed_on","observed_on","views","watchers","sold"];
+/* 観測はこの端末に貯める。毎週レポートを貼るだけで前回比が出るようにするため、
+   貼られたレポートで上書きせず、貯めてある行に足す。 */
+const OBSKEY = "blueocean.obs";
+function loadObs(){
+  try{ const a = JSON.parse(localStorage.getItem(OBSKEY) || "[]"); return Array.isArray(a) ? a : []; }
+  catch(e){ return []; }
+}
+function saveObs(rows){
+  try{ localStorage.setItem(OBSKEY, JSON.stringify(rows)); return true; }catch(e){ return false; }
+}
+function obsRowsToCsv(rows){
+  const e = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g,'""')}"` : String(v ?? "");
+  return [OBS_COLS.join(",")].concat(rows.map(r => OBS_COLS.map(k => e(r[k])).join(","))).join("\n");
+}
+
 /* ===== 軸2（promotion.py と同一） ===== */
 const ACT = {
   promote:{cls:"good", label:"PROMOTE", desc:"有在庫化する"},
@@ -2337,7 +2553,36 @@ $("a1-export").addEventListener("click", () => {
 $("b-run").addEventListener("click", runBundle);
 $("b-reset").addEventListener("click", () => { $("b-in").value = SAMPLE3; runBundle(); });
 ["b-price","b-g","b-l","b-w","b-h"].forEach(id => $(id).addEventListener("input", runBundle));
-$("a2-run").addEventListener("click", runAxis2);
+$("a2-run").addEventListener("click", () => {
+  const rows = parseCsv($("a2-in").value).filter(o => o.sku && o.observed_on);
+  if (rows.length) saveObs(mergeObsRows(loadObs(), rows));
+  runAxis2();
+});
+$("a2-ingest").addEventListener("click", () => {
+  const text = $("a2-in").value;
+  const observed = $("a2-date").value || todayISO();
+  const r = ingestEbayReport(text, observed);
+  if (!r.rows.length){
+    toast("読み取れる行がありません。All active listings を選んで出し直してください");
+    return;
+  }
+  /* 貯めてある観測に足す。レポートで上書きすると前回比が消えるので、
+     テキスト欄の中身ではなく保存済みの行を土台にする。 */
+  const stored = loadObs();
+  const pasted = looksLikeEbayReport(text)
+    ? [] : parseCsv(text).filter(o => o.sku && o.observed_on);
+  const merged = mergeObsRows(mergeObsRows(stored, pasted), r.rows);
+  saveObs(merged);
+  $("a2-in").value = obsRowsToCsv(merged);
+  runAxis2();
+  const weeks = new Set(merged.map(o => o.observed_on)).size;
+  const notes = [];
+  if (r.missing.length) notes.push(`列が見つかりません: ${r.missing.join(", ")}`);
+  if (r.noSku) notes.push(`${r.noSku}件は識別子が空で飛ばしました`);
+  if (r.noDate) notes.push(`${r.noDate}件は出品日が読めず飛ばしました`);
+  toast(`${r.rows.length}件を取り込みました（累計 ${merged.length}行 / ${weeks}回分）`
+        + (notes.length ? `　${notes.join(" / ")}` : ""));
+});
 $("a1-save").addEventListener("click", () => {
   if (!LAST_AXIS1){ alert("先に「判定する」を押してください。"); return; }
   const btn = $("a1-save");
@@ -2350,7 +2595,9 @@ $("a1-reset").addEventListener("click", () => {
   A1_ROWS = parseCsv(SAMPLE1).map(csvObjToRow); saveRows(); runAxis1();
   toast("サンプルに戻しました");
 });
-$("a2-reset").addEventListener("click", () => { $("a2-in").value = SAMPLE2; runAxis2(); });
+$("a2-reset").addEventListener("click", () => { const STORED_OBS = loadObs();
+$("a2-in").value = STORED_OBS.length ? obsRowsToCsv(STORED_OBS) : SAMPLE2;
+$("a2-date").value = todayISO(); runAxis2(); });
 
 const MKT_LABEL = {ebay_us:"eBay 米国", ebay_eu:"eBay 欧州", ebay_au:"eBay 豪州", shopee_sea:"Shopee 東南ア"};
 const LV_LABEL = {top_rated:"Top Rated", above_standard:"Above Standard", below_standard:"Below Standard"};
@@ -2375,7 +2622,9 @@ function refresh(){
 
 if (!loadCfg()) fillProfileInputs();
 A1_ROWS = loadRows() || parseCsv(SAMPLE1).map(csvObjToRow);
-$("a2-in").value = SAMPLE2;
+const STORED_OBS = loadObs();
+$("a2-in").value = STORED_OBS.length ? obsRowsToCsv(STORED_OBS) : SAMPLE2;
+$("a2-date").value = todayISO();
 $("b-in").value = SAMPLE3;
 renderCfgSummary(); renderExtract();
 renderCalc(); renderOne(); renderPrice(); runAxis1(); runBundle(); runAxis2();

@@ -457,6 +457,67 @@ Nikon Ai-s 50mm F1.2
 
 ---
 
+## 軸2のデータ ── eBayのレポートをそのまま入れる
+
+軸2に要る列（`sku` / `listed_on` / `observed_on` / `views` / `watchers` / `sold`）は、
+**Seller Hub の「All active listings」レポートに全部入っています。**
+手で詰め替える作業は本来いりません。
+
+### 取り方
+
+1. [Seller Hub](https://www.ebay.com/sh/ovw) → **Reports** タブ
+2. 左メニューの **Downloads** → **Download report**
+3. Report source に **Listings**、Report type に **All active listings**
+4. **Download**
+
+### 取り込み
+
+```bash
+python -m blueocean.cli ingest \
+    --report ~/Downloads/ebay-active-listings.csv \
+    --observations data/observations.csv
+```
+
+```
+=== 取り込み（観測日 2026-08-23）===
+
+  レポートから 4件 を読み取りました
+  観測CSV: 既存 4行 → 8行（新規 4行）
+  → data/observations.csv
+
+  次はこれで判定します:
+    python -m blueocean.cli axis2 --observations data/observations.csv --candidates data/candidates.csv
+```
+
+**同じSKU・同じ観測日の行は上書きします。** 取り直しても行が二重になりません。
+日付が違えば別の行として残るので、それが前回比の材料になります。
+
+### 列の対応
+
+| レポートの列 | 軸2の列 | 使い道 |
+|---|---|---|
+| `Custom label` | `sku` | 空なら `Item number` を使います。**出品時にSKUを付けておくと軸1の候補と突き合わせられます** |
+| `Title` | `title` | 判定にSKUだけでなく商品名が出ます |
+| `Start Date` | `listed_on` | 出品からの経過日数 |
+| `Views` | `views` | 露出の量 |
+| `Watchers` | `watchers` | 買う気のある人の数 |
+| `Sold quantity` | `sold` | 1件でも売れたら当たり（PROMOTE） |
+| （取得した日） | `observed_on` | 前回比の起点 |
+
+列名は環境や時期で揺れます（`Custom label (SKU)`、`Watch count`、`Quantity sold` など）。
+**よくある別名は吸収します。** 日付も `Aug-23-2026 10:12:33 PDT` のような形を受け付けます。
+それでも見つからない列があれば「列が見つかりません」と出すので、
+**黙って0で埋めることはしません。**
+
+### ブラウザ版
+
+**レポートを加工せずそのまま貼れます。** 「軸2」タブに貼って、観測日を選んで
+「**eBayのレポートを取り込む**」を押すだけです。
+取り込んだ行はこの端末に貯まるので、**毎週レポートを貼って押すだけで前回比が出ます**
+（サーバーには送りません。消したいときは「サンプルに戻す」）。
+
+---
+
 ## 抽出条件を保存して、毎回同じ条件で回す
 
 抽出をそのつどコマンドで打っていると、次の3つが起きます。
@@ -853,18 +914,17 @@ LENS-002,2026-07-20,2026-08-23,142,5,1   ← 追記
 ### 週次のルーティン（想定）
 
 ```bash
-# 1. eBay側を取り直して、前回からの変化だけを読む
-python -m blueocean.cli axis1 --candidates data/candidates.csv \
-    --history data/history.jsonl --refresh --changes-only \
+# 1. 保存した条件で抽出し直し、前回からの変化だけを読む
+python -m blueocean.cli job --config data/jobs.json --all \
     --ebay-client-id "$EBAY_CLIENT_ID" --ebay-client-secret "$EBAY_CLIENT_SECRET"
 
-# 2. Seller Hub のレポートを observations.csv に追記してから
-python -m blueocean.cli axis2 --observations data/observations.csv \
-    --total-orders 120 --seller-cancellations 5
+# 2. Seller Hub のレポートを落として取り込む（手で詰め替えない）
+python -m blueocean.cli ingest --report ~/Downloads/ebay.csv \
+    --observations data/observations.csv
 
-# 3. 出品対象を書き出す
-python -m blueocean.cli axis1 --candidates data/candidates.csv \
-    --history data/history.jsonl --no-record --out plan.csv
+# 3. 出品後の反応から次の一手を決める
+python -m blueocean.cli axis2 --observations data/observations.csv \
+    --candidates data/candidates.csv --total-orders 120 --seller-cancellations 5
 ```
 
 **所要は5〜10分**です。全件を読み直すのではなく、変化した数件だけを見る運用になります。
@@ -967,13 +1027,14 @@ DEFAULT_PROFILES[Market.EBAY_US] = FeeProfile(
 python -m pytest tests -q
 ```
 
-185件。利益計算は逆算と順算が一致すること、送料が重量に対して単調で階段状になること、
+213件。利益計算は逆算と順算が一致すること、送料が重量に対して単調で階段状になること、
 嵩張る荷物でEMSが逆転すること、履歴が追記のみで壊れないこと、同日再実行で差分が消えないこと、
 走査の予算と軸1の仕入上限が一致すること、走査の雛形が `BLUE` にならないこと、
 損益分岐のセット売価で売ると個別売却とちょうど同じ利益になること、
 出品価格の順算が仕入上限の逆算と完全に噛み合うこと、許容返品率で回すと期待値がゼロになること、
 モックが実在しない画像URLを捏造しないこと、照合シートがHTMLをエスケープすること、
-ジョブ定義の綴り違いが黙って既定値にならないこと、同じジョブの2回目が差分だけを返すことなどを
+ジョブ定義の綴り違いが黙って既定値にならないこと、同じジョブの2回目が差分だけを返すこと、
+eBayレポートの列名の揺れと日付書式を吸収できること、取り直しても観測行が二重にならないことなどを
 検証しています。ブラウザ版とPython版が送料6ケース・差分9パターン・セット販売3市場・値決め6項目・
 判定の裏返しヒント4パターンで完全一致することも確認済みです。
 
@@ -994,6 +1055,7 @@ blueocean/
 ├── pricing.py      値決め（出品価格・値下げ耐性・為替と関税の感度・返品の影響）
 ├── contactsheet.py 現物照合シート（商品写真つきHTMLの書き出し）
 ├── jobs.py         抽出条件の保存と再実行（毎回同じ条件で差分を出す）
+├── ingest.py       eBayレポートの取り込み（軸2の観測CSVに変換して追記）
 ├── pipeline.py     軸1と軸2を繋ぐ
 ├── cli.py          コマンドライン
 └── sources/        eBay側のデータ取得（Browse API / モック）

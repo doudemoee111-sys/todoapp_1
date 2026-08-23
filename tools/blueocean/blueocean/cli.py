@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import sys
 import unicodedata
+from pathlib import Path
 
 from .bundle import compare as compare_bundle
 from .bundle import load_items
@@ -25,6 +26,7 @@ from .discovery import (
     write_candidate_template,
 )
 from .history import ChangeKind, history_of, load_snapshots
+from .ingest import merge_observations, read_report, write_observations
 from .jobs import JobError, load_jobs, run_job
 from .pricing import (
     breakeven_duty_rate,
@@ -599,6 +601,39 @@ def cmd_bundle(args) -> int:
     return 0
 
 
+def cmd_ingest(args) -> int:
+    """eBay Seller Hub のレポートを、軸2の観測CSVに取り込む。
+
+    手で列を詰め替える作業は本来いらない。レポートに全部入っている。
+    """
+    from datetime import date as _date
+
+    observed = _date.fromisoformat(args.observed_on) if args.observed_on else _date.today()
+    r = read_report(args.report, observed_on=observed)
+    if not r.observations:
+        print("読み取れる行がありませんでした。Seller Hub の Downloads で "
+              "『All active listings』を選んでダウンロードし直してください。", file=sys.stderr)
+        for w in r.warnings:
+            print(f"  [注意] {w}", file=sys.stderr)
+        return 1
+
+    existing = load_observations(args.observations) if Path(args.observations).exists() else []
+    merged = merge_observations(existing, r.observations)
+    added = len(merged) - len(existing)
+    n = write_observations(merged, args.observations)
+
+    print(f"\n=== 取り込み（観測日 {observed.isoformat()}）===\n")
+    print(f"  レポートから {len(r.observations)}件 を読み取りました")
+    print(f"  観測CSV: 既存 {len(existing)}行 → {n}行（新規 {added}行）")
+    print(f"  → {args.observations}")
+    for w in r.warnings:
+        print(f"\n  [注意] {w}")
+    print("\n  次はこれで判定します:")
+    print(f"    python -m blueocean.cli axis2 --observations {args.observations} "
+          f"--candidates data/candidates.csv")
+    return 0
+
+
 def cmd_job(args) -> int:
     """保存した抽出条件で回す。**毎回同じ条件だからこそ差分が意味を持つ。**"""
     try:
@@ -791,6 +826,14 @@ def main(argv=None) -> int:
     ck.add_argument("--url", default=None)
     ck.add_argument("--category", default=None)
     ck.set_defaults(func=cmd_check)
+
+    ig = sub.add_parser("ingest", help="eBayのレポートを軸2の観測CSVに取り込む")
+    ig.add_argument("--report", required=True,
+                    help="Seller Hub の『All active listings』レポート（CSV）")
+    ig.add_argument("--observations", required=True, help="観測CSV（無ければ作る／あれば追記）")
+    ig.add_argument("--observed-on", default=None,
+                    help="観測日（既定は今日）。過去のレポートを入れるときに指定する")
+    ig.set_defaults(func=cmd_ingest)
 
     jb = sub.add_parser("job", help="保存した抽出条件で回す（毎回同じ条件で差分を出す）")
     jb.add_argument("--config", required=True, help="ジョブ定義JSON")

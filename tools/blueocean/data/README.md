@@ -97,6 +97,13 @@ eBay Seller Hub のパフォーマンスレポートからエクスポートし�
 判定を読んでも動けません。列が無い場合は `axis2 --candidates data/candidates.csv` で
 候補CSVから商品名を結合できます。
 
+**手で作らないでください。** Seller Hub の「All active listings」レポートを
+`ingest` に渡せば、この形に変換して追記されます。
+
+```bash
+python -m blueocean.cli ingest --report ~/Downloads/ebay.csv --observations data/observations.csv
+```
+
 **このファイルは追記して育てます。** 毎週の行を足していけば、同じSKUの行が何本も並びます。
 ツールはSKUごとに最新の1行だけを判定対象にし、1つ前の行を前回比の計算に使います。
 古い行を消す必要はありません（消すと前回比が出なくなります）。
