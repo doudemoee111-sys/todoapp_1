@@ -24,6 +24,16 @@ from .models import (
     TaxProfile,
     Verdict,
 )
+from .history import (
+    Change,
+    DiffPolicy,
+    Snapshot,
+    append_snapshots,
+    changes_since,
+    latest_by_sku,
+    load_snapshots,
+    staleness_warning,
+)
 from .profit import DEFAULT_PROFILES
 from .promotion import Decision, PromotionPolicy, decide_all, stockout_alert, stockout_rate
 from .scoring import ScoringPolicy, score_all
@@ -95,17 +105,36 @@ def load_observations(path: str | Path) -> list[Observation]:
 
 # ---------- 軸1 ----------
 
-def enrich(candidates: list[Candidate], source: MarketDataSource, *, query_of=None) -> None:
-    """eBay側の観測を候補に書き込む（破壊的に更新する）。"""
+def enrich(
+    candidates: list[Candidate],
+    source: MarketDataSource,
+    *,
+    query_of=None,
+    refresh: bool = False,
+) -> int:
+    """eBay側の観測を候補に書き込む（破壊的に更新する）。取得件数を返す。
+
+    既定では、CSVに競合数と相場の両方が入っている候補は問い合わせない
+    （API未契約でも手動調査の値で運用できるようにするため）。
+
+    ただしその挙動には落とし穴がある。**一度手で埋めた値は、放っておくと
+    二度と更新されない。** 競合数と相場は毎日動くので、古い値のまま
+    「BLUE」と表示され続けることになる。``refresh=True`` はこれを打ち消し、
+    CSVの値を無視して取り直す。定期更新ではこちらを使う。
+    """
     query_of = query_of or (lambda c: c.title_ja)
+    fetched = 0
     for c in candidates:
-        if c.competitor_count is not None and c.market_price_usd is not None:
-            continue  # CSVで両方与えられている場合は問い合わせない
+        has_both = c.competitor_count is not None and c.market_price_usd is not None
+        if has_both and not refresh:
+            continue
         snap = source.snapshot(query_of(c))
-        if c.competitor_count is None:
+        fetched += 1
+        if refresh or c.competitor_count is None:
             c.competitor_count = snap.competitor_count
-        if c.market_price_usd is None:
+        if refresh or c.market_price_usd is None:
             c.market_price_usd = snap.median_price_usd
+    return fetched
 
 
 def run_axis1(
@@ -118,10 +147,41 @@ def run_axis1(
     level: SellerLevel = SellerLevel.ABOVE_STANDARD,
     tax: TaxProfile | None = None,
     query_of=None,
+    refresh: bool = False,
 ) -> list[ScoredCandidate]:
     profile = profile or DEFAULT_PROFILES[market]
-    enrich(candidates, source, query_of=query_of)
+    enrich(candidates, source, query_of=query_of, refresh=refresh)
     return score_all(candidates, profile, policy, level=level, tax=tax)
+
+
+def run_axis1_with_history(
+    candidates: list[Candidate],
+    source: MarketDataSource,
+    history_path: str | Path,
+    *,
+    today: date | None = None,
+    diff_policy: DiffPolicy | None = None,
+    record: bool = True,
+    **kw,
+) -> tuple[list[ScoredCandidate], list[Change], str | None]:
+    """軸1を実行し、前回との差分と鮮度の警告を添えて返す。
+
+    履歴は追記のみ。今回の結果を書く前に前回を読むので、同じ日に2回走らせても
+    「前回」は前の実行日のままになる（同日の再実行で差分が消えない）。
+    """
+    today = today or date.today()
+    past = load_snapshots(history_path)
+    previous = latest_by_sku(past, before=today)
+
+    scored = run_axis1(candidates, source, **kw)
+    snapshots = [Snapshot.of(s, today) for s in scored]
+
+    changes = changes_since(previous, snapshots, policy=diff_policy)
+    warning = staleness_warning(previous, today, policy=diff_policy)
+
+    if record:
+        append_snapshots(history_path, snapshots)
+    return scored, changes, warning
 
 
 def write_listing_plan(scored: list[ScoredCandidate], path: str | Path) -> int:
@@ -151,6 +211,30 @@ def write_listing_plan(scored: list[ScoredCandidate], path: str | Path) -> int:
 
 # ---------- 軸2 ----------
 
+def split_latest(
+    observations: list[Observation],
+) -> tuple[list[Observation], dict[str, Observation]]:
+    """SKUごとに「最新」と「その1つ前」に分ける。
+
+    観測CSVは**追記して育てる**運用を想定している。毎週の行を足していけば、
+    同じSKUの行が何本も並ぶ。そのまま判定に流すと同じ商品が何度も並び、
+    どれが今の状態か分からなくなる。ここで最新だけを判定対象にし、
+    1つ前は前回比の計算に使う。
+    """
+    by_sku: dict[str, list[Observation]] = {}
+    for o in observations:
+        by_sku.setdefault(o.sku, []).append(o)
+
+    latest: list[Observation] = []
+    previous: dict[str, Observation] = {}
+    for sku, rows in by_sku.items():
+        rows.sort(key=lambda o: o.observed_on)
+        latest.append(rows[-1])
+        if len(rows) >= 2:
+            previous[sku] = rows[-2]
+    return latest, previous
+
+
 def run_axis2(
     observations: list[Observation],
     *,
@@ -158,6 +242,7 @@ def run_axis2(
     total_orders: int = 0,
     seller_cancellations: int = 0,
 ) -> tuple[list[Decision], str | None]:
-    decisions = decide_all(observations, policy)
+    latest, previous = split_latest(observations)
+    decisions = decide_all(latest, policy, previous=previous)
     alert = stockout_alert(stockout_rate(total_orders, seller_cancellations))
     return decisions, alert

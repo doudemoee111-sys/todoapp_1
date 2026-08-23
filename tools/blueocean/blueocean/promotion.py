@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from datetime import date
+
 from .models import Action, Observation
 
 
@@ -29,6 +31,34 @@ class PromotionPolicy:
     drop_days: int = 90               # 無反応でこの日数を超えたら畳む
 
 
+@dataclass(frozen=True)
+class ObservationDelta:
+    """前回の観測からの増分。
+
+    軸2の判定そのものは累計値で行う（ルールは変えない）。だが運用では
+    「先週から何件増えたか」のほうが手を打つ材料になる。
+    累計142件の閲覧が、先週+3件なのか+80件なのかで意味がまるで違う。
+    """
+    since: date
+    days: int
+    views: int
+    watchers: int
+    sold: int
+
+    @property
+    def is_stalled(self) -> bool:
+        """前回から一切動いていない。判定がKEEPでも、これが続くなら撤退を早める。"""
+        return self.views == 0 and self.watchers == 0 and self.sold == 0
+
+    def as_text(self) -> str:
+        if self.is_stalled:
+            return f"前回（{self.since.isoformat()}／{self.days}日前）から動きなし"
+        return (
+            f"前回比（{self.days}日）: 閲覧 {self.views:+d} / "
+            f"ウォッチ {self.watchers:+d} / 販売 {self.sold:+d}"
+        )
+
+
 @dataclass
 class Decision:
     sku: str
@@ -38,15 +68,37 @@ class Decision:
     views: int
     watchers: int
     sold: int
+    delta: ObservationDelta | None = None   # 前回の観測がある場合のみ
 
 
-def decide(obs: Observation, policy: PromotionPolicy | None = None) -> Decision:
-    """観測1件から次の一手を決める。"""
+def delta_between(previous: Observation, current: Observation) -> ObservationDelta:
+    """同じSKUの2つの観測から増分を作る。"""
+    return ObservationDelta(
+        since=previous.observed_on,
+        days=max(0, (current.observed_on - previous.observed_on).days),
+        views=current.views - previous.views,
+        watchers=current.watchers - previous.watchers,
+        sold=current.sold - previous.sold,
+    )
+
+
+def decide(
+    obs: Observation,
+    policy: PromotionPolicy | None = None,
+    *,
+    previous: Observation | None = None,
+) -> Decision:
+    """観測1件から次の一手を決める。
+
+    ``previous`` を渡すと前回比を添える。**判定そのものは累計値で行うため、
+    前回比の有無で結論は変わらない。** 表示を厚くするだけの引数。
+    """
     p = policy or PromotionPolicy()
     d = obs.days_listed
+    delta = delta_between(previous, obs) if previous is not None else None
 
     def mk(action: Action, reason: str) -> Decision:
-        return Decision(obs.sku, action, reason, d, obs.views, obs.watchers, obs.sold)
+        return Decision(obs.sku, action, reason, d, obs.views, obs.watchers, obs.sold, delta)
 
     # 1. 売れた = 需要が確定した。最優先で有在庫化する
     if obs.sold >= p.promote_on_sold:
@@ -86,10 +138,14 @@ def decide(obs: Observation, policy: PromotionPolicy | None = None) -> Decision:
 
 
 def decide_all(
-    observations: list[Observation], policy: PromotionPolicy | None = None
+    observations: list[Observation],
+    policy: PromotionPolicy | None = None,
+    *,
+    previous: dict[str, Observation] | None = None,
 ) -> list[Decision]:
     """観測群を処理し、対応が必要なものを先頭に並べる。"""
-    decisions = [decide(o, policy) for o in observations]
+    previous = previous or {}
+    decisions = [decide(o, policy, previous=previous.get(o.sku)) for o in observations]
     order = {
         Action.PROMOTE: 0,
         Action.REPRICE: 1,

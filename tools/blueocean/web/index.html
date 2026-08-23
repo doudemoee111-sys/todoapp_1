@@ -317,11 +317,18 @@ ol.why code{font-size:12.5px;}
         <textarea id="a1-in" spellcheck="false"></textarea>
         <div class="btnrow">
           <button class="act" id="a1-run">判定する</button>
+          <button class="ghost" id="a1-save">今回の結果を記録する</button>
           <button class="ghost" id="a1-reset">サンプルに戻す</button>
         </div>
+        <p class="hint" style="margin-top:12px;margin-bottom:0">
+          記録するとこのブラウザに保存され、次回に<b>前回からの変化</b>が出ます。
+          競合数と相場は日々動くので、判定結果には賞味期限があります。
+          記録はこの端末から出ません（サーバーには送りません）。
+        </p>
       </div>
     </div>
     <div>
+      <div id="a1-changes"></div>
       <div class="tally" id="a1-tally"></div>
       <div class="res" id="a1-out"></div>
     </div>
@@ -757,6 +764,123 @@ function runAxis1(){
       <ul>${r.reasons.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
     </div>`;
   }).join("") : '<p class="hint">候補を貼り付けて「判定する」を押してください。</p>';
+
+  LAST_AXIS1 = res.length ? snapshotOf(res) : null;
+  renderChanges(loadHistory(), LAST_AXIS1 || {takenOn: todayISO(), rows: []});
+}
+let LAST_AXIS1 = null;
+
+
+/* ===== 履歴と差分（history.py と同一） =====
+   軸1が見ている数字は放っておいても動く。競合が増えれば BLUE は RED になり、
+   相場が下がれば仕入上限が下がって採算が消える。つまり判定結果には賞味期限がある。
+   一発判定を繰り返すだけでは、その賞味期限も前回からの変化も見えない。
+   変化こそが行動のトリガーなので、ここを持たないと毎回全件を読み直す運用になる。 */
+const HKEY = "blueocean.history";
+const RANK = {blue:4, probe:3, thin:2, red:1, excl:0};
+const DIFF = {compAbs:5, compRatio:.5, priceRatio:.10, staleDays:7};
+const CHANGE = {
+  downgrade:{cls:"red",  label:"判定悪化", act:"出品中なら価格と在庫を見直す。未出品なら見送りに回す"},
+  breach:   {cls:"red",  label:"採算割れ", act:"相場・為替・送料のどれかが動いた。仕入値を下げられないなら見送る"},
+  upgrade:  {cls:"good", label:"判定改善", act:"見送っていた候補が買えるようになった。仕入を再検討する"},
+  room:     {cls:"good", label:"採算回復", act:"採算が戻った。まだ在庫があるうちに動く"},
+  comp:     {cls:"probe",label:"競合変動", act:""},
+  price:    {cls:"probe",label:"相場変動", act:"出品中なら価格を追随させる"},
+  fresh:    {cls:"dim",  label:"新規追加", act:"初回なので、この判定がそのまま出発点になる"},
+  gone:     {cls:"dim",  label:"候補消滅", act:"売れた・取り下げたなら正常。消し忘れなら候補CSVを確認する"},
+};
+const CH_ORDER = ["downgrade","breach","upgrade","room","comp","price","fresh","gone"];
+const ACTIONABLE = new Set(["downgrade","breach","upgrade","room"]);
+
+function todayISO(){ const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+
+function loadHistory(){
+  try{ const raw = localStorage.getItem(HKEY); return raw ? JSON.parse(raw) : null; }
+  catch(e){ return null; }   /* プライベートモード等では履歴なしとして続行する */
+}
+function saveHistory(entry){
+  try{ localStorage.setItem(HKEY, JSON.stringify(entry)); return true; }
+  catch(e){ return false; }
+}
+function snapshotOf(res){
+  return {takenOn: todayISO(), rows: res.map(r => ({
+    sku: r.row.sku || r.row.title_ja || "", title: r.row.title_ja || r.row.sku || "",
+    verdict: r.verdict, comp: r.row.competitor_count === "" ? null : +r.row.competitor_count,
+    price: r.row.market_price_usd === "" ? null : +r.row.market_price_usd,
+    cost: +r.row.cost_incl_tax_jpy || 0, cap: Math.round(r.cap),
+  }))};
+}
+const pct = (a,b) => a === 0 ? "—" : `${(b-a)/a*100 > 0 ? "+" : ""}${((b-a)/a*100).toFixed(0)}%`;
+
+function diffSnapshots(prev, cur){
+  const before = new Map((prev?.rows || []).map(r => [r.sku, r]));
+  const out = [], seen = new Set();
+  for (const c of cur.rows){
+    seen.add(c.sku);
+    const p = before.get(c.sku);
+    if (!p){ out.push({kind:"fresh", sku:c.sku, title:c.title, detail:`新規候補。判定 ${c.verdict.toUpperCase()}`}); continue; }
+
+    const pr = RANK[p.verdict] ?? 0, cr = RANK[c.verdict] ?? 0;
+    if (cr < pr) out.push({kind:"downgrade", sku:c.sku, title:c.title,
+      detail:`${p.verdict.toUpperCase()} → ${c.verdict.toUpperCase()}（${prev.takenOn} → ${cur.takenOn}）`});
+    else if (cr > pr) out.push({kind:"upgrade", sku:c.sku, title:c.title,
+      detail:`${p.verdict.toUpperCase()} → ${c.verdict.toUpperCase()}`});
+
+    /* 判定が変わらなくても採算は動く。仕入上限との関係を別に見る */
+    const wasOk = p.cost <= p.cap, nowOk = c.cost <= c.cap;
+    if (wasOk && !nowOk) out.push({kind:"breach", sku:c.sku, title:c.title,
+      detail:`仕入上限 ${yen(p.cap)}円 → ${yen(c.cap)}円。仕入 ${yen(c.cost)}円 が上限を超えた`});
+    else if (!wasOk && nowOk) out.push({kind:"room", sku:c.sku, title:c.title,
+      detail:`仕入上限 ${yen(p.cap)}円 → ${yen(c.cap)}円。仕入 ${yen(c.cost)}円 が上限内に戻った`});
+
+    if (p.comp !== null && c.comp !== null && p.comp !== c.comp){
+      const moved = Math.abs(c.comp-p.comp) >= DIFF.compAbs || (p.comp > 0 && Math.abs(c.comp-p.comp)/p.comp >= DIFF.compRatio);
+      if (moved) out.push({kind:"comp", sku:c.sku, title:c.title,
+        detail:`競合 ${p.comp}件 → ${c.comp}件（${pct(p.comp,c.comp)}）`,
+        act: c.comp > p.comp ? "増えているなら早く出す。値下げ競争が始まる前が勝負" : "減っている。出し直す価値がある"});
+    }
+    if (p.price && c.price && Math.abs(c.price-p.price)/p.price >= DIFF.priceRatio)
+      out.push({kind:"price", sku:c.sku, title:c.title,
+        detail:`相場 $${p.price.toFixed(0)} → $${c.price.toFixed(0)}（${pct(p.price,c.price)}）`});
+  }
+  for (const [sku,p] of before)
+    if (!seen.has(sku)) out.push({kind:"gone", sku, title:p.title,
+      detail:`今回の候補リストに無い（前回 ${prev.takenOn} は ${p.verdict.toUpperCase()}）`});
+
+  return out.sort((a,b) => CH_ORDER.indexOf(a.kind)-CH_ORDER.indexOf(b.kind) || a.sku.localeCompare(b.sku));
+}
+
+function daysBetween(aISO, bISO){ return Math.round((new Date(bISO) - new Date(aISO))/86400000); }
+
+function renderChanges(prev, cur){
+  const box = $("a1-changes");
+  if (!prev){
+    box.innerHTML = `<div class="ok-note">履歴がありません。「今回の結果を記録する」を押すと、次回から前回との変化が出ます。</div>`;
+    return;
+  }
+  const gap = daysBetween(prev.takenOn, cur.takenOn);
+  const stale = gap > DIFF.staleDays
+    ? `<div class="alert"><b>前回の記録から ${gap}日 経っています（${prev.takenOn}）。</b>
+       競合数と相場は日々動きます。判定に使った数値を取り直してください。</div>` : "";
+  const ch = diffSnapshots(prev, cur);
+  const act = ch.filter(c => ACTIONABLE.has(c.kind));
+  if (!ch.length){
+    box.innerHTML = stale + `<div class="ok-note">前回（${prev.takenOn}）から変化はありません。</div>`;
+    return;
+  }
+  box.innerHTML = stale
+    + `<div class="tally"><span class="t"><b>前回からの変化</b> ${ch.length}件 — うち要対応 ${act.length}件</span></div>`
+    + ch.map(c => {
+        const m = CHANGE[c.kind];
+        return `<div class="item i-${m.cls}">
+          <div class="top">
+            <span class="badge b-${m.cls}">${m.label}</span>
+            <span class="nm">${esc(c.title)}</span>
+            <span class="st">${esc(c.sku)}</span>
+          </div>
+          <ul><li>${esc(c.detail)}</li>${(c.act || m.act) ? `<li>→ ${esc(c.act || m.act)}</li>` : ""}</ul>
+        </div>`;
+      }).join("");
 }
 
 /* ===== 軸2（promotion.py と同一） ===== */
@@ -884,6 +1008,14 @@ $("market").addEventListener("change", () => { fillProfileInputs(); refresh(); }
 $("carrier").addEventListener("change", refresh);
 $("a1-run").addEventListener("click", runAxis1);
 $("a2-run").addEventListener("click", runAxis2);
+$("a1-save").addEventListener("click", () => {
+  if (!LAST_AXIS1){ alert("先に「判定する」を押してください。"); return; }
+  const btn = $("a1-save");
+  btn.textContent = saveHistory(LAST_AXIS1)
+    ? `${LAST_AXIS1.takenOn} の結果を記録しました`
+    : "このブラウザでは保存できません";
+  setTimeout(() => { btn.textContent = "今回の結果を記録する"; }, 2600);
+});
 $("a1-reset").addEventListener("click", () => { $("a1-in").value = SAMPLE1; runAxis1(); });
 $("a2-reset").addEventListener("click", () => { $("a2-in").value = SAMPLE2; runAxis2(); });
 

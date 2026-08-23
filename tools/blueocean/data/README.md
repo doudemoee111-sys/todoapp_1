@@ -52,3 +52,25 @@ zone3,2000,5900
 `sku`, `listed_on`(YYYY-MM-DD), `observed_on`(YYYY-MM-DD), `views`, `watchers`, `sold`
 
 eBay Seller Hub のパフォーマンスレポートからエクスポートした値を想定しています。
+
+**このファイルは追記して育てます。** 毎週の行を足していけば、同じSKUの行が何本も並びます。
+ツールはSKUごとに最新の1行だけを判定対象にし、1つ前の行を前回比の計算に使います。
+古い行を消す必要はありません（消すと前回比が出なくなります）。
+
+```csv
+sku,listed_on,observed_on,views,watchers,sold
+LENS-002,2026-07-20,2026-08-16,118,3,0
+LENS-002,2026-07-20,2026-08-23,142,5,1
+```
+
+## history.jsonl（ツールが書きます）
+
+`axis1 --history data/history.jsonl` を付けると、その回の判定結果が1行1件で追記されます。
+**追記のみで、既存の行は書き換えません。** 次回の実行で「前回からの変化」を出す材料になります。
+
+```jsonl
+{"taken_on": "2026-08-23", "sku": "LENS-002", "verdict": "red", "competitor_count": 34, ...}
+```
+
+手で編集する必要はありません。壊れた行があっても、その行だけ落として続行します。
+`history --sku LENS-002` でそのSKUの推移を表示できます。

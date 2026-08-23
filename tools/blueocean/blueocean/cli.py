@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import argparse
 import sys
+import unicodedata
 
+from .history import ChangeKind, history_of, load_snapshots
 from .models import Market, SellerLevel, TaxProfile, Verdict
 from .pipeline import (
     load_candidates,
     load_observations,
     run_axis1,
+    run_axis1_with_history,
     run_axis2,
     write_listing_plan,
 )
@@ -34,6 +37,21 @@ _ICON = {
     Verdict.RED: "RED  ", Verdict.EXCLUDE: "EXCL ",
 }
 
+# 表示幅を揃えるため、すべて全角4文字にしてある
+_CHANGE_ICON = {
+    ChangeKind.DOWNGRADE: "判定悪化", ChangeKind.CAP_BREACH: "採算割れ",
+    ChangeKind.UPGRADE: "判定改善", ChangeKind.CAP_ROOM: "採算回復",
+    ChangeKind.COMPETITORS: "競合変動", ChangeKind.PRICE: "相場変動",
+    ChangeKind.NEW: "新規追加", ChangeKind.GONE: "候補消滅",
+}
+
+
+def _pad(text: str, width: int, *, right: bool = False) -> str:
+    """全角を2桁として揃える。日本語の見出しを含む表がずれるのを防ぐ。"""
+    w = sum(2 if unicodedata.east_asian_width(ch) in "WF" else 1 for ch in text)
+    fill = " " * max(0, width - w)
+    return fill + text if right else text + fill
+
 
 def _source(args):
     if args.ebay_client_id and args.ebay_client_secret:
@@ -50,8 +68,7 @@ def _rate_tables(args):
 
 def cmd_axis1(args) -> int:
     candidates = load_candidates(args.candidates)
-    scored = run_axis1(
-        candidates, _source(args),
+    kw = dict(
         market=Market(args.market),
         policy=ScoringPolicy(
             target_margin=args.target_margin,
@@ -61,7 +78,32 @@ def cmd_axis1(args) -> int:
         ),
         level=SellerLevel(args.level),
         tax=TaxProfile(is_taxable_entity=not args.no_tax_refund),
+        refresh=args.refresh,
     )
+    changes, stale = [], None
+    if args.history:
+        scored, changes, stale = run_axis1_with_history(
+            candidates, _source(args), args.history, record=not args.no_record, **kw
+        )
+    else:
+        scored = run_axis1(candidates, _source(args), **kw)
+
+    if stale:
+        print(f"\n[鮮度の警告] {stale}")
+
+    if args.history:
+        actionable = [c for c in changes if c.is_actionable]
+        others = [c for c in changes if not c.is_actionable]
+        print(f"\n=== 前回からの変化（{len(changes)}件 / うち要対応 {len(actionable)}件）===\n")
+        if not changes:
+            print("  変化なし。")
+        for c in actionable + others:
+            print(f"[{_CHANGE_ICON[c.kind]}] {c.sku:<12} {c.detail}")
+            if c.action:
+                print(f"             → {c.action}")
+        if args.changes_only:
+            return 0
+
     print(f"\n=== 軸1：出品候補の判定（{len(scored)}件）===\n")
     for s in scored:
         c = s.candidate
@@ -94,6 +136,9 @@ def cmd_axis2(args) -> int:
         print(f"[{d.action.value.upper():7}] {d.sku}  "
               f"{d.days_listed:>3}日 / 閲覧{d.views:>4} / ウォッチ{d.watchers:>3} / 販売{d.sold}")
         print(f"            {d.reason}")
+        if d.delta:
+            mark = "  ← 停滞" if d.delta.is_stalled else ""
+            print(f"            {d.delta.as_text()}{mark}")
     if alert:
         print(f"\n[警告] {alert}")
     return 0
@@ -178,6 +223,46 @@ def cmd_ship(args) -> int:
     return 0
 
 
+def cmd_history(args) -> int:
+    """1つのSKU、または全体の推移を表示する。"""
+    snaps = load_snapshots(args.history)
+    if not snaps:
+        print(f"履歴がありません（{args.history}）。"
+              f"axis1 に --history を付けて実行すると作られます。", file=sys.stderr)
+        return 1
+    if args.sku:
+        rows = history_of(snaps, args.sku)
+        if not rows:
+            print(f"SKU {args.sku} の履歴がありません。", file=sys.stderr)
+            return 1
+        print(f"\n=== {args.sku} の推移（{len(rows)}件）===\n")
+        print(f"{_pad('日付', 12)} {_pad('判定', 7)} {_pad('競合', 5, right=True)} "
+              f"{_pad('相場', 8, right=True)} {_pad('仕入上限', 10, right=True)} "
+              f"{_pad('利益率', 7, right=True)}")
+        for r in rows:
+            comp = f"{r.competitor_count:>5}" if r.competitor_count is not None else "    -"
+            price = f"${r.market_price_usd:>7.0f}" if r.market_price_usd else "       -"
+            margin = f"{r.margin*100:>6.1f}%" if r.margin is not None else "      -"
+            print(f"{r.taken_on:<12} {r.verdict.upper():<7} {comp} {price} "
+                  f"{r.max_cost_jpy:>10,.0f} {margin}")
+        return 0
+
+    dates = sorted({s.taken_on for s in snaps})
+    print(f"\n=== 履歴の概要 ===\n")
+    print(f"取得日: {len(dates)}回（{dates[0]} 〜 {dates[-1]}）")
+    print(f"SKU数 : {len({s.sku for s in snaps})}")
+    print(f"記録数: {len(snaps)}\n")
+    print("直近の取得日ごとの判定内訳:")
+    for d in dates[-5:]:
+        counts: dict[str, int] = {}
+        for s_ in snaps:
+            if s_.taken_on == d:
+                counts[s_.verdict] = counts.get(s_.verdict, 0) + 1
+        line = " / ".join(f"{k.upper()} {v}" for k, v in sorted(counts.items()))
+        print(f"  {d}  {line}")
+    return 0
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="blueocean", description="軸1＋軸2 統合ツール")
     p.add_argument("--market", default="ebay_us", choices=[m.value for m in Market])
@@ -197,7 +282,20 @@ def main(argv=None) -> int:
     a1 = sub.add_parser("axis1", help="出品候補を判定する")
     a1.add_argument("--candidates", required=True)
     a1.add_argument("--out", default=None)
+    a1.add_argument("--history", default=None,
+                    help="履歴JSONL。指定すると前回からの変化を出し、今回の結果を追記する")
+    a1.add_argument("--refresh", action="store_true",
+                    help="CSVに値があってもeBay側を取り直す（定期更新はこれを使う）")
+    a1.add_argument("--no-record", action="store_true",
+                    help="履歴に追記せず、差分の確認だけを行う")
+    a1.add_argument("--changes-only", action="store_true",
+                    help="変化だけを表示し、全件の判定は省く")
     a1.set_defaults(func=cmd_axis1)
+
+    hi = sub.add_parser("history", help="履歴を表示する")
+    hi.add_argument("--history", required=True)
+    hi.add_argument("--sku", default=None, help="指定するとそのSKUの推移を表示する")
+    hi.set_defaults(func=cmd_history)
 
     a2 = sub.add_parser("axis2", help="出品後の反応から次の一手を決める")
     a2.add_argument("--observations", required=True)
