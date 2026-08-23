@@ -110,7 +110,8 @@ def test_heavier_assumption_lowers_the_budget():
 def test_assumption_is_disclosed_in_the_note():
     """仮定であることを隠さない。現物が見つかったら実寸で引き直す。"""
     r = scan_one("A", src(A=(3, 200.0)), US, assume=Parcel(400, 20, 15, 10))
-    assert "仮定" in r.note
+    assert "仮定" in r.assumption
+    assert "400g" in r.assumption
 
 
 # --- 並び順と出力 -----------------------------------------------------------
@@ -193,3 +194,78 @@ def test_template_row_never_becomes_blue():
     assert s.verdict is Verdict.PROBE
     assert any("仕入値が未入力" in r for r in s.reasons)
     assert any("重量が未入力" in r for r in s.reasons)
+
+
+# --- ジャンル走査 -----------------------------------------------------------
+
+def test_genre_expands_into_narrow_queries():
+    """ジャンルは判定ではなく展開に使う。
+
+    "anime figure" のような広い語では、自分の1点が埋もれるかどうか分からない。
+    シリーズ×形態に掛け合わせて粒度を落として初めて競合数が意味を持つ。
+    """
+    from blueocean.discovery import GENRES, Mode
+
+    g = GENRES["anime_figure"]
+    qs = g.expand(Mode.SINGLE)
+    assert len(qs) == len(g.bases) * len(g.forms)
+    assert all(" " in q for q in qs)
+    assert "Gundam nendoroid" in qs
+
+
+def test_set_mode_expands_bundle_terms_only():
+    from blueocean.discovery import GENRES, Mode
+
+    g = GENRES["anime_figure"]
+    qs = g.expand(Mode.SET)
+    assert len(qs) == len(g.bases) * len(g.set_terms)
+    assert all(any(q.endswith(t) for t in g.set_terms) for q in qs)
+
+
+def test_expansion_is_deterministic():
+    """走査結果を前回と比較できるよう、生成順が毎回同じであること。"""
+    from blueocean.discovery import GENRES, Mode
+
+    g = GENRES["anime_figure"]
+    assert g.expand(Mode.BOTH) == g.expand(Mode.BOTH)
+
+
+def test_expansion_limit():
+    from blueocean.discovery import GENRES, Mode
+
+    assert len(GENRES["anime_figure"].expand(Mode.BOTH, limit=7)) == 7
+
+
+def test_genre_report_separates_set_slices():
+    from blueocean.discovery import Genre, Mode, scan_genre
+
+    g = Genre(key="t", label="テスト", bases=("X", "Y"),
+              forms=("figure",), set_terms=("lot",))
+    s = src(**{"X figure": (3, 200.0), "Y figure": (3, 200.0),
+               "X lot": (2, 300.0), "Y lot": (2, 300.0)})
+    rep = scan_genre(g, s, US, mode=Mode.BOTH)
+    assert len(rep.results) == 4
+    assert {r.keyword for r in rep.set_results} == {"X lot", "Y lot"}
+    assert {r.keyword for r in rep.single_results} == {"X figure", "Y figure"}
+    assert rep.total_listings == 10
+
+
+def test_genres_carry_their_own_cautions():
+    """ジャンル固有の規制を、走査の時点で必ず出せるようにしておく。"""
+    from blueocean.discovery import GENRES
+
+    assert any("bootleg" in c for c in GENRES["anime_figure"].cautions)
+    assert all(g.cautions for g in GENRES.values())
+
+
+def test_custom_genres_can_be_loaded(tmp_path):
+    import json
+
+    from blueocean.discovery import Mode, load_genres
+
+    p = tmp_path / "g.json"
+    p.write_text(json.dumps({"my": {"label": "自作", "bases": ["A"],
+                                    "forms": ["b"], "set_terms": ["lot"]}},
+                            ensure_ascii=False), encoding="utf-8")
+    g = load_genres(p)["my"]
+    assert g.expand(Mode.BOTH) == ["A b", "A lot"]

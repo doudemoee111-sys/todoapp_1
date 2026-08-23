@@ -202,6 +202,7 @@ ol.why code{font-size:12.5px;}
   <button role="tab" aria-selected="false" data-tab="ship">送料（重量・サイズ）</button>
   <button role="tab" aria-selected="false" data-tab="one">1件だけ判定</button>
   <button role="tab" aria-selected="false" data-tab="axis1">軸1：出品候補の判定</button>
+  <button role="tab" aria-selected="false" data-tab="bundle">セット販売</button>
   <button role="tab" aria-selected="false" data-tab="axis2">軸2：出品後の判定</button>
 </nav>
 
@@ -379,6 +380,51 @@ ol.why code{font-size:12.5px;}
   </div>
 </section>
 
+<!-- ============ セット販売 ============ -->
+<section class="panel" id="p-bundle">
+  <p class="hint">
+    まとめ売りが効くのは「比較されない」からだけではありません。<b>原価構造が変わります。</b>
+    注文・送料・梱包・注文ごと固定費が1回にまとまり、<b>とくに送料が1回で済むのが最大の効き目</b>です。
+    単価の低い商品ほど効きます。構成品を貼り付けると、個別に売った場合と並べて計算します。
+  </p>
+  <div class="split">
+    <div>
+      <div class="card">
+        <h2>構成品（CSV）</h2>
+        <textarea id="b-in" spellcheck="false"></textarea>
+        <p class="hint" style="margin-top:10px">
+          <code>solo_price_usd</code> を空にすると<b>「単品では売れない見込み」</b>として扱います。
+          死に筋を売れ筋に混ぜる効果を測るための区別です。
+        </p>
+        <div class="sgrid" style="grid-template-columns:1fr 1fr;">
+          <label>セットの想定売価（USD）<input type="number" id="b-price" value="110" step="5" min="0"></label>
+          <label>梱包後の実重量（g）<input type="number" id="b-g" value="1100" step="50" min="0"></label>
+        </div>
+        <div class="sgrid" style="grid-template-columns:1fr 1fr 1fr;">
+          <label>縦（cm）<input type="number" id="b-l" value="32" step="1" min="0"></label>
+          <label>横（cm）<input type="number" id="b-w" value="24" step="1" min="0"></label>
+          <label>高さ（cm）<input type="number" id="b-h" value="18" step="1" min="0"></label>
+        </div>
+        <div class="btnrow">
+          <button class="act" id="b-run">計算する</button>
+          <button class="ghost" id="b-reset">サンプルに戻す</button>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="kpi">
+        <div><span class="k">セットにすると</span><span class="v" id="b-delta">—</span><span class="n" id="b-delta-n"></span></div>
+        <div><span class="k">損益分岐のセット売価</span><span class="v" id="b-be">—</span><span class="n">これを下回るとセットにする意味がない</span></div>
+      </div>
+      <div class="tbl"><table>
+        <thead><tr><th>売り方</th><th class="n">注文</th><th class="n">売上</th><th class="n">送料</th><th class="n">利益</th><th class="n">利益率</th></tr></thead>
+        <tbody id="b-tbl"></tbody>
+      </table></div>
+      <div id="b-notes"></div>
+    </div>
+  </div>
+</section>
+
 <!-- ============ 軸2 ============ -->
 <section class="panel" id="p-axis2">
   <p class="hint">
@@ -422,7 +468,7 @@ ol.why code{font-size:12.5px;}
 
 <footer>
   <p>
-    Python版と同じ計算式を実装しています（テスト96件）。
+    Python版と同じ計算式を実装しています（テスト123件）。
     コード：<a href="https://github.com/doudemoee111-sys/todoapp_1/tree/claude/side-business-proposal-su9ie3/tools/blueocean">tools/blueocean</a>
   </p>
   <p>
@@ -1002,6 +1048,127 @@ function renderChanges(prev, cur){
       }).join("");
 }
 
+
+/* ===== セット販売（bundle.py と同一） =====
+   セット化が効く理由は「比較されない」だけではない。原価構造が変わる。
+     個別に5点売る → 注文5件・送料5回・注文ごと固定費5回・梱包5回
+     セットで売る   → すべて1回（ただし重量は合算される）
+   送料が1回で済むのが最大の効き目で、単価の低い商品ほど効く。
+   もう一つは死に筋の処理。単品では売れない在庫を売れ筋に混ぜる。 */
+function bundleShip(parcel, c){
+  const qs = quoteAll(parcel, c.zone);
+  if (!qs.length) return {jpy: c.ship, quotable: false, chg: parcel.g, byVol: false};
+  const q = c.carrier === "auto" ? qs[0] : (qs.find(x => x.carrier === c.carrier) || qs[0]);
+  return {jpy: q.jpy, quotable: true, chg: q.chg, byVol: q.byVolume};
+}
+
+function sellSeparately(items, c){
+  let rev=0, fees=0, duty=0, ship=0, pack=0, refund=0, profit=0, orders=0, dead=0;
+  const unsold = [];
+  for (const it of items){
+    if (!(it.solo > 0)){ unsold.push(it.name); dead += it.cost; continue; }
+    const s = bundleShip(parcelOf(it.g, it.l, it.w, it.h), c);
+    const b = compute(it.solo, it.cost, {...c, ship: s.jpy});
+    orders++; rev+=b.price; fees+=b.fees; duty+=b.duty; ship+=b.ship;
+    pack+=b.pack; refund+=b.refund; profit+=b.profit;
+  }
+  const cost = items.reduce((a,i)=>a+i.cost, 0);
+  /* 売れ残りの原価を引く。ここを引かないとセットとの比較が成立しない */
+  return {label:"個別に売る", orders, rev, fees, duty, ship, pack, cost, refund,
+          profit: profit - dead, unsold,
+          margin: rev ? (profit - dead)/rev : 0};
+}
+
+function sellAsBundle(items, setPrice, packParcel, c){
+  const s = bundleShip(packParcel, c);
+  const cost = items.reduce((a,i)=>a+i.cost, 0);
+  const b = compute(setPrice, cost, {...c, ship: s.jpy});
+  return {label:"セットで売る", orders:1, rev:b.price, fees:b.fees, duty:b.duty,
+          ship:b.ship, pack:b.pack, cost:b.cost, refund:b.refund, profit:b.profit,
+          unsold:[], margin:b.margin, quotable:s.quotable, chg:s.chg, byVol:s.byVol};
+}
+
+/* 個別売却と同じ利益を出すのに必要なセット売価。
+   P = (G + c + S + K + C − C·k) / (1 − f − d) */
+function breakevenSetPrice(items, packParcel, c){
+  const target = sellSeparately(items, c).profit;
+  const s = bundleShip(packParcel, c);
+  const cost = items.reduce((a,i)=>a+i.cost, 0);
+  const k = c.taxable ? 0.10/1.10 : 0;
+  const denom = 1 - effFee(c) - c.duty;
+  if (denom <= 0) return Infinity;
+  return Math.max(0, (target + c.per + s.jpy + c.pack + cost - cost*k) / denom / c.fx);
+}
+
+function runBundle(){
+  const c = cfg();
+  const items = parseCsv($("b-in").value).map(r => ({
+    name: r.name || "(名称なし)", cost: +r.cost_incl_tax_jpy || 0,
+    g: +r.weight_g || 0, l: +r.length_cm || 0, w: +r.width_cm || 0, h: +r.height_cm || 0,
+    solo: String(r.solo_price_usd || "").trim() === "" ? null : +r.solo_price_usd,
+  }));
+  const setPrice = +$("b-price").value || 0;
+  const packParcel = parcelOf($("b-g").value, $("b-l").value, $("b-w").value, $("b-h").value);
+  const usePack = packParcel.g > 0
+    ? packParcel
+    : parcelOf(items.reduce((a,i)=>a+i.g,0), 0, 0, 0);
+
+  if (!items.length){
+    $("b-tbl").innerHTML = '<tr><td colspan="6">構成品を貼り付けて「計算する」を押してください。</td></tr>';
+    $("b-notes").innerHTML = ""; return;
+  }
+
+  const sep = sellSeparately(items, c);
+  const bun = sellAsBundle(items, setPrice, usePack, c);
+  const be = breakevenSetPrice(items, usePack, c);
+  const soloTotal = items.reduce((a,i)=>a + (i.solo || 0), 0);
+  const delta = bun.profit - sep.profit;
+
+  $("b-delta").textContent = (delta >= 0 ? "＋" : "−") + yen(Math.abs(delta)) + " 円";
+  $("b-delta").className = "v" + (delta < 0 ? " warn" : "");
+  $("b-delta-n").textContent = `個別 ${yen(sep.profit)}円 → セット ${yen(bun.profit)}円`;
+  $("b-be").textContent = isFinite(be) ? "$" + Math.round(be).toLocaleString() : "—";
+  $("b-be").className = "v" + (setPrice < be ? " warn" : "");
+
+  $("b-tbl").innerHTML = [sep, bun].map(r =>
+    `<tr class="${r === bun ? 'hl' : ''}"><td>${r.label}</td>`
+    + `<td class="n">${r.orders}件</td><td class="n">${yen(r.rev)}</td>`
+    + `<td class="n">−${yen(r.ship)}</td><td class="n">${yen(r.profit)}</td>`
+    + `<td class="n">${(r.margin*100).toFixed(1)}%</td></tr>`).join("");
+
+  const notes = [];
+  if (sep.unsold.length) notes.push(
+    `単品では売れない見込みの品が ${sep.unsold.length}点（${sep.unsold.join("、")}）。セットに混ぜた時点で原価の回収が始まります。`);
+  if (!bun.quotable) notes.push(
+    `このセット（課金重量 ${bun.chg.toLocaleString()}g）に使える配送手段が料金表にありません。送料は固定値 ${yen(c.ship)}円 で計算しています。<b>実際はもっと高くなります。</b>点数を減らすか、クーリエの実額を入れてください。`);
+  else if (sep.ship - bun.ship > 0) notes.push(
+    `送料が ${sep.orders}回 → 1回 になり <b>${yen(sep.ship - bun.ship)}円</b> 浮きます。単価の低い品ほどこの効き目が大きくなります。`);
+  else notes.push(
+    `送料は減りません（個別 ${yen(sep.ship)}円 → セット ${yen(bun.ship)}円）。重量が合算されて段が上がっています。点数を減らすか、軽い品で組み直してください。`);
+  if (bun.byVol) notes.push(
+    `セットの送料は容積重量 ${bun.chg.toLocaleString()}g で課金されます（実重量 ${usePack.g}g）。箱を詰めれば直接効きます。`);
+  if (!(usePack.l > 0 && usePack.w > 0 && usePack.h > 0)) notes.push(
+    "セットの寸法が未入力です。まとめ売りは箱が大きくなり容積重量で課金されやすいので、実測値を入れて計算し直してください。");
+  if (soloTotal && setPrice > soloTotal) notes.push(
+    `セット売価 $${setPrice} が単品合計 $${soloTotal} を超えています。買い手はまとめ買いに割引を期待するので、この価格では動きません。`);
+  else if (soloTotal) notes.push(
+    `単品売価の合計は $${soloTotal}。いまの $${setPrice} は ${((1 - setPrice/soloTotal)*100).toFixed(0)}% の割引にあたります。`);
+  notes.push("セットは価格比較されない代わりに、<b>検索にもかかりにくくなります。</b>出品後は軸2で反応を見て、動かなければタイトルの語を組み直してください。");
+
+  $("b-notes").innerHTML =
+    (setPrice < be
+      ? `<div class="alert"><b>この価格ではセットにする意味がありません。</b>損益分岐は $${Math.round(be)} です。</div>`
+      : `<div class="ok-note">セット売価 $${setPrice} は損益分岐 $${Math.round(be)} を上回っています。</div>`)
+    + notes.map(n => `<div class="warnnote">${n}</div>`).join("");
+}
+
+const SAMPLE3 = `name,cost_incl_tax_jpy,weight_g,length_cm,width_cm,height_cm,solo_price_usd
+ねんどろいど（箱難あり）,1800,150,10,10,10,45
+figma（箱難あり）,1500,150,10,10,10,38
+一番くじ フィギュア,900,300,15,12,12,32
+アクリルスタンド 3点,500,60,15,10,2,
+クリアファイル・缶バッジ 詰め合わせ,300,120,22,16,2,`;
+
 /* ===== 軸2（promotion.py と同一） ===== */
 const ACT = {
   promote:{cls:"good", label:"PROMOTE", desc:"有在庫化する"},
@@ -1153,6 +1320,9 @@ $("carrier").addEventListener("change", refresh);
 ["o-title","o-cost","o-g","o-l","o-w","o-h","o-price","o-comp","o-demand"]
   .forEach(id => $(id).addEventListener("input", renderOne));
 $("a1-run").addEventListener("click", runAxis1);
+$("b-run").addEventListener("click", runBundle);
+$("b-reset").addEventListener("click", () => { $("b-in").value = SAMPLE3; runBundle(); });
+["b-price","b-g","b-l","b-w","b-h"].forEach(id => $(id).addEventListener("input", runBundle));
 $("a2-run").addEventListener("click", runAxis2);
 $("a1-save").addEventListener("click", () => {
   if (!LAST_AXIS1){ alert("先に「判定する」を押してください。"); return; }
@@ -1165,10 +1335,11 @@ $("a1-save").addEventListener("click", () => {
 $("a1-reset").addEventListener("click", () => { $("a1-in").value = SAMPLE1; runAxis1(); });
 $("a2-reset").addEventListener("click", () => { $("a2-in").value = SAMPLE2; runAxis2(); });
 
-function refresh(){ saveCfg(); renderCalc(); renderOne(); runAxis1(); }
+function refresh(){ saveCfg(); renderCalc(); renderOne(); runAxis1(); runBundle(); }
 
 if (!loadCfg()) fillProfileInputs();
 $("a1-in").value = SAMPLE1;
 $("a2-in").value = SAMPLE2;
-renderCalc(); renderOne(); runAxis1(); runAxis2();
+$("b-in").value = SAMPLE3;
+renderCalc(); renderOne(); runAxis1(); runBundle(); runAxis2();
 </script>

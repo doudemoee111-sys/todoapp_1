@@ -62,6 +62,7 @@ class KeywordResult:
     required_multiple: float
     shipping_jpy: float | None
     note: str
+    assumption: str = ""   # 送料の仮定。全件で同じ文言になるので note とは分けて持つ
 
     @property
     def is_hunt_worthy(self) -> bool:
@@ -159,17 +160,17 @@ def scan_one(
         # 競合ゼロは「空いている」と「誰も欲しがらない」の区別が付かない。
         # ここを OPEN と言い切ると、売れない在庫を探しに行くことになる。
         opening = Opening.PROBE
-        note = f"競合0件。空いているのか需要が無いのか判別できない。{assume_note}"
+        note = "競合0件。空いているのか需要が無いのか判別できない"
     elif n <= policy.open_max_competitors:
         opening = Opening.OPEN
-        note = f"競合 {n}件。値下げ圧力を受けにくい。{assume_note}"
+        note = f"競合 {n}件。値下げ圧力を受けにくい"
     else:
         opening = Opening.PROBE
-        note = f"競合 {n}件。空いてはいないが致命的でもない。{assume_note}"
+        note = f"競合 {n}件。空いてはいないが致命的でもない"
 
     return KeywordResult(
         keyword, opening, n, price, snap.low_price_usd, snap.high_price_usd,
-        cap, mult, ship, note,
+        cap, mult, ship, note, assume_note,
     )
 
 
@@ -219,3 +220,172 @@ def write_candidate_template(
                 r.competitor_count, "", "", "", "",
             ])
     return len(rows)
+
+
+# ---------------------------------------------------------------------------
+# ジャンル走査
+#
+# 「型番まで絞れ」と書いたのは、広いクエリでは競合数が判定に使えないため。
+# "anime figure" のような語は数万件が出るので、その数字を見ても
+# 自分の1点が埋もれるかどうかは分からない。
+#
+# だがジャンルから入りたいのは自然な要求で、実際そこからしか始められない。
+# そこで **ジャンルは判定ではなく展開に使う**。
+#
+#     ジャンル（アニメ・フィギュア）
+#         → シリーズ × 形態 の掛け合わせでクエリを生成
+#         → 生成したクエリを1本ずつ走査
+#         → 競合が薄いスライスだけが残る
+#
+# 広いクエリを1本投げるのではなく、狭いクエリを大量に投げて薄い場所を探す。
+# ---------------------------------------------------------------------------
+
+
+class Mode(str, Enum):
+    """展開の種類。"""
+    SINGLE = "single"  # 単品での出品を想定
+    SET = "set"        # まとめ売り・セット販売を想定
+    BOTH = "both"
+
+
+@dataclass(frozen=True)
+class Genre:
+    """ジャンル定義。クエリを生成するための語の集合。"""
+    key: str
+    label: str
+    bases: tuple[str, ...]      # シリーズ・ブランド・作家など、検索の主語
+    forms: tuple[str, ...]      # 形態・規格。主語に掛けて粒度を落とす
+    set_terms: tuple[str, ...]  # まとめ売りを表す語（英語圏の実際の言い回し）
+    cautions: tuple[str, ...] = ()  # このジャンル固有の規制・注意
+
+    def expand(self, mode: Mode = Mode.BOTH, *, limit: int | None = None) -> list[str]:
+        """クエリを生成する。順序は決定的（走査結果を前回と比較できるように）。"""
+        out: list[str] = []
+        if mode in (Mode.SINGLE, Mode.BOTH):
+            out += [f"{b} {f}" for b in self.bases for f in self.forms]
+        if mode in (Mode.SET, Mode.BOTH):
+            out += [f"{b} {t}" for b in self.bases for t in self.set_terms]
+        seen: set[str] = set()
+        uniq = [q for q in out if not (q in seen or seen.add(q))]
+        return uniq[:limit] if limit else uniq
+
+
+# 既定のジャンル。提案④で「大きく狙う」「ニッチ」として挙げたものに対応させてある。
+# 語は英語圏のバイヤーが実際に打つ言い回しに寄せる（軸4の考え方）。
+GENRES: dict[str, Genre] = {
+    "anime_figure": Genre(
+        key="anime_figure",
+        label="アニメ・フィギュア",
+        bases=(
+            "Gundam", "One Piece", "Dragon Ball", "Evangelion", "Sailor Moon",
+            "Jujutsu Kaisen", "Demon Slayer", "Macross", "Saint Seiya", "Pokemon",
+        ),
+        forms=(
+            "nendoroid", "figma", "scale figure", "prize figure",
+            "gunpla model kit", "ichiban kuji", "acrylic stand",
+        ),
+        set_terms=("figure lot", "goods bundle", "merchandise set", "job lot"),
+        cautions=(
+            "非正規品（bootleg）はeBayで禁止。仕入元の正規性を必ず確認すること",
+            "成人向けは各国の税関とeBayポリシーで問題になる。扱わない",
+            "電飾付き・電池内蔵は航空輸送規制の対象になりうる",
+        ),
+    ),
+    "vinyl": Genre(
+        key="vinyl",
+        label="レコード（和モノ・シティポップ）",
+        bases=(
+            "Tatsuro Yamashita", "Mariya Takeuchi", "Anri", "Toshiki Kadomatsu",
+            "Japanese city pop", "Japanese jazz", "anime soundtrack",
+        ),
+        forms=("LP obi", "7 inch single", "first press", "promo white label"),
+        set_terms=("vinyl lot", "record bundle"),
+        cautions=("盤面の状態表記（Goldmine grading）の記載漏れは返品に直結する",),
+    ),
+    "camera_lens": Genre(
+        key="camera_lens",
+        label="オールドレンズ・フィルムカメラ",
+        bases=("Nikon", "Canon", "Minolta", "Olympus", "Pentax", "Konica", "Yashica"),
+        forms=("manual focus lens", "rangefinder camera", "TLR camera", "film camera"),
+        set_terms=("camera lot", "lens bundle", "junk lot"),
+        cautions=("カビ・クモリ・ヘリコイドの状態を明記しないと返品率が跳ね上がる",),
+    ),
+    "trading_card": Genre(
+        key="trading_card",
+        label="トレーディングカード",
+        bases=("Pokemon", "Yu-Gi-Oh", "One Piece card game", "Weiss Schwarz"),
+        forms=("japanese sealed booster box", "promo card", "graded card"),
+        set_terms=("card lot", "binder collection"),
+        cautions=(
+            "未開封品の真贋トラブルが多い。仕入元を絞ること",
+            "高額カードは補償付きの配送手段を使う",
+        ),
+    ),
+}
+
+
+def load_genres(path: str | Path) -> dict[str, Genre]:
+    """独自のジャンル定義を読む（JSON）。既定に無いジャンルを足すための口。
+
+    形式:
+        {"my_genre": {"label": "...", "bases": [...], "forms": [...],
+                      "set_terms": [...], "cautions": [...]}}
+    """
+    import json
+
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    return {
+        k: Genre(
+            key=k, label=v.get("label", k),
+            bases=tuple(v.get("bases", ())), forms=tuple(v.get("forms", ())),
+            set_terms=tuple(v.get("set_terms", ())), cautions=tuple(v.get("cautions", ())),
+        )
+        for k, v in raw.items()
+    }
+
+
+@dataclass(frozen=True)
+class GenreReport:
+    """ジャンル走査の結果。"""
+    genre: Genre
+    mode: Mode
+    results: list[KeywordResult]
+
+    @property
+    def worthy(self) -> list[KeywordResult]:
+        return [r for r in self.results if r.is_hunt_worthy]
+
+    @property
+    def set_results(self) -> list[KeywordResult]:
+        """まとめ売り側のスライスだけを取り出す。"""
+        terms = self.genre.set_terms
+        return [r for r in self.results if any(r.keyword.endswith(t) for t in terms)]
+
+    @property
+    def single_results(self) -> list[KeywordResult]:
+        sets = {id(r) for r in self.set_results}
+        return [r for r in self.results if id(r) not in sets]
+
+    @property
+    def total_listings(self) -> int:
+        """走査したクエリの出品数の合計。ジャンルの厚みの目安にしかならない。"""
+        return sum(r.competitor_count for r in self.results)
+
+
+def scan_genre(
+    genre: Genre,
+    source: MarketDataSource,
+    profile: FeeProfile,
+    policy: ScanPolicy | None = None,
+    *,
+    mode: Mode = Mode.BOTH,
+    limit: int | None = None,
+    **kw,
+) -> GenreReport:
+    """ジャンルを展開して走査する。
+
+    **ジャンル全体の出品数は判定に使わない。** 使うのは展開したクエリ1本ずつの
+    競合数で、そこが薄い場所だけが探しに行く価値のあるスライスになる。
+    """
+    queries = genre.expand(mode, limit=limit)
+    return GenreReport(genre, mode, scan_all(queries, source, profile, policy, **kw))

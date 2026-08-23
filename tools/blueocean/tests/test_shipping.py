@@ -183,3 +183,18 @@ def test_operator_table_overrides_estimates(tmp_path):
     assert q.jpy == 5900
     assert q.provenance is Provenance.OPERATOR
     assert not any("推定値" in w for w in q.warnings)
+
+
+def test_rounding_is_half_up_to_match_the_browser():
+    """円への丸めは half-up。Pythonの round() は偶数丸めなので使わない。
+
+    ちょうど .5 になる料金（eパケットの倍率換算で実際に出る）で1円ずれ、
+    その差が利益計算まで伝播する。ブラウザ版は Math.round（half-up）。
+    """
+    from blueocean.shipping import _round_jpy
+
+    assert _round_jpy(1182.5) == 1183   # round() なら 1182 になる
+    assert _round_jpy(1183.5) == 1184
+    assert _round_jpy(1182.4) == 1182
+    # 第2地帯のeパケット（2150 × 0.55 = 1182.5）で実際に踏む
+    assert estimate(Parcel(400), Zone.ZONE2, Carrier.EPACKET).jpy == 1183

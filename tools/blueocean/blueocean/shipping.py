@@ -297,6 +297,16 @@ def _check_dimensions(parcel: Parcel, carrier: Carrier) -> None:
         raise OverSize(f"{carrier.value}: 三辺計 {parcel.sum_dims_cm:.0f}cm が上限 {total:.0f}cm を超過")
 
 
+def _round_jpy(x: float) -> int:
+    """円に丸める。**half-up で丸める**（Pythonの round() は偶数丸めなので使わない）。
+
+    ブラウザ版は Math.round（half-up）なので、Pythonが偶数丸めのままだと
+    ちょうど .5 になる料金で1円ずれ、その差が利益計算まで伝播する。
+    実際 eパケットの倍率換算で 1182.5 のような値が出る。
+    """
+    return int(math.floor(x + 0.5))
+
+
 class RateTableMissing(LookupError):
     """料金表が無い地帯を引いたときのエラー。別地帯の値で代用しない。"""
 
@@ -334,7 +344,7 @@ def estimate(
     if rb is None:
         raise ValueError(f"料金表の上限 {table.max_weight_g}g を超過（課金重量 {chargeable}g）")
 
-    jpy = round(rb.jpy * _CARRIER_FACTOR[carrier])
+    jpy = _round_jpy(rb.jpy * _CARRIER_FACTOR[carrier])
     prov = rb.provenance
     if _CARRIER_FACTOR[carrier] != 1.0 and prov is not Provenance.OPERATOR:
         prov = Provenance.INTERPOLATED  # 倍率換算した時点で推定値になる

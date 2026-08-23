@@ -10,11 +10,17 @@ import argparse
 import sys
 import unicodedata
 
+from .bundle import compare as compare_bundle
+from .bundle import load_items
 from .discovery import (
+    GENRES,
+    Mode,
     Opening,
     ScanPolicy,
+    load_genres,
     load_keywords,
     scan_all,
+    scan_genre,
     scan_one,
     write_candidate_template,
 )
@@ -273,41 +279,94 @@ def _policy(args) -> ScoringPolicy:
     )
 
 
+def _genres(args) -> dict:
+    g = dict(GENRES)
+    if args.genre_file:
+        g.update(load_genres(args.genre_file))
+    return g
+
+
 def cmd_scan(args) -> int:
     """キーワード空間を走査し、eBayに出ていない型番を洗い出す。
 
     候補リストを前提にしないので、「リストに無いものは見つからない」問題が起きない。
+    ジャンルを指定した場合は、シリーズ×形態に展開してから走査する。
     """
-    keywords = load_keywords(args.keywords) if args.keywords else args.keyword
-    if not keywords:
-        print("--keywords か --keyword を指定してください。", file=sys.stderr)
-        return 1
+    if args.list_genres:
+        print("\n=== 使えるジャンル ===\n")
+        for k, g in _genres(args).items():
+            print(f"  {k:<14} {g.label}")
+            print(f"                 展開後 {len(g.expand(Mode.BOTH))}クエリ"
+                  f"（単品 {len(g.expand(Mode.SINGLE))} / セット {len(g.expand(Mode.SET))}）")
+        return 0
+
+    genre = None
+    if args.genre:
+        gs = _genres(args)
+        if args.genre not in gs:
+            print(f"ジャンル {args.genre} は未定義です。--list-genres で一覧を見てください。",
+                  file=sys.stderr)
+            return 1
+        genre = gs[args.genre]
+        keywords = None
+    else:
+        keywords = load_keywords(args.keywords) if args.keywords else args.keyword
+        if not keywords:
+            print("--keywords / --keyword / --genre のいずれかを指定してください。",
+                  file=sys.stderr)
+            return 1
 
     market = Market(args.market)
     assume = Parcel(args.assume_weight_g, args.assume_length_cm,
                     args.assume_width_cm, args.assume_height_cm)
-    results = scan_all(
-        keywords, _source(args), DEFAULT_PROFILES[market],
-        ScanPolicy.from_scoring(_policy(args)),
+    common = dict(
+        policy=ScanPolicy.from_scoring(_policy(args)),
         level=SellerLevel(args.level),
         tax=TaxProfile(is_taxable_entity=not args.no_tax_refund),
         assume=assume,
     )
 
+    if genre is not None:
+        report = scan_genre(
+            genre, _source(args), DEFAULT_PROFILES[market],
+            common.pop("policy"), mode=Mode(args.mode), limit=args.limit, **common,
+        )
+        results = report.results
+        print(f"\n=== ジャンル走査：{genre.label} ===")
+        print(f"\n展開したクエリ {len(results)}本（{args.mode}）。"
+              f"ジャンル全体の出品数は {report.total_listings:,}件ですが、"
+              f"**この数字は判定に使えません**。")
+        print("広い語では自分の1点が埋もれるかどうか分からないので、"
+              "掛け合わせて粒度を落としたクエリ1本ずつの競合数を見ます。")
+        for c in genre.cautions:
+            print(f"\n  [このジャンルの注意] {c}")
+        if report.set_results:
+            sw = [r for r in report.set_results if r.is_hunt_worthy]
+            print(f"\n  まとめ売り側のスライス {len(report.set_results)}本 "
+                  f"（うち探す価値あり {len(sw)}本）。"
+                  f"採算は bundle サブコマンドで確かめてください。")
+    else:
+        results = scan_all(
+            keywords, _source(args), DEFAULT_PROFILES[market], **common
+        )
+
     worthy = [r for r in results if r.is_hunt_worthy]
-    print(f"\n=== キーワード走査（{len(results)}件 / 探す価値あり {len(worthy)}件）===")
+    print(f"\n=== 走査結果（{len(results)}件 / 探す価値あり {len(worthy)}件）===")
     print(f"送料の仮定: {assume.weight_g}g"
           f"{f' / {assume.length_cm:.0f}x{assume.width_cm:.0f}x{assume.height_cm:.0f}cm' if assume.has_dimensions else '（寸法なし）'}\n")
     print(f"{_pad('', 8)}{_pad('競合', 6, right=True)} {_pad('相場', 9, right=True)} "
           f"{_pad('仕入上限', 11, right=True)} {_pad('倍率', 7, right=True)}  キーワード")
-    for r in results:
+    shown = results if args.all else results[:args.top]
+    for r in shown:
         price = f"${r.median_price_usd:>7.0f}" if r.median_price_usd else "        -"
         cap = f"{r.max_cost_jpy:>10,.0f}円" if r.max_cost_jpy else "         -"
         mult = f"{r.required_multiple:>6.2f}倍" if r.required_multiple != float("inf") else "      -"
         print(f"[{_OPENING_ICON[r.opening]}]{r.competitor_count:>6} {price} {cap} {mult}  {r.keyword}")
+    if len(shown) < len(results):
+        print(f"  … 他 {len(results) - len(shown)}件（--all で全件、--top N で件数指定）")
 
     print("\n--- 探す価値がある上位 ---")
-    for r in worthy[:10]:
+    for r in worthy[:8]:
         print(f"  {r.keyword}")
         print(f"    予算 {r.max_cost_jpy:,.0f}円まで（この額を超える値札は、その場で見送れる）")
         print(f"    {r.note}")
@@ -375,6 +434,60 @@ def cmd_check(args) -> int:
             print(f"    {_pad(k, 10)} {v:>12}")
     for w in s_.shipping_warnings:
         print(f"\n  [送料の注意] {w}")
+    return 0
+
+
+def cmd_bundle(args) -> int:
+    """セット販売（まとめ売り）の採算を、個別売却と並べて出す。"""
+    items = load_items(args.items)
+    if not items:
+        print("構成品がありません。", file=sys.stderr)
+        return 1
+
+    packing = None
+    if args.pack_weight_g:
+        packing = Parcel(args.pack_weight_g, args.pack_length_cm,
+                         args.pack_width_cm, args.pack_height_cm)
+    profile = DEFAULT_PROFILES[Market(args.market)]
+    c = compare_bundle(
+        items, args.set_price, profile,
+        packing=packing, extra_weight_g=args.extra_weight_g,
+        fx_jpy_per_usd=150.0, level=SellerLevel(args.level),
+        tax=TaxProfile(is_taxable_entity=not args.no_tax_refund),
+        tables=_rate_tables(args),
+        carrier=Carrier(args.carrier) if args.carrier else None,
+    )
+
+    print(f"\n=== セット販売の採算（{len(items)}点 / {args.market}）===\n")
+    print(f"{_pad('構成品', 34)}{_pad('仕入', 10, right=True)}"
+          f"{_pad('重量', 8, right=True)}{_pad('単品相場', 11, right=True)}")
+    for it in items:
+        solo = f"${it.solo_price_usd:>7.0f}" if it.sells_alone else "  単品不可"
+        print(f"{_pad(it.name, 34)}{it.cost_incl_tax_jpy:>9,.0f}円"
+              f"{it.weight_g:>6,}g {solo:>10}")
+
+    print()
+    keys = list(c.separate.as_row().keys())
+    print(f"{_pad('', 12)}" + "".join(_pad(k, 11, right=True) for k in keys))
+    for res in (c.separate, c.bundled):
+        row = res.as_row()
+        print(f"{_pad(res.label, 12)}"
+              + "".join(_pad(f"{v:,}" if isinstance(v, (int, float)) else str(v), 11, right=True)
+                        for v in row.values()))
+
+    sign = "＋" if c.delta_profit_jpy >= 0 else "−"
+    print(f"\n  セットにすると利益が {sign}{abs(c.delta_profit_jpy):,.0f}円")
+    print(f"  損益分岐のセット売価  ${c.breakeven_usd:,.0f}"
+          f"（これを下回るならセットにする意味がない）")
+    if c.solo_total_usd:
+        d = c.discount_vs_solo or 0.0
+        print(f"  単品売価の合計        ${c.solo_total_usd:,.0f}"
+              f"（いまの ${c.set_price_usd:,.0f} は {d*100:+.0f}% の割引）")
+    print(f"  判定                  {'セットにする価値あり' if c.worth_bundling else 'セットにする意味がない'}")
+
+    print()
+    for n in c.notes:
+        print(f"  - {n}")
     return 0
 
 
@@ -455,7 +568,27 @@ def main(argv=None) -> int:
     sc.add_argument("--assume-length-cm", type=float, default=0.0)
     sc.add_argument("--assume-width-cm", type=float, default=0.0)
     sc.add_argument("--assume-height-cm", type=float, default=0.0)
+    sc.add_argument("--genre", default=None,
+                    help="ジャンルを展開して走査する（--list-genres で一覧）")
+    sc.add_argument("--genre-file", default=None, help="独自のジャンル定義JSON")
+    sc.add_argument("--list-genres", action="store_true")
+    sc.add_argument("--mode", default="both", choices=[m.value for m in Mode],
+                    help="single=単品 / set=まとめ売り / both")
+    sc.add_argument("--limit", type=int, default=None, help="展開するクエリ数の上限")
+    sc.add_argument("--top", type=int, default=25, help="表示件数")
+    sc.add_argument("--all", action="store_true", help="全件表示する")
     sc.set_defaults(func=cmd_scan)
+
+    bu = sub.add_parser("bundle", help="セット販売の採算を個別売却と並べる")
+    bu.add_argument("--items", required=True, help="構成品CSV")
+    bu.add_argument("--set-price", type=float, required=True, help="セットの想定売価（USD）")
+    bu.add_argument("--pack-weight-g", type=int, default=0, help="梱包後のセット全体の実重量")
+    bu.add_argument("--pack-length-cm", type=float, default=0.0)
+    bu.add_argument("--pack-width-cm", type=float, default=0.0)
+    bu.add_argument("--pack-height-cm", type=float, default=0.0)
+    bu.add_argument("--extra-weight-g", type=int, default=0,
+                    help="梱包材の重量（実測を渡さない場合の上乗せ）")
+    bu.set_defaults(func=cmd_bundle)
 
     ck = sub.add_parser("check", help="1件だけをその場で判定する")
     ck.add_argument("--title", required=True, help="eBayでの検索語（英語）")

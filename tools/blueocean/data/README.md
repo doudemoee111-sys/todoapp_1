@@ -1,6 +1,7 @@
 # データファイル
 
 - `keywords.sample.txt` — `scan`（キーワード走査）の入力サンプル
+- `bundle.sample.csv` — `bundle`（セット販売の採算）の入力サンプル
 - `candidates.sample.csv` — 軸1の入力サンプル（国内の仕入候補）
 - `observations.sample.csv` — 軸2の入力サンプル（出品後の反応）
 
@@ -19,6 +20,19 @@ Nikon Ai-s 50mm F1.2
 ```
 
 一度作れば資産として残ります。100〜500行あれば毎週の走査に足ります。
+
+## bundle.csv の列
+
+| 列 | 必須 | 内容 |
+|---|---|---|
+| `name` | ○ | 構成品の名前 |
+| `cost_incl_tax_jpy` | ○ | 仕入価格（税込） |
+| `weight_g` | ○ | 実重量 |
+| `length_cm` / `width_cm` / `height_cm` | | 寸法 |
+| `solo_price_usd` | | 単品で出したときの想定売価。**空にすると「単品では売れない見込み」** |
+
+`solo_price_usd` を空にした品は、売上が立たず原価だけが残る計算になります。
+死に筋を売れ筋に混ぜる効果を測るための区別です。
 
 ## candidates.csv の列
 
