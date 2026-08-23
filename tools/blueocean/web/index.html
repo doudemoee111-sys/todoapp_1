@@ -112,6 +112,9 @@ p.hint{font-size:13px;color:var(--muted);margin:0 0 14px;max-width:74ch;}
 .item .st{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted);white-space:nowrap;}
 .item ul{margin:7px 0 0;padding-left:1.15em;display:flex;flex-direction:column;gap:3px;}
 .item li{font-size:12.5px;color:var(--ink-2);line-height:1.6;}
+.item .flip{margin-top:8px;padding-top:8px;border-top:1px dashed var(--rule);
+  font-size:12.5px;color:var(--accent-ink);}
+.item .shots-links{flex-direction:row;gap:14px;margin-top:7px;}
 .i-blue{border-left-color:var(--blue);} .b-blue{background:var(--blue-bg);color:var(--accent-ink);border:1px solid var(--blue);}
 .i-probe{border-left-color:var(--probe);} .b-probe{background:var(--probe-bg);color:var(--probe);border:1px solid var(--probe);}
 .i-thin{border-left-color:var(--thin);} .b-thin{background:var(--thin-bg);color:var(--thin);border:1px solid var(--thin);}
@@ -151,6 +154,24 @@ ol.why{margin:6px 0 0;padding-left:1.25em;color:var(--ink-2);font-size:14px;line
 ol.why li{margin-bottom:10px;}
 ol.why li:last-child{margin-bottom:0;}
 ol.why code{font-size:12.5px;}
+/* 写真 */
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-top:12px;}
+.pslot{display:flex;gap:11px;border:1px solid var(--rule);border-radius:4px;
+  background:var(--surface);padding:10px;align-items:flex-start;}
+.pslot img{width:64px;height:64px;object-fit:cover;border-radius:3px;flex:none;background:var(--surface-2);}
+.pslot .ph{width:64px;height:64px;flex:none;border:1px dashed var(--rule);border-radius:3px;
+  display:grid;place-items:center;font-size:10px;color:var(--muted);text-align:center;}
+.pmeta{min-width:0;display:flex;flex-direction:column;gap:4px;}
+.pname{font-size:12.5px;font-weight:700;overflow-wrap:anywhere;}
+.shots-links{display:flex;flex-direction:column;gap:2px;}
+.shots-links a{font-size:11px;color:var(--accent);text-decoration:none;}
+.shots-links a:hover{text-decoration:underline;}
+.pbtn{display:inline-block;font-size:11px;color:var(--muted);border:1px solid var(--rule);
+  border-radius:3px;padding:3px 9px;cursor:pointer;align-self:flex-start;margin-top:2px;}
+.pbtn:hover{color:var(--accent);border-color:var(--accent);}
+.pdel{font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;
+  padding:0;text-align:left;align-self:flex-start;text-decoration:underline;font-family:inherit;}
+
 /* 設定バー・トースト */
 .settings summary{display:flex;align-items:baseline;gap:12px;}
 .sumline{font-family:"IBM Plex Mono",monospace;font-size:11.5px;font-weight:400;color:var(--muted);
@@ -180,7 +201,8 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
 .steps .no{font-family:"IBM Plex Mono",monospace;font-size:13px;font-weight:600;
   width:28px;height:28px;border-radius:50%;display:grid;place-items:center;
   background:var(--accent-soft);color:var(--accent-ink);}
-.steps .bd2 b{display:block;font-size:14.5px;color:var(--ink);margin-bottom:4px;}
+/* 先頭の <b> だけが見出し。文中の強調は行内のままにする */
+.steps .bd2 > b:first-child{display:block;font-size:14.5px;color:var(--ink);margin-bottom:4px;}
 .steps .bd2{font-size:13.5px;line-height:1.8;color:var(--ink-2);}
 .steps .bd2 em{font-style:normal;color:var(--muted);font-size:12.5px;display:block;margin-top:5px;}
 .termlist{border:1px solid var(--rule);border-radius:4px;background:var(--surface);overflow:hidden;max-width:none;}
@@ -385,6 +407,108 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
   <b>EMSが逆にいちばん安くなる</b>ことがあります。固定送料では見えない逆転です。
 </p>
 
+<h2>軸1の判定は、何を基準に変わるのか</h2>
+<p>
+  判定を動かす変数は<b>3つだけ</b>です。そして<b>自分で動かせるのは仕入値だけ</b>です。
+  競合数と相場は他人が決めます。
+</p>
+
+<figure>
+  <svg viewBox="0 0 900 250" role="img"
+       aria-label="軸1の判定は、仕入値・競合数・相場の3つの変数で決まる。仕入値だけが自分で動かせる。前提条件と重量寸法は送料を通じて全候補に同時に効く。">
+    <defs>
+      <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+      </marker>
+    </defs>
+
+    <text x="16" y="26" font-size="10.5" font-weight="700" fill="currentColor" opacity=".5" letter-spacing="1.5">自分で動かせる</text>
+    <rect x="16" y="38" width="200" height="50" rx="3" fill="none" stroke="var(--accent)" stroke-width="2"/>
+    <text x="116" y="60" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent)">仕入値</text>
+    <text x="116" y="77" text-anchor="middle" font-size="10.5" fill="var(--accent)" opacity=".8">安く買えば判定は良くなる</text>
+
+    <text x="16" y="120" font-size="10.5" font-weight="700" fill="currentColor" opacity=".5" letter-spacing="1.5">他人が決める</text>
+    <rect x="16" y="132" width="200" height="46" rx="3" fill="none" stroke="currentColor" stroke-width="1"/>
+    <text x="116" y="152" text-anchor="middle" font-size="12.5" font-weight="700" fill="currentColor">競合の出品数</text>
+    <text x="116" y="168" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".65">増えれば RED に落ちる</text>
+
+    <rect x="16" y="188" width="200" height="46" rx="3" fill="none" stroke="currentColor" stroke-width="1"/>
+    <text x="116" y="208" text-anchor="middle" font-size="12.5" font-weight="700" fill="currentColor">eBayの相場</text>
+    <text x="116" y="224" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".65">下がれば仕入上限も下がる</text>
+
+    <line x1="216" y1="63" x2="330" y2="120" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#ar2)"/>
+    <line x1="216" y1="155" x2="330" y2="137" stroke="currentColor" stroke-width="1" marker-end="url(#ar2)"/>
+    <line x1="216" y1="211" x2="330" y2="152" stroke="currentColor" stroke-width="1" marker-end="url(#ar2)"/>
+
+    <rect x="336" y="112" width="150" height="52" rx="3" fill="none" stroke="var(--accent)" stroke-width="2"/>
+    <text x="411" y="134" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent)">判定</text>
+    <text x="411" y="152" text-anchor="middle" font-size="10.5" fill="var(--accent)" opacity=".8">BLUE / PROBE / THIN / RED</text>
+
+    <line x1="486" y1="138" x2="536" y2="138" stroke="currentColor" stroke-width="1" marker-end="url(#ar2)"/>
+    <rect x="542" y="112" width="180" height="52" rx="3" fill="none" stroke="currentColor" stroke-width="1" opacity=".8"/>
+    <text x="632" y="134" text-anchor="middle" font-size="12.5" font-weight="700" fill="currentColor">↕ 何が変われば裏返るか</text>
+    <text x="632" y="152" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".65">各カードの下に出ます</text>
+
+    <rect x="336" y="24" width="386" height="52" rx="3" fill="none" stroke="var(--probe)"
+          stroke-width="1.4" stroke-dasharray="5 3"/>
+    <text x="529" y="45" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--probe)">前提条件（為替・関税・手数料・セラーレベル・目標利益率）</text>
+    <text x="529" y="63" text-anchor="middle" font-size="10.5" fill="var(--probe)" opacity=".85">＋ 重量と寸法（送料を通じて）── 全候補に同時に効く</text>
+    <line x1="411" y1="76" x2="411" y2="106" stroke="var(--probe)" stroke-width="1.4"
+          stroke-dasharray="5 3" marker-end="url(#ar2)"/>
+
+    <text x="742" y="45" font-size="10.5" fill="currentColor" opacity=".5">前提を1つ変えると</text>
+    <text x="742" y="61" font-size="10.5" fill="currentColor" opacity=".5">全件の判定が動きます</text>
+  </svg>
+  <figcaption>
+    候補<b>そのもの</b>が入れ替わるのは、候補CSVを差し替えたときだけです。<br>
+    同じCSVでも、上の変数が動けば判定は変わります。
+  </figcaption>
+</figure>
+
+<h3>各カードの「↕」を見てください</h3>
+<p>
+  判定の下に、<b>何がどう変われば裏返るか</b>を1行で出しています。
+</p>
+<div class="termlist">
+  <div><span class="t">BLUE のとき</span><span class="d">競合があと◯件増えると見送り／相場が $◯ まで下がると採算割れ</span></div>
+  <div><span class="t">THIN のとき</span><span class="d"><b>仕入をあと◯円下げれば採算に乗る</b>（値切り交渉の目標額になります）</span></div>
+  <div><span class="t">RED のとき</span><span class="d">競合が◯件以下に減れば再評価。ただし競合数は自分では動かせない</span></div>
+  <div><span class="t">PROBE のとき</span><span class="d">需要の裏付けが取れれば BLUE。少量で出して軸2で確かめる</span></div>
+</div>
+
+<h3>前回からどう変わったかを見る</h3>
+<p>
+  軸1タブの「今回の結果を記録する」を押しておくと、次に判定したときに
+  <b>前回からの変化だけ</b>が上に出ます（BLUE→RED、採算割れ、競合の急増、相場の下落）。
+  競合数と相場は毎日動くので、判定結果には賞味期限があります。
+  1週間空いたら「前回の記録から◯日経っています」と警告します。
+</p>
+
+<h2>商品の写真をどう確かめるか</h2>
+<p>
+  <b>型番が同じでも、世代違い・マイナーチェンジ違いがあります。</b>
+  買ってから気づいたのでは遅いので、探しに行く前に見た目を確かめてください。
+  とくに<b>セット販売は「何が入っているか」で値段が決まる</b>ので、写真が要ります。
+</p>
+<div class="termlist">
+  <div><span class="t">このページ</span><span class="d">
+    各カードの<b>「出品中の写真を見る ↗」「落札済みの写真と価格 ↗」</b>から
+    eBayの検索結果を開けます。実物の写真と、実際に売れた価格がそこで見られます。<br>
+    <b>このページ自体にはeBayの写真を表示できません。</b>
+    公開ページは外部サイトへの画像リクエストを遮断する仕組みの上で動いているためです。
+  </span></div>
+  <div><span class="t">自分で撮った写真</span><span class="d">
+    「1件だけ判定」と「セット販売」では<b>手元の写真を貼れます。</b>
+    端末内で縮小してこの端末にだけ保存します（サーバーには送りません）。
+    セットの構成品を撮っておくと、出品文を書くときにそのまま使えます。
+  </span></div>
+  <div><span class="t">Python版</span><span class="d">
+    <code>--sheet</code> を付けると、<b>eBayの商品写真つきの照合シート（HTML）</b>を
+    書き出します。印刷して持って行くか、スマホで開いて店頭で照合する使い方です。
+    ローカルのファイルなので画像の制約がかかりません。
+  </span></div>
+</div>
+
 <h2>用語</h2>
 <div class="termlist">
   <div><span class="t">BLUE</span><span class="d">競合が少なく、需要の裏付けもある。最優先で出す</span></div>
@@ -555,6 +679,7 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
         <div><span class="k">この値札まで買える</span><span class="v" id="o-cap">—</span><span class="n" id="o-cap-n"></span></div>
       </div>
       <div class="res" id="o-out"></div>
+      <div class="pgrid" id="o-photos" style="margin-bottom:14px"></div>
       <div class="card">
         <h2>損益の内訳</h2>
         <div class="bd" id="o-bd"></div>
@@ -685,6 +810,12 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
         <thead><tr><th>売り方</th><th class="n">注文</th><th class="n">売上</th><th class="n">送料</th><th class="n">利益</th><th class="n">利益率</th></tr></thead>
         <tbody id="b-tbl"></tbody>
       </table></div>
+      <h3 style="margin:22px 0 4px;font-size:15px">構成品の写真</h3>
+      <p class="hint" style="margin:0">
+        <b>セットは「何が入っているか」で値段が決まります。</b>探すときも売るときも写真が要ります。
+        eBayのリンクから実物の写真を確認でき、手元の写真を貼っておくこともできます（この端末にだけ保存されます）。
+      </p>
+      <div class="pgrid" id="b-photos"></div>
       <div id="b-notes"></div>
     </div>
   </div>
@@ -733,7 +864,7 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
 
 <footer>
   <p>
-    Python版と同じ計算式を実装しています（テスト145件）。
+    Python版と同じ計算式を実装しています（テスト165件）。
     コード：<a href="https://github.com/doudemoee111-sys/todoapp_1/tree/claude/side-business-proposal-su9ie3/tools/blueocean">tools/blueocean</a>
   </p>
   <p>
@@ -1028,6 +1159,27 @@ const VERDICT = {
   excl:{cls:"dim",  label:"EXCL",  desc:"対象外"},
 };
 
+function flipHint(verdict, n, demand, costRoom, floorPrice){
+  if (verdict === "blue"){
+    const p = [];
+    if (n !== null && n !== undefined) p.push(`競合があと${POLICY.redMin - n}件増えると見送り`);
+    if (floorPrice) p.push(`相場が $${floorPrice.toFixed(0)} まで下がると採算割れ`);
+    return p.join("／") || "余裕あり";
+  }
+  if (verdict === "thin")
+    return `仕入をあと ${yen(Math.abs(costRoom))}円 下げれば採算に乗る`
+         + (floorPrice ? `／相場が $${floorPrice.toFixed(0)} 以上に戻っても同じ` : "");
+  if (verdict === "red")
+    return `競合が ${POLICY.redMin - 1}件以下に減れば再評価。ただし競合数は自分では動かせない`;
+  if (verdict === "probe"){
+    if (!demand) return "需要の裏付けが取れれば BLUE。少量で出して軸2で確かめる";
+    if (n !== null && n !== undefined && n > POLICY.blueMax)
+      return `競合が ${POLICY.blueMax}件以下に減れば BLUE`;
+    return "需要が確定すれば BLUE";
+  }
+  return "";
+}
+
 function scoreOne(r, c){
   const reasons = [];
   const out = v => ({verdict:v, score:0, reasons, row:r, profit:null, cap:0});
@@ -1070,10 +1222,13 @@ function scoreOne(r, c){
   /* 走査の雛形は仕入値が空。0を「タダで買える」と解釈すると必ずBLUEになる */
   const costUnknown = cost <= 0;
   if (costUnknown) reasons.push("仕入値が未入力。判定は相場と競合だけに基づく暫定値");
-  if (!costUnknown && cost > cap){
+  if (cost > cap && !costUnknown){
     reasons.push(`採算割れ：仕入 ${yen(cost)}円 が上限 ${yen(cap)}円 を ${yen(cost-cap)}円 超過`
       + `（実績利益率 ${(profit.margin*100).toFixed(1)}%）`);
-    return {verdict:"thin", score:0, reasons, row:r, profit, cap};
+    const fp = listPriceForMargin(cost, c.target, cc, cc.ship);
+    return {verdict:"thin", score:0, reasons, row:r, profit, cap,
+            /* THIN の文言は競合・需要を使わない（採算だけで決まる） */
+            flip: flipHint("thin", null, false, cap - cost, isFinite(fp) ? fp : null)};
   }
 
   const nRaw = r.competitor_count;
@@ -1084,7 +1239,8 @@ function scoreOne(r, c){
   if (n === null){ reasons.push("競合数が未入力のため PROBE に分類"); verdict = "probe"; }
   else if (n >= POLICY.redMin){
     reasons.push(`競合 ${n}件。価格競争に巻き込まれるため見送り`);
-    return {verdict:"red", score:0, reasons, row:r, profit, cap};
+    return {verdict:"red", score:0, reasons, row:r, profit, cap,
+            flip: flipHint("red", n, demand, cap - cost, null)};
   }
   else if (n === 0 && !demand){
     reasons.push("競合0件だが需要の裏付けが無い。少量で反応を試す（軸2へ）");
@@ -1102,13 +1258,19 @@ function scoreOne(r, c){
   if (w <= 0) reasons.push("重量が未入力。送料は最小重量帯の概算");
   if (demand && r.demand_note) reasons.push("需要の裏付け：" + r.demand_note);
 
+  /* 何がこの判定を分けているか（scoring.py の _flip_hint と同一）。
+     判定を動かす変数は3つしかない：仕入値・競合数・相場。
+     このうち自分で動かせるのは仕入値だけなので、そこを優先して書く。 */
+  const floorPrice = listPriceForMargin(cost, c.target, cc, cc.ship);
+  const flip = flipHint(verdict, n, demand, cap - cost, isFinite(floorPrice) ? floorPrice : null);
+
   const score = Math.max(0,
       Math.min(profit.margin / (c.target || .2), 2) * 50
     + 50 / (1 + (n || 0))
     + (demand ? 20 : 0)
     - (chg / POLICY.maxWeight) * 10);
 
-  return {verdict, score:Math.round(score*10)/10, reasons, row:r, profit, cap};
+  return {verdict, score:Math.round(score*10)/10, reasons, row:r, profit, cap, flip};
 }
 
 function runAxis1(){
@@ -1136,6 +1298,8 @@ function runAxis1(){
         <span class="st">スコア ${r.score} / 競合 ${esc(String(n))} / ${m}</span>
       </div>
       <ul>${r.reasons.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+      ${r.flip ? `<div class="flip">↕ ${esc(r.flip)}</div>` : ""}
+      ${photoLinks(r.row.title_ja || "", c.market)}
     </div>`;
   }).join("") : '<p class="hint">候補を貼り付けて「判定する」を押してください。</p>';
 
@@ -1184,6 +1348,9 @@ function renderOne(){
     </div>
     <ul>${r.reasons.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
   </div>`;
+
+  $("o-photos").innerHTML = row.title_ja
+    ? photoSlot("one:" + row.title_ja, row.title_ja, c.market) : "";
 
   const bd = $("o-bd");
   if (!r.profit){ bd.innerHTML = '<p class="hint" style="margin:0">相場を入力してください。</p>'; return; }
@@ -1315,6 +1482,100 @@ function renderChanges(prev, cur){
 }
 
 
+
+
+/* ===== 写真 =====
+   型番だけを頼りに国内を回ると、世代違い・マイナーチェンジ違いを掴む事故が起きる。
+   だが**このページはeBayの画像を表示できない**（公開ページは外部ホストへの
+   画像リクエストを遮断する仕組みの上で動いている）。そこで2本立てにする。
+
+     1. eBayの検索ページを開くリンク  → 実物の写真と価格をその場で確認する
+     2. 自分で撮った写真を貼る        → 端末内で縮小してこの端末にだけ保存する
+
+   Python版は Browse API から画像URLを取り、写真つきの照合シート（HTML）を
+   ローカルに書き出せる。そちらは外部画像の制約を受けない。                     */
+const EBAY_SITE = {ebay_us:"https://www.ebay.com", ebay_eu:"https://www.ebay.de",
+                   ebay_au:"https://www.ebay.com.au", shopee_sea:"https://www.ebay.com"};
+function ebaySearchUrl(q, market, sold){
+  const base = EBAY_SITE[market] || EBAY_SITE.ebay_us;
+  return `${base}/sch/i.html?_nkw=${encodeURIComponent(q)}`
+       + (sold ? "&LH_Sold=1&LH_Complete=1" : "");
+}
+function photoLinks(q, market){
+  if (!q) return "";
+  return `<div class="shots-links">
+    <a href="${ebaySearchUrl(q, market, false)}" target="_blank" rel="noopener">出品中の写真を見る ↗</a>
+    <a href="${ebaySearchUrl(q, market, true)}" target="_blank" rel="noopener">落札済みの写真と価格 ↗</a>
+  </div>`;
+}
+
+const PKEY = "blueocean.photos";
+const PHOTO_MAX = 24;
+function loadPhotos(){
+  try{ return JSON.parse(localStorage.getItem(PKEY) || "{}"); }catch(e){ return {}; }
+}
+function savePhotos(o){
+  try{ localStorage.setItem(PKEY, JSON.stringify(o)); return true; }catch(e){ return false; }
+}
+/* 端末内で 240px のサムネイルに縮小してから保存する。原寸のままだと
+   保存領域をすぐ使い切るし、照合に必要なのは見た目だけ。 */
+function shrink(file, cb){
+  const fr = new FileReader();
+  fr.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const side = 240, cv = document.createElement("canvas");
+      const r = Math.min(side / img.width, side / img.height, 1);
+      cv.width = Math.round(img.width * r); cv.height = Math.round(img.height * r);
+      cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+      cb(cv.toDataURL("image/jpeg", 0.7));
+    };
+    img.onerror = () => cb(null);
+    img.src = fr.result;
+  };
+  fr.onerror = () => cb(null);
+  fr.readAsDataURL(file);
+}
+function setPhoto(key, file, done){
+  shrink(file, data => {
+    if (!data){ done(false, "この画像は読み込めませんでした"); return; }
+    const o = loadPhotos();
+    const keys = Object.keys(o);
+    if (!(key in o) && keys.length >= PHOTO_MAX) delete o[keys[0]];  /* 古いものから捨てる */
+    o[key] = data;
+    done(savePhotos(o), savePhotos(o) ? "" : "このブラウザでは写真を保存できません");
+  });
+}
+function photoSlot(key, label, market){
+  const o = loadPhotos();
+  const img = o[key]
+    ? `<img src="${o[key]}" alt="${esc(label)}">`
+    : `<span class="ph">写真なし</span>`;
+  return `<div class="pslot" data-key="${esc(key)}">
+    ${img}
+    <div class="pmeta">
+      <div class="pname">${esc(label)}</div>
+      ${photoLinks(label, market)}
+      <label class="pbtn">写真を選ぶ<input type="file" accept="image/*" data-photo="${esc(key)}" hidden></label>
+      ${o[key] ? `<button class="pdel" data-photo-del="${esc(key)}">消す</button>` : ""}
+    </div>
+  </div>`;
+}
+/* 委譲で拾う（写真スロットは再描画のたびに作り直されるため） */
+document.addEventListener("change", ev => {
+  const key = ev.target && ev.target.dataset && ev.target.dataset.photo;
+  if (!key || !ev.target.files || !ev.target.files[0]) return;
+  setPhoto(key, ev.target.files[0], (ok, msg) => {
+    toast(ok ? "写真を保存しました（この端末にだけ）" : msg);
+    runBundle(); renderOne();
+  });
+});
+document.addEventListener("click", ev => {
+  const key = ev.target && ev.target.dataset && ev.target.dataset.photoDel;
+  if (!key) return;
+  const o = loadPhotos(); delete o[key]; savePhotos(o);
+  toast("写真を消しました"); runBundle(); renderOne();
+});
 
 /* ===== 値決め（pricing.py と同一） =====
    「買っていいか」の次に来るのは「いくらで出すか」「この値下げを受けるか」で、
@@ -1491,7 +1752,7 @@ function runBundle(){
 
   if (!items.length){
     $("b-tbl").innerHTML = '<tr><td colspan="6">構成品を貼り付けて「計算する」を押してください。</td></tr>';
-    $("b-notes").innerHTML = ""; return;
+    $("b-notes").innerHTML = ""; $("b-photos").innerHTML = ""; return;
   }
 
   const sep = sellSeparately(items, c);
@@ -1530,6 +1791,8 @@ function runBundle(){
   else if (soloTotal) notes.push(
     `単品売価の合計は $${soloTotal}。いまの $${setPrice} は ${((1 - setPrice/soloTotal)*100).toFixed(0)}% の割引にあたります。`);
   notes.push("セットは価格比較されない代わりに、<b>検索にもかかりにくくなります。</b>出品後は軸2で反応を見て、動かなければタイトルの語を組み直してください。");
+
+  $("b-photos").innerHTML = items.map(i => photoSlot("bundle:" + i.name, i.name, c.market)).join("");
 
   $("b-notes").innerHTML =
     (setPrice < be

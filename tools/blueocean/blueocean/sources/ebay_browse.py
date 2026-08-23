@@ -24,6 +24,31 @@ _TOKEN_URL = "https://api.ebay.com/identity/v1/oauth2/token"
 _SEARCH_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search"
 _SCOPE = "https://api.ebay.com/oauth/api_scope"
 
+# 人がブラウザで写真を確かめるための検索URL。マーケットごとにドメインが違う。
+_SITE = {
+    "EBAY_US": "https://www.ebay.com",
+    "EBAY_GB": "https://www.ebay.co.uk",
+    "EBAY_DE": "https://www.ebay.de",
+    "EBAY_FR": "https://www.ebay.fr",
+    "EBAY_AU": "https://www.ebay.com.au",
+}
+
+
+def search_url(query: str, marketplace_id: str = "EBAY_US", *, sold: bool = False) -> str:
+    """検索結果ページのURLを組み立てる。
+
+    APIが返すのは件数と価格だけで、**現物と照合するための写真は人が見るしかない。**
+    型番だけを頼りに国内を探すと、世代違いやマイナーチェンジ違いを掴む事故が起きる。
+    ``sold=True`` で落札済みの一覧（実際に売れた個体の写真と価格）になる。
+    """
+    from urllib.parse import quote_plus
+
+    base = _SITE.get(marketplace_id, _SITE["EBAY_US"])
+    url = f"{base}/sch/i.html?_nkw={quote_plus(query)}"
+    if sold:
+        url += "&LH_Sold=1&LH_Complete=1"
+    return url
+
 
 class EbayBrowseSource(MarketDataSource):
     def __init__(
@@ -81,21 +106,33 @@ class EbayBrowseSource(MarketDataSource):
             timeout=self.timeout,
         )
         res.raise_for_status()
-        return self._parse(query, res.json())
+        return self._parse(query, res.json(), self.marketplace_id)
 
     @staticmethod
-    def _parse(query: str, payload: dict[str, Any]) -> MarketSnapshot:
+    def _parse(query: str, payload: dict[str, Any],
+               marketplace_id: str = "EBAY_US", *, max_images: int = 6) -> MarketSnapshot:
         total = int(payload.get("total", 0))
         prices: list[float] = []
+        images: list[str] = []
         for item in payload.get("itemSummaries", []) or []:
             price = (item.get("price") or {}).get("value")
             if price is not None:
                 try:
                     prices.append(float(price))
                 except (TypeError, ValueError):
-                    continue
+                    pass
+            if len(images) < max_images:
+                url = (item.get("image") or {}).get("imageUrl")
+                if not url:
+                    thumbs = item.get("thumbnailImages") or []
+                    url = thumbs[0].get("imageUrl") if thumbs else None
+                if url:
+                    images.append(url)
+        url = search_url(query, marketplace_id)
         prices.sort()
         if not prices:
-            return MarketSnapshot(query, total, None, None, None)
+            return MarketSnapshot(query, total, None, None, None,
+                                  tuple(images), url)
         mid = prices[len(prices) // 2]
-        return MarketSnapshot(query, total, mid, prices[0], prices[-1])
+        return MarketSnapshot(query, total, mid, prices[0], prices[-1],
+                              tuple(images), url)

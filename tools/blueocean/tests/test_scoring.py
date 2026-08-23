@@ -1,4 +1,6 @@
 """軸1の判定ロジックの検証。誤判定は在庫の死蔵に直結するので厳しめに見る。"""
+import pytest
+
 from blueocean.models import Candidate, Market, Verdict
 from blueocean.profit import DEFAULT_PROFILES
 from blueocean.scoring import ScoringPolicy, score_all, score_one
@@ -117,3 +119,46 @@ def test_heavier_candidate_gets_a_lower_purchase_cap():
         return score_one(c, US).max_cost_jpy
 
     assert cap(1500) < cap(300)
+
+
+# --- 何がこの判定を分けているか -----------------------------------------------
+
+def test_headroom_names_the_three_variables():
+    """軸1の判定を動かす変数は3つだけ。仕入値・競合数・相場。
+
+    このうち自分で動かせるのは仕入値だけで、あとの2つは他人が決める。
+    """
+    s = score_one(mk(cost_incl_tax_jpy=8000, competitor_count=4), US)
+    h = s.headroom
+    assert h is not None
+    assert h.cost_room_jpy == pytest.approx(s.max_cost_jpy - 8000)
+    assert h.competitor_room == P.red_min_competitors - 4
+    assert h.price_floor_usd is not None and h.price_room_usd > 0
+
+
+def test_price_floor_is_the_point_where_the_cost_stops_fitting():
+    """相場がこの値まで下がると、いまの仕入値では採算に乗らなくなる。"""
+    from blueocean.profit import max_cost_for_margin
+
+    s = score_one(mk(cost_incl_tax_jpy=8000), US)
+    floor = s.headroom.price_floor_usd
+    cap_at_floor = max_cost_for_margin(
+        floor, P.target_margin, US, shipping_jpy=s.profit.shipping_jpy
+    )
+    assert cap_at_floor == pytest.approx(8000, abs=1.0)
+
+
+def test_flip_hint_tells_you_what_to_change():
+    """「なぜこの判定か」より「何が変われば変わるか」のほうが行動につながる。"""
+    assert "競合があと" in score_one(mk(competitor_count=3), US).flip_hint
+    assert "仕入をあと" in score_one(mk(cost_incl_tax_jpy=60000), US).flip_hint
+    assert "自分では動かせない" in score_one(mk(competitor_count=40), US).flip_hint
+    assert "軸2で確かめる" in score_one(mk(competitor_count=2, has_demand_signal=False),
+                                        US).flip_hint
+
+
+def test_excluded_candidates_have_no_headroom():
+    """除外品に「あといくら下げれば」は無意味なので出さない。"""
+    s = score_one(mk(is_restricted=True, restricted_reason="規制"), US)
+    assert s.headroom is None
+    assert s.flip_hint == ""

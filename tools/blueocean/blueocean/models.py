@@ -76,6 +76,9 @@ class Candidate:
     # --- eBay 側の観測（Browse API で取得） ---
     competitor_count: Optional[int] = None   # 同一/類似商品の現行出品数
     market_price_usd: Optional[float] = None # 競合の中央値価格
+    # 現物照合用。型番だけを頼りに国内を探すと世代違い・マイナーチェンジ違いを掴む。
+    image_urls: tuple[str, ...] = ()
+    search_url: str = ""
     # --- 需要の裏付け ---
     has_demand_signal: bool = False   # 類似品の落札実績・自分の販売実績など
     demand_note: str = ""
@@ -135,6 +138,37 @@ class ProfitBreakdown:
         }
 
 
+@dataclass(frozen=True)
+class Headroom:
+    """判定を分けている3つの変数の余裕。
+
+    「軸1の判定は何を基準に変わるのか」への答えがこれ。判定を動かすのは
+    次の3つで、どれが先に閾値に触れるかで結果が変わる。
+
+        仕入値   自分で決められる唯一の変数
+        競合数   自分では動かせない（他人が出品すれば増える）
+        相場     自分では動かせない（下がれば仕入上限も下がる）
+
+    符号は「プラスなら余裕がある」で統一してある。
+    """
+    cost_room_jpy: float          # 仕入上限まであといくら
+    competitor_room: int | None   # 過密判定まであと何件
+    price_floor_usd: float | None # 相場がここまで下がると採算割れ
+    price_room_usd: float | None  # 相場の下落余地
+
+    @property
+    def tightest(self) -> str:
+        """いま最も薄い余裕。ここが動くと判定が変わる。"""
+        if self.cost_room_jpy < 0:
+            return "cost"
+        if self.competitor_room is not None and self.competitor_room <= 3:
+            return "competitors"
+        if self.price_room_usd is not None and self.price_floor_usd \
+                and self.price_room_usd < self.price_floor_usd * 0.1:
+            return "price"
+        return "cost" if self.cost_room_jpy < 2000 else "none"
+
+
 @dataclass
 class ScoredCandidate:
     """軸1の判定結果。"""
@@ -147,3 +181,6 @@ class ScoredCandidate:
     # 送料の注意書き（米国宛ての引受停止など）。候補ごとではなく市場全体に効くため、
     # 判定理由とは分けて持ち、レポート末尾で1回だけ出す。
     shipping_warnings: list[str] = field(default_factory=list)
+    # 何がこの判定を分けているか。除外品では None。
+    headroom: Optional[Headroom] = None
+    flip_hint: str = ""   # 「何がどう変われば判定が変わるか」

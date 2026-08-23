@@ -141,6 +141,10 @@ def cmd_axis1(args) -> int:
         print(f"[{_ICON[s.verdict]}] {s.score:5.1f}  競合{comp}  利益率{margin}  {c.title_ja}")
         for r in s.reasons:
             print(f"           - {r}")
+        if s.flip_hint:
+            print(f"           ↕ {s.flip_hint}")
+        if c.search_url:
+            print(f"           ▸ 写真で照合: {c.search_url}")
     advisories: list[str] = []
     for s_ in scored:
         for w in s_.shipping_warnings:
@@ -151,6 +155,14 @@ def cmd_axis1(args) -> int:
     if args.out:
         n = write_listing_plan(scored, args.out)
         print(f"\n出品候補 {n}件 を {args.out} に書き出しました。")
+    if args.sheet:
+        from .contactsheet import from_scored, write as write_sheet
+        n = write_sheet(
+            from_scored(scored), args.sheet,
+            title="出品候補の現物照合シート",
+            note="国内で探すときに、この写真と見比べてください。型番が同じでも世代違いがあります。",
+        )
+        print(f"現物照合シート {n}件 を {args.sheet} に書き出しました（ブラウザで開いてください）。")
     return 0
 
 
@@ -378,9 +390,19 @@ def cmd_scan(args) -> int:
         print(f"  {r.keyword}")
         print(f"    予算 {r.max_cost_jpy:,.0f}円まで（この額を超える値札は、その場で見送れる）")
         print(f"    {r.note}")
+        if r.search_url:
+            print(f"    写真で照合: {r.search_url}")
     if not worthy:
         print("  該当なし。キーワードの粒度を変えてください（型番まで絞る／ブランド単位に広げる）")
 
+    if args.sheet:
+        from .contactsheet import from_scan, write as write_sheet
+        n = write_sheet(
+            from_scan(results), args.sheet,
+            title="探しに行く型番の現物照合シート",
+            note="予算を超える値札はその場で見送れます。写真と見比べてから買ってください。",
+        )
+        print(f"\n現物照合シート {n}件 を {args.sheet} に書き出しました（ブラウザで開いてください）。")
     if args.out:
         n = write_candidate_template(results, args.out)
         print(f"\n候補CSVの雛形 {n}件 を {args.out} に書き出しました。")
@@ -635,6 +657,8 @@ def main(argv=None) -> int:
     a1 = sub.add_parser("axis1", help="出品候補を判定する")
     a1.add_argument("--candidates", required=True)
     a1.add_argument("--out", default=None)
+    a1.add_argument("--sheet", default=None,
+                    help="商品写真つきの現物照合シート（HTML）を書き出す")
     a1.add_argument("--history", default=None,
                     help="履歴JSONL。指定すると前回からの変化を出し、今回の結果を追記する")
     a1.add_argument("--refresh", action="store_true",
@@ -649,6 +673,8 @@ def main(argv=None) -> int:
     sc.add_argument("--keywords", default=None, help="キーワード一覧ファイル（1行1件、#でコメント）")
     sc.add_argument("--keyword", action="append", default=[], help="キーワードを直接渡す（複数可）")
     sc.add_argument("--out", default=None, help="候補CSVの雛形を書き出す")
+    sc.add_argument("--sheet", default=None,
+                    help="商品写真つきの現物照合シート（HTML）を書き出す")
     sc.add_argument("--assume-weight-g", type=int, default=500, help="送料の仮定（実重量）")
     sc.add_argument("--assume-length-cm", type=float, default=0.0)
     sc.add_argument("--assume-width-cm", type=float, default=0.0)

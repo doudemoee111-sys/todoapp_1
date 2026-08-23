@@ -63,6 +63,9 @@ class KeywordResult:
     shipping_jpy: float | None
     note: str
     assumption: str = ""   # 送料の仮定。全件で同じ文言になるので note とは分けて持つ
+    # 現物照合のための材料。型番だけで国内を探すと世代違いを掴むので、見た目を確かめる導線を必ず持つ。
+    image_urls: tuple[str, ...] = ()
+    search_url: str = ""
 
     @property
     def is_hunt_worthy(self) -> bool:
@@ -131,6 +134,7 @@ def scan_one(
             keyword, Opening.NO_DATA, snap.competitor_count, None, None, None,
             0.0, float("inf"), ship,
             "相場が取れなかった。検索語が具体的すぎるか、綴りが違う可能性がある",
+            "", snap.image_urls, snap.search_url,
         )
 
     cap = max_cost_for_margin(
@@ -170,7 +174,7 @@ def scan_one(
 
     return KeywordResult(
         keyword, opening, n, price, snap.low_price_usd, snap.high_price_usd,
-        cap, mult, ship, note, assume_note,
+        cap, mult, ship, note, assume_note, snap.image_urls, snap.search_url,
     )
 
 
@@ -212,12 +216,14 @@ def write_candidate_template(
             "length_cm", "width_cm", "height_cm", "category",
             "market_price_usd", "competitor_count",
             "has_demand_signal", "demand_note", "is_restricted", "restricted_reason",
+            "image_url", "search_url",
         ])
         for i, r in enumerate(rows, 1):
             w.writerow([
                 f"SCAN-{i:03d}", r.keyword, "", "", "", "", "", "", "",
                 f"{r.median_price_usd:.2f}" if r.median_price_usd else "",
                 r.competitor_count, "", "", "", "",
+                r.image_urls[0] if r.image_urls else "", r.search_url,
             ])
     return len(rows)
 

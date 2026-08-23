@@ -82,6 +82,10 @@ def load_candidates(path: str | Path) -> list[Candidate]:
                     is_restricted=str(row.get("is_restricted", "")).strip().lower()
                     in {"1", "true", "yes", "y"},
                     restricted_reason=row.get("restricted_reason", "").strip(),
+                    image_urls=tuple(
+                        u.strip() for u in row.get("image_url", "").split("|") if u.strip()
+                    ),
+                    search_url=row.get("search_url", "").strip(),
                 )
             )
     return out
@@ -155,6 +159,11 @@ def enrich(
             c.competitor_count = snap.competitor_count
         if refresh or c.market_price_usd is None:
             c.market_price_usd = snap.median_price_usd
+        # 画像と検索URLは判定に使わないが、国内で現物を探すときに要る
+        if refresh or not c.image_urls:
+            c.image_urls = snap.image_urls
+        if refresh or not c.search_url:
+            c.search_url = snap.search_url
     return fetched
 
 
@@ -213,7 +222,7 @@ def write_listing_plan(scored: list[ScoredCandidate], path: str | Path) -> int:
         w.writerow(
             ["sku", "verdict", "score", "title_ja", "price_usd", "cost_jpy",
              "max_cost_jpy", "margin", "shipping_jpy", "shipping_note",
-             "competitors", "reasons"]
+             "competitors", "reasons", "image_url", "search_url"]
         )
         for s in rows:
             c = s.candidate
@@ -226,6 +235,8 @@ def write_listing_plan(scored: list[ScoredCandidate], path: str | Path) -> int:
                 s.profit.shipping_note if s.profit else "",
                 c.competitor_count if c.competitor_count is not None else "",
                 " / ".join(s.reasons),
+                "|".join(c.image_urls),
+                c.search_url,
             ])
     return len(rows)
 

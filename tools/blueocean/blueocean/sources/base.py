@@ -18,6 +18,10 @@ class MarketSnapshot:
     median_price_usd: float | None
     low_price_usd: float | None
     high_price_usd: float | None
+    # 出品中の商品画像（先頭数件）。**国内で現物を探すときに現物と照合するため**に持つ。
+    # 型番だけを頼りに探すと、世代違い・マイナーチェンジ違いを掴む事故が起きる。
+    image_urls: tuple[str, ...] = ()
+    search_url: str = ""       # 人がブラウザで開いて写真を確かめるための入口
 
 
 class MarketDataSource(ABC):

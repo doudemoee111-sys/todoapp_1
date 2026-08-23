@@ -17,12 +17,14 @@ from dataclasses import dataclass
 from .models import (
     Candidate,
     FeeProfile,
+    Headroom,
     ProfitBreakdown,
     ScoredCandidate,
     SellerLevel,
     TaxProfile,
     Verdict,
 )
+from .pricing import list_price_for_margin
 from .profit import compute, max_cost_for_margin
 from .shipping import (
     MARKET_ZONE,
@@ -166,7 +168,11 @@ def score_one(
             f"採算割れ：仕入 {c.cost_incl_tax_jpy:,.0f}円 が上限 {cap:,.0f}円 を "
             f"{over:,.0f}円 超過（実績利益率 {profit.margin*100:.1f}%）"
         )
-        return ScoredCandidate(c, Verdict.THIN, 0.0, profit, cap, reasons, ship_warnings)
+        head = _headroom(c, cap, None, profile, policy, level, tax, ship_jpy)
+        return ScoredCandidate(
+            c, Verdict.THIN, 0.0, profit, cap, reasons, ship_warnings, head,
+            _flip_hint(c, Verdict.THIN, head, policy, None),
+        )
 
     # --- 4. 競合環境の判定（ここが軸1の核心） ---
     n = c.competitor_count
@@ -175,7 +181,11 @@ def score_one(
         verdict = Verdict.PROBE
     elif n >= policy.red_min_competitors:
         reasons.append(f"競合 {n}件。価格競争に巻き込まれるため見送り")
-        return ScoredCandidate(c, Verdict.RED, 0.0, profit, cap, reasons, ship_warnings)
+        head = _headroom(c, cap, n, profile, policy, level, tax, ship_jpy)
+        return ScoredCandidate(
+            c, Verdict.RED, 0.0, profit, cap, reasons, ship_warnings, head,
+            _flip_hint(c, Verdict.RED, head, policy, n),
+        )
     elif n == 0 and not c.has_demand_signal:
         # 競合ゼロは魅力的に見えるが、需要が無いだけの可能性がある。
         # ここを BLUE と誤判定すると、売れない在庫を仕入れることになる。
@@ -199,14 +209,80 @@ def score_one(
     if c.has_demand_signal and c.demand_note:
         reasons.append(f"需要の裏付け：{c.demand_note}")
 
-    # --- 5. スコア（並べ替え用の連続値） ---
+    # --- 5. 何がこの判定を分けているか ---
+    head = _headroom(c, cap, n, profile, policy, level, tax, ship_jpy)
+    hint = _flip_hint(c, verdict, head, policy, n)
+
+    # --- 6. スコア（並べ替え用の連続値） ---
     margin_term = min(profit.margin / policy.target_margin, 2.0) * 50.0
     comp_term = 50.0 / (1.0 + (n or 0))
     demand_term = 20.0 if c.has_demand_signal else 0.0
     weight_penalty = (chargeable / policy.max_weight_g) * 10.0
     score = max(0.0, margin_term + comp_term + demand_term - weight_penalty)
 
-    return ScoredCandidate(c, verdict, round(score, 1), profit, cap, reasons, ship_warnings)
+    return ScoredCandidate(c, verdict, round(score, 1), profit, cap, reasons,
+                           ship_warnings, head, hint)
+
+
+def _headroom(
+    c: Candidate, cap: float, n: int | None, profile: FeeProfile,
+    policy: ScoringPolicy, level: SellerLevel, tax: TaxProfile | None,
+    ship_jpy: float | None,
+) -> Headroom:
+    """判定を分けている3変数の余裕を出す。
+
+    「軸1の判定は何を基準に変わるのか」への答え。動かせるのは仕入値だけで、
+    競合数と相場は他人が決める。だからこの3つを並べて見せる。
+    """
+    floor = list_price_for_margin(
+        c.cost_incl_tax_jpy, policy.target_margin, profile,
+        fx_jpy_per_usd=policy.fx_jpy_per_usd, level=level, tax=tax, shipping_jpy=ship_jpy,
+    )
+    floor = None if floor == float("inf") else floor
+    return Headroom(
+        cost_room_jpy=cap - c.cost_incl_tax_jpy,
+        competitor_room=(policy.red_min_competitors - n) if n is not None else None,
+        price_floor_usd=floor,
+        price_room_usd=((c.market_price_usd - floor)
+                        if floor is not None and c.market_price_usd else None),
+    )
+
+
+def _flip_hint(
+    c: Candidate, verdict: Verdict, head: Headroom, policy: ScoringPolicy, n: int | None
+) -> str:
+    """判定がどうすれば裏返るかを1行で返す。
+
+    「この商品はなぜこの判定なのか」より、「何が変われば変わるのか」のほうが
+    行動につながる。仕入値だけが自分で動かせる変数なので、そこを優先して書く。
+    """
+    if verdict is Verdict.BLUE:
+        parts = []
+        if head.competitor_room is not None:
+            parts.append(f"競合があと{head.competitor_room}件増えると見送り")
+        if head.price_room_usd is not None and head.price_floor_usd is not None:
+            parts.append(f"相場が ${head.price_floor_usd:,.0f} まで下がると採算割れ")
+        return "／".join(parts) if parts else "余裕あり"
+    if verdict is Verdict.THIN:
+        return (
+            f"仕入をあと {abs(head.cost_room_jpy):,.0f}円 下げれば採算に乗る"
+            + (f"／相場が ${head.price_floor_usd:,.0f} 以上に戻っても同じ"
+               if head.price_floor_usd else "")
+        )
+    if verdict is Verdict.RED:
+        if n is not None:
+            return (
+                f"競合が {policy.red_min_competitors - 1}件以下に減れば再評価。"
+                f"ただし競合数は自分では動かせない"
+            )
+        return "競合数が取れれば再評価できる"
+    if verdict is Verdict.PROBE:
+        if not c.has_demand_signal:
+            return "需要の裏付けが取れれば BLUE。少量で出して軸2で確かめる"
+        if n is not None and n > policy.blue_max_competitors:
+            return f"競合が {policy.blue_max_competitors}件以下に減れば BLUE"
+        return "需要が確定すれば BLUE"
+    return ""
 
 
 def score_all(
