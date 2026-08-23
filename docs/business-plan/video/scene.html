@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<style>
+  :root{
+    --ink:#141A2E; --ink2:#212C48; --ink3:#2E3A5A;
+    --paper:#FFFFFF; --amber:#E0A03A; --amber-dk:#B87F22;
+    --ice:#A9BEE3; --slate:#8892AA; --risk:#C8503C;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:1920px;height:1080px;overflow:hidden;background:var(--ink);}
+  body{
+    font-family:"Noto Sans CJK JP","Noto Sans JP",sans-serif;
+    color:var(--paper);
+    -webkit-font-smoothing:antialiased;
+  }
+  #stage{position:relative;width:1920px;height:1080px;overflow:hidden;}
+
+  .scene{position:absolute;inset:0;opacity:0;}
+  .scene.on{opacity:1;}
+
+  /* ---------- shared furniture ---------- */
+  .eyebrow{
+    position:absolute;left:120px;top:88px;
+    font-size:24px;font-weight:700;letter-spacing:.22em;color:var(--ice);
+    display:flex;align-items:center;gap:20px;
+  }
+  .eyebrow .dot{width:14px;height:14px;border-radius:50%;background:var(--amber);}
+  .big{font-size:96px;font-weight:900;line-height:1.28;letter-spacing:.01em;}
+  .mid{font-size:60px;font-weight:900;line-height:1.35;}
+  .sub{font-size:34px;line-height:1.7;color:var(--ice);font-weight:500;}
+  .amber{color:var(--amber);}
+  .center{position:absolute;left:120px;right:120px;top:50%;transform:translateY(-50%);}
+
+  /* ---------- S1 : search bar ---------- */
+  .searchbar{
+    width:1120px;height:104px;border-radius:52px;background:var(--ink2);
+    display:flex;align-items:center;padding:0 44px;gap:26px;
+    font-size:34px;color:var(--ice);font-weight:500;
+  }
+  .searchbar .mag{
+    width:34px;height:34px;border:5px solid var(--slate);border-radius:50%;
+    position:relative;flex:none;
+  }
+  .searchbar .mag::after{
+    content:"";position:absolute;right:-14px;bottom:-8px;width:20px;height:5px;
+    background:var(--slate);transform:rotate(45deg);border-radius:3px;
+  }
+  .caret{display:inline-block;width:3px;height:38px;background:var(--amber);vertical-align:-6px;}
+
+  /* ---------- S2 : the drain ---------- */
+  .bars{display:flex;align-items:flex-end;gap:18px;height:340px;}
+  .bar{width:62px;background:var(--ink3);border-radius:8px 8px 0 0;}
+  .barlabel{font-size:26px;color:var(--slate);margin-top:20px;font-weight:600;}
+
+  /* ---------- S3 : AI answer card ---------- */
+  .aicard{
+    width:1180px;border-radius:28px;background:var(--ink2);padding:52px 60px;
+  }
+  .aicard .q{font-size:34px;color:var(--ice);font-weight:600;margin-bottom:34px;}
+  .aicard .ans{font-size:38px;line-height:1.85;font-weight:600;}
+  .cite{
+    display:inline-block;padding:2px 14px;border-radius:8px;
+    background:rgba(224,160,58,.16);color:var(--amber);font-weight:800;
+  }
+  .cite.you{background:var(--amber);color:var(--ink);}
+  .missing{color:var(--slate);text-decoration:line-through;}
+
+  /* ---------- S4 : as-is / to-be ---------- */
+  .cols{display:flex;gap:60px;align-items:stretch;}
+  .col{flex:1;border-radius:24px;padding:46px 48px;}
+  .col.asis{background:#252E45;}
+  .col.tobe{background:var(--amber);color:var(--ink);}
+  .col .tag{font-size:24px;font-weight:800;letter-spacing:.16em;margin-bottom:22px;}
+  .col.asis .tag{color:var(--slate);}
+  .col.tobe .tag{color:rgba(20,26,46,.62);}
+  .col .hd{font-size:52px;font-weight:900;line-height:1.35;margin-bottom:34px;}
+  .col.asis .hd{color:#C3CADB;}
+  .col li{list-style:none;font-size:29px;line-height:1.6;margin-bottom:20px;display:flex;gap:18px;font-weight:600;}
+  .col.asis li{color:var(--slate);}
+  .mark{flex:none;font-weight:900;}
+
+  /* ---------- S5 : steps ---------- */
+  .steps{display:flex;gap:36px;}
+  .step{flex:1;background:var(--ink2);border-radius:24px;padding:44px 40px;}
+  .step .n{
+    width:74px;height:74px;border-radius:50%;background:var(--amber);color:var(--ink);
+    display:flex;align-items:center;justify-content:center;
+    font-size:30px;font-weight:900;margin-bottom:30px;
+  }
+  .step .h{font-size:46px;font-weight:900;margin-bottom:20px;}
+  .step .b{font-size:26px;line-height:1.7;color:var(--ice);font-weight:500;}
+
+  /* ---------- S6 : numbers ---------- */
+  .nums{display:flex;gap:44px;}
+  .num{flex:1;background:var(--ink2);border-radius:24px;padding:46px 40px;}
+  .num .v{font-size:96px;font-weight:900;color:var(--amber);line-height:1.1;}
+  .num .k{font-size:29px;font-weight:800;margin-top:16px;}
+  .num .s{font-size:22px;color:var(--slate);margin-top:14px;line-height:1.55;font-weight:500;}
+
+  /* ---------- S7 : CTA ---------- */
+  .ctabox{
+    border:4px solid var(--amber);border-radius:28px;padding:52px 64px;display:inline-block;
+  }
+  .foot{
+    position:absolute;left:120px;bottom:80px;right:120px;
+    font-size:22px;color:var(--slate);font-weight:500;
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- S1 -->
+  <section class="scene" data-s="1">
+    <div class="eyebrow"><span class="dot"></span>2026年、検索はこう変わった</div>
+    <div class="center">
+      <div class="searchbar"><span class="mag"></span><span id="typed"></span><span class="caret"></span></div>
+      <div class="sub" style="margin-top:56px;">見込み客は、もう10件のリンクを見比べません。</div>
+    </div>
+  </section>
+
+  <!-- S2 -->
+  <section class="scene" data-s="2">
+    <div class="eyebrow"><span class="dot"></span>いま、起きていること</div>
+    <div class="center">
+      <div style="display:flex;gap:110px;align-items:flex-end;">
+        <div style="flex:none;">
+          <div class="bars" id="bars"></div>
+          <div class="barlabel">サイトへの流入</div>
+        </div>
+        <div style="flex:none;width:820px;padding-bottom:56px;">
+          <div class="big"><span class="amber">60%</span>が<br>ゼロクリック。</div>
+          <div class="sub" style="margin-top:34px;">検索順位は1位のまま。<br>問い合わせだけが半分になる。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- S3 -->
+  <section class="scene" data-s="3">
+    <div class="eyebrow"><span class="dot"></span>答えているのは、AI</div>
+    <div class="center">
+      <div class="aicard">
+        <div class="q">「相続に強い税理士事務所は？」</div>
+        <div class="ans">
+          おすすめは <span class="cite">A会計事務所</span>、<span class="cite">B税理士法人</span>、<br>
+          そして <span class="cite" id="slot3">C事務所</span> です。
+        </div>
+      </div>
+      <div class="sub" style="margin-top:52px;" id="s3sub">この3件に入れるかどうかで、問い合わせ数が決まります。</div>
+    </div>
+  </section>
+
+  <!-- S4 -->
+  <section class="scene" data-s="4">
+    <div class="eyebrow"><span class="dot"></span>As-Is → To-Be</div>
+    <div class="center">
+      <div class="cols">
+        <div class="col asis">
+          <div class="tag">AS-IS ／ 現状</div>
+          <div class="hd">AIの答えに、<br>御社がいない</div>
+          <ul>
+            <li><span class="mark">✕</span>何位なのかも分からない</li>
+            <li><span class="mark">✕</span>直しても効果を測れない</li>
+            <li><span class="mark">✕</span>減った理由を説明できない</li>
+          </ul>
+        </div>
+        <div class="col tobe">
+          <div class="tag">TO-BE ／ 導入後</div>
+          <div class="hd">AIが、御社を<br>名指しで挙げる</div>
+          <ul>
+            <li><span class="mark">●</span>主要200問で毎月測定</li>
+            <li><span class="mark">●</span>直した箇所と結果が繋がる</li>
+            <li><span class="mark">●</span>増減の理由を説明できる</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- S5 -->
+  <section class="scene" data-s="5">
+    <div class="eyebrow"><span class="dot"></span>私たちが毎月やること</div>
+    <div class="center">
+      <div class="steps">
+        <div class="step"><div class="n">01</div><div class="h">測る</div><div class="b">見込み客が実際に聞く200問をAIに投げ、御社と競合の引用回数を記録します。</div></div>
+        <div class="step"><div class="n">02</div><div class="h">直す</div><div class="b">引用されない原因を特定し、追加する文章とタグをこちらで作成します。</div></div>
+        <div class="step"><div class="n">03</div><div class="h">見せる</div><div class="b">先月からの変化を1枚のレポートに。効果が説明できる状態にします。</div></div>
+      </div>
+      <div class="sub" style="margin-top:52px;">先生にお願いするのは、月1回30分の確認と監修だけ。</div>
+    </div>
+  </section>
+
+  <!-- S6 -->
+  <section class="scene" data-s="6">
+    <div class="eyebrow"><span class="dot"></span>すでに出ている成果（公表事例）</div>
+    <div class="center">
+      <div class="nums">
+        <div class="num"><div class="v">6<span style="font-size:52px;">倍</span></div><div class="k">AI経由の問い合わせ</div><div class="s">半年で約6倍、売上は8倍ペース</div></div>
+        <div class="num"><div class="v">10<span style="font-size:52px;">倍</span></div><div class="k">問い合わせ件数</div><div class="s">流入は約6倍。初動は早ければ1か月</div></div>
+        <div class="num"><div class="v">2<span style="font-size:52px;">倍</span></div><div class="k">商談数（6か月）</div><div class="s">売上130%増の事例も報告</div></div>
+      </div>
+      <div class="sub" style="margin-top:48px;font-size:27px;">いずれも各支援会社が自社サイトで公表している事例です（第三者検証は経ていません）。</div>
+    </div>
+  </section>
+
+  <!-- S7 -->
+  <section class="scene" data-s="7">
+    <div class="eyebrow"><span class="dot"></span>まずは現在地から</div>
+    <div class="center">
+      <div class="ctabox">
+        <div class="mid">無料 <span class="amber">AI可視性診断</span></div>
+        <div class="sub" style="margin-top:28px;">御社名と主要サービスを伺うだけ。<br>AIが御社を何回挙げたかを、レポートにしてお返しします。</div>
+      </div>
+      <div class="sub" style="margin-top:56px;font-size:29px;">ヒアリング15分　│　費用 無料　│　5営業日以内に納品</div>
+    </div>
+    <div class="foot">出典：博報堂DYグループ oneder「2026年版AI検索白書」／各支援会社公表事例</div>
+  </section>
+
+</div>
+
+<script>
+// ---- deterministic frame renderer: window.renderFrame(t) where t is seconds ----
+const SCENES = [
+  { id:1, start:0.0,  dur:5.0 },
+  { id:2, start:5.0,  dur:5.5 },
+  { id:3, start:10.5, dur:6.0 },
+  { id:4, start:16.5, dur:6.5 },
+  { id:5, start:23.0, dur:6.0 },
+  { id:6, start:29.0, dur:5.5 },
+  { id:7, start:34.5, dur:5.5 },
+];
+const TOTAL = 40.0;
+const FADE = 0.45;
+
+const QUERY = "相続に強い税理士事務所は？";
+
+// build bars once
+const barHeights = [300, 292, 285, 276, 268, 255, 205, 158, 122, 96];
+const barsEl = document.getElementById('bars');
+barHeights.forEach(() => {
+  const d = document.createElement('div');
+  d.className = 'bar';
+  barsEl.appendChild(d);
+});
+const barEls = [...barsEl.children];
+
+const easeOut = p => 1 - Math.pow(1 - p, 3);
+const clamp01 = v => Math.max(0, Math.min(1, v));
+
+function renderFrame(t){
+  const scenes = [...document.querySelectorAll('.scene')];
+  scenes.forEach(el => { el.style.opacity = 0; el.style.transform = ''; });
+
+  const sc = SCENES.find(s => t >= s.start && t < s.start + s.dur) || SCENES[SCENES.length-1];
+  const local = t - sc.start;
+  const el = scenes.find(e => +e.dataset.s === sc.id);
+
+  // cross-fade in/out
+  let op = 1;
+  if (local < FADE) op = easeOut(local / FADE);
+  else if (local > sc.dur - FADE) op = easeOut(clamp01((sc.dur - local) / FADE));
+  el.style.opacity = op;
+  // gentle rise on entry
+  const rise = (1 - easeOut(clamp01(local / 0.9))) * 26;
+  el.style.transform = `translateY(${rise}px)`;
+
+  // ---- per-scene animation ----
+  if (sc.id === 1){
+    const p = clamp01((local - 0.5) / 2.4);
+    const n = Math.round(p * QUERY.length);
+    document.getElementById('typed').textContent = QUERY.slice(0, n);
+  }
+
+  if (sc.id === 2){
+    // bars drain left→right as time passes
+    const p = easeOut(clamp01((local - 0.4) / 2.6));
+    barEls.forEach((b, i) => {
+      const target = barHeights[i];
+      const full = 300;
+      const h = full - (full - target) * p;
+      b.style.height = h + 'px';
+      b.style.background = i >= 6 ? `rgba(200,80,60,${0.35 + 0.45 * p})` : '#2E3A5A';
+    });
+  }
+
+  if (sc.id === 3){
+    // the third citation slot flips from a competitor to "御社"
+    const flip = local > 3.0;
+    const slot = document.getElementById('slot3');
+    if (flip){
+      slot.textContent = '御社';
+      slot.className = 'cite you';
+      document.getElementById('s3sub').textContent = 'ここに入るための対策が、AI検索可視化です。';
+    } else {
+      slot.textContent = 'C事務所';
+      slot.className = 'cite';
+      document.getElementById('s3sub').textContent = 'この3件に入れるかどうかで、問い合わせ数が決まります。';
+    }
+  }
+
+  if (sc.id === 4){
+    // to-be column slides in slightly after as-is
+    const p = easeOut(clamp01((local - 0.7) / 1.1));
+    const tobe = el.querySelector('.col.tobe');
+    tobe.style.opacity = p;
+    tobe.style.transform = `translateX(${(1 - p) * 44}px)`;
+  }
+
+  if (sc.id === 5){
+    const cards = [...el.querySelectorAll('.step')];
+    cards.forEach((c, i) => {
+      const p = easeOut(clamp01((local - 0.4 - i * 0.45) / 0.8));
+      c.style.opacity = p;
+      c.style.transform = `translateY(${(1 - p) * 30}px)`;
+    });
+  }
+
+  if (sc.id === 6){
+    // count up
+    const targets = [6, 10, 2];
+    const nums = [...el.querySelectorAll('.num .v')];
+    nums.forEach((n, i) => {
+      const p = easeOut(clamp01((local - 0.5 - i * 0.3) / 1.5));
+      const val = Math.max(1, Math.round(targets[i] * p));
+      n.innerHTML = val + '<span style="font-size:52px;">倍</span>';
+    });
+  }
+
+  if (sc.id === 7){
+    const box = el.querySelector('.ctabox');
+    const p = easeOut(clamp01((local - 0.3) / 1.0));
+    box.style.transform = `scale(${0.96 + 0.04 * p})`;
+  }
+}
+window.renderFrame = renderFrame;
+window.VIDEO_TOTAL = TOTAL;
+renderFrame(0);
+</script>
+</body>
+</html>
