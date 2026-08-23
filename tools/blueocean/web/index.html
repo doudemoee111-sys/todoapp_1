@@ -1359,11 +1359,23 @@ function renderExtract(){
   + `    --ebay-client-id "$EBAY_CLIENT_ID" --ebay-client-secret "$EBAY_CLIENT_SECRET"`;
   $("ex-genre").closest("label").style.opacity = $("ex-src").value === "genre" ? "1" : ".4";
 }
-function copyText(text, msg){
-  const done = ok => toast(ok ? msg : "コピーできませんでした。手で選択してください");
+/* クリップボードAPIは埋め込み環境で塞がれていることがある。
+   その場合は本文を選択状態にして、Ctrl+C（⌘C）で取れるようにする。 */
+function selectNode(el){
+  try{
+    const r = document.createRange(); r.selectNodeContents(el);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    return true;
+  }catch(e){ return false; }
+}
+function copyText(el, msg){
+  const text = el.textContent;
+  const fallback = () => toast(selectNode(el)
+    ? "選択しました。Ctrl+C（⌘C）でコピーしてください"
+    : "コピーできませんでした。手で選択してください");
   if (navigator.clipboard && navigator.clipboard.writeText)
-    navigator.clipboard.writeText(text).then(() => done(true), () => done(false));
-  else done(false);
+    navigator.clipboard.writeText(text).then(() => toast(msg), fallback);
+  else fallback();
 }
 
 /* ===== 軸1の表 =====
@@ -1383,6 +1395,7 @@ function rowToCsvObj(r){
     market_price_usd: r.price, competitor_count: r.comp,
     has_demand_signal: r.demand ? "yes" : "no", demand_note: r.note || "",
     is_restricted: r.restricted ? "yes" : "no", restricted_reason: r.rreason || "",
+    image_url: r.image || "", search_url: r.surl || "",
   };
 }
 function csvObjToRow(o){
@@ -1393,6 +1406,8 @@ function csvObjToRow(o){
     price: (o.market_price_usd||"").trim(), comp: (o.competitor_count||"").trim(),
     demand: truthy(o.has_demand_signal), note: (o.demand_note||"").trim(),
     restricted: truthy(o.is_restricted), rreason: (o.restricted_reason||"").trim(),
+    /* 走査が付けた写真の導線を捨てない（捨てるとCSVに書き戻したとき切れる） */
+    image: (o.image_url||"").trim(), surl: (o.search_url||"").trim(),
   };
 }
 function saveRows(){
@@ -1452,7 +1467,7 @@ document.addEventListener("click", ev => {
 function rowsToCsv(){
   const cols = ["sku","title_ja","cost_incl_tax_jpy","weight_g","length_cm","width_cm",
                 "height_cm","market_price_usd","competitor_count","has_demand_signal",
-                "demand_note","is_restricted","restricted_reason"];
+                "demand_note","is_restricted","restricted_reason","image_url","search_url"];
   const esc2 = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g,'""')}"` : String(v);
   return [cols.join(",")].concat(
     A1_ROWS.map(r => { const o = rowToCsvObj(r); return cols.map(k => esc2(o[k] ?? "")).join(","); })
@@ -2301,8 +2316,8 @@ $("cfg-reset").addEventListener("click", () => {
 ["ex-src","ex-genre","ex-mode","ex-limit","ex-g","ex-l","ex-w","ex-h","ex-name"]
   .forEach(id => $(id).addEventListener("input", renderExtract));
 $("ex-src").addEventListener("change", renderExtract);
-$("ex-copy-json").addEventListener("click", () => copyText($("ex-json").textContent, "設定をコピーしました"));
-$("ex-copy-cmd").addEventListener("click", () => copyText($("ex-cmd").textContent, "コマンドをコピーしました"));
+$("ex-copy-json").addEventListener("click", () => copyText($("ex-json"), "設定をコピーしました"));
+$("ex-copy-cmd").addEventListener("click", () => copyText($("ex-cmd"), "コマンドをコピーしました"));
 $("a1-add").addEventListener("click", () => {
   A1_ROWS.push(blankRow()); saveRows(); runAxis1();
   const inputs = $("a1-rows").querySelectorAll('input[data-f="title"]');
