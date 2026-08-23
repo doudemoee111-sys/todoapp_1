@@ -80,6 +80,12 @@ def score_one(
     cap = 0.0
     profit: ProfitBreakdown | None = None
 
+    # 走査（discovery）が書き出した雛形は、仕入値も重量も空のまま流れてくる。
+    # 仕入値0を「タダで買える」と解釈すると必ず BLUE になり、
+    # 実体のない候補が最優先で並ぶ。未確定は未確定として扱う。
+    cost_unknown = c.cost_incl_tax_jpy <= 0
+    weight_unknown = c.weight_g <= 0
+
     # --- 1. 除外判定を最優先で行う（利益より先に安全性を見る） ---
     if c.is_restricted:
         reasons.append(f"除外：{c.restricted_reason or '輸出規制・禁止品'}")
@@ -149,7 +155,12 @@ def score_one(
         shipping_jpy=ship_jpy, shipping_note=ship_note,
     )
 
-    if c.cost_incl_tax_jpy > cap:
+    if cost_unknown:
+        reasons.append(
+            "仕入値が未入力。判定は相場と競合だけに基づく暫定値。"
+            "国内で現物を見つけて cost_incl_tax_jpy を埋めるまで採算は確定しない"
+        )
+    elif c.cost_incl_tax_jpy > cap:
         over = c.cost_incl_tax_jpy - cap
         reasons.append(
             f"採算割れ：仕入 {c.cost_incl_tax_jpy:,.0f}円 が上限 {cap:,.0f}円 を "
@@ -178,6 +189,12 @@ def score_one(
     else:
         reasons.append(f"競合 {n}件。ブルーではないが致命的でもない")
         verdict = Verdict.PROBE
+
+    # 仕入値が未確定なら BLUE と言い切らない。最良でも PROBE に留める。
+    if cost_unknown and verdict is Verdict.BLUE:
+        verdict = Verdict.PROBE
+    if weight_unknown:
+        reasons.append("重量が未入力。送料は最小重量帯の概算なので、実物が届いたら引き直すこと")
 
     if c.has_demand_signal and c.demand_note:
         reasons.append(f"需要の裏付け：{c.demand_note}")

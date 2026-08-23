@@ -161,7 +161,8 @@ ol.why code{font-size:12.5px;}
   <div class="eyebrow"><span class="dot"></span><span>提案④ 補論 / 軸1＋軸2</span><span>ブラウザ版</span></div>
   <h1>Blue Ocean 仕入判断ツール</h1>
   <p class="lede">
-    競合が少なく採算の合う商品を選び（軸1）、出品後の反応から有在庫化を判断する（軸2）。
+    目の前の1点をその場で判定し（1件だけ判定）、候補をまとめて選び（軸1）、
+    出品後の反応から有在庫化を判断する（軸2）。
     送料は固定値ではなく、<strong>重量と寸法から課金重量を出して</strong>計算します。
     リポジトリのPython版と<strong>同じ計算式</strong>をブラウザで動かします。入力はこのページから出ず、保存もされません。
   </p>
@@ -199,6 +200,7 @@ ol.why code{font-size:12.5px;}
 <nav class="tabs" role="tablist">
   <button role="tab" aria-selected="true" data-tab="calc">仕入上限の逆算</button>
   <button role="tab" aria-selected="false" data-tab="ship">送料（重量・サイズ）</button>
+  <button role="tab" aria-selected="false" data-tab="one">1件だけ判定</button>
   <button role="tab" aria-selected="false" data-tab="axis1">軸1：出品候補の判定</button>
   <button role="tab" aria-selected="false" data-tab="axis2">軸2：出品後の判定</button>
 </nav>
@@ -304,6 +306,48 @@ ol.why code{font-size:12.5px;}
   </div>
 </section>
 
+<!-- ============ 1件だけ判定 ============ -->
+<section class="panel" id="p-one">
+  <p class="hint">
+    店頭やフリマアプリを見ている最中に「これは買いか」を即答するための画面です。
+    CSVも履歴も要りません。<b>eBayの相場と競合数だけ、その場で調べて入れてください</b>
+    （eBayで同じ商品を検索し、出品件数と価格帯を見ます）。
+  </p>
+  <div class="split">
+    <div>
+      <div class="card">
+        <h2>この1件</h2>
+        <label>商品名（eBayでの検索語）<input type="text" id="o-title" value="Konica Hexanon AR 40mm F1.8"></label>
+        <div class="sgrid" style="grid-template-columns:1fr 1fr;">
+          <label>仕入価格（円・税込）<input type="number" id="o-cost" value="9800" step="500" min="0"></label>
+          <label>実重量（g）<input type="number" id="o-g" value="180" step="10" min="0"></label>
+        </div>
+        <div class="sgrid" style="grid-template-columns:1fr 1fr 1fr;">
+          <label>縦（cm）<input type="number" id="o-l" value="16" step="1" min="0"></label>
+          <label>横（cm）<input type="number" id="o-w" value="12" step="1" min="0"></label>
+          <label>高さ（cm）<input type="number" id="o-h" value="10" step="1" min="0"></label>
+        </div>
+        <div class="sgrid" style="grid-template-columns:1fr 1fr;">
+          <label>eBayの相場（USD）<input type="number" id="o-price" value="185" step="5" min="0"></label>
+          <label>eBayの競合出品数<input type="number" id="o-comp" value="2" step="1" min="0"></label>
+        </div>
+        <label class="chk" style="margin-top:10px"><input type="checkbox" id="o-demand" checked> 需要の裏付けがある（同型の落札実績を見た）</label>
+      </div>
+    </div>
+    <div>
+      <div class="kpi">
+        <div><span class="k">判定</span><span class="v" id="o-verdict">—</span><span class="n" id="o-verdict-n"></span></div>
+        <div><span class="k">この値札まで買える</span><span class="v" id="o-cap">—</span><span class="n" id="o-cap-n"></span></div>
+      </div>
+      <div class="res" id="o-out"></div>
+      <div class="card">
+        <h2>損益の内訳</h2>
+        <div class="bd" id="o-bd"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ============ 軸1 ============ -->
 <section class="panel" id="p-axis1">
   <p class="hint">
@@ -338,9 +382,21 @@ ol.why code{font-size:12.5px;}
 <!-- ============ 軸2 ============ -->
 <section class="panel" id="p-axis2">
   <p class="hint">
-    出品後の反応を貼り付けると、有在庫化・価格見直し・撤退のいずれかを判定します。
-    eBay Seller Hub のレポートから <code>views / watchers / sold</code> を持ってくる想定です。
+    <b>出品した「後」の画面です。</b>まだ出品していない商品は対象外です。
+    eBay Seller Hub のレポートから <code>views / watchers / sold</code> を持ってきて貼り付けると、
+    商品ごとに「次の一手」が出ます。<code>title</code> 列を入れると商品名で表示されます。
+    同じSKUの行を毎週<b>追記</b>していけば、最新の1行で判定し、1つ前の行と比べた増分も出ます。
   </p>
+  <div class="card" style="margin-bottom:14px">
+    <h2>判定の読み方</h2>
+    <div class="bd" style="padding-top:4px">
+      <div class="row"><span><b style="color:var(--good)">PROMOTE</b></span><span>当たり。無在庫をやめて手元に仕入れ、発送を1〜2日に縮める</span></div>
+      <div class="row"><span><b style="color:var(--probe)">REPRICE</b></span><span>見られてはいる。価格が合っていないので下げる</span></div>
+      <div class="row"><span><b style="color:var(--probe)">RETITLE</b></span><span>そもそも見られていない。英語の検索語を組み直す</span></div>
+      <div class="row"><span><b style="color:var(--red)">DROP</b></span><span>反応が無い。出品を畳んで枠を空ける</span></div>
+      <div class="row"><span><b style="color:var(--dim)">KEEP</b></span><span>まだ判断できない。観察を続ける</span></div>
+    </div>
+  </div>
   <div class="split">
     <div>
       <div class="card">
@@ -366,7 +422,7 @@ ol.why code{font-size:12.5px;}
 
 <footer>
   <p>
-    Python版と同じ計算式を実装しています（テスト53件）。
+    Python版と同じ計算式を実装しています（テスト96件）。
     コード：<a href="https://github.com/doudemoee111-sys/todoapp_1/tree/claude/side-business-proposal-su9ie3/tools/blueocean">tools/blueocean</a>
   </p>
   <p>
@@ -699,7 +755,10 @@ function scoreOne(r, c){
   const cap = maxCost(price, cc);
   const profit = compute(price, cost, cc);
 
-  if (cost > cap){
+  /* 走査の雛形は仕入値が空。0を「タダで買える」と解釈すると必ずBLUEになる */
+  const costUnknown = cost <= 0;
+  if (costUnknown) reasons.push("仕入値が未入力。判定は相場と競合だけに基づく暫定値");
+  if (!costUnknown && cost > cap){
     reasons.push(`採算割れ：仕入 ${yen(cost)}円 が上限 ${yen(cap)}円 を ${yen(cost-cap)}円 超過`
       + `（実績利益率 ${(profit.margin*100).toFixed(1)}%）`);
     return {verdict:"thin", score:0, reasons, row:r, profit, cap};
@@ -726,6 +785,9 @@ function scoreOne(r, c){
   }
   else { reasons.push(`競合 ${n}件。ブルーではないが致命的でもない`); verdict = "probe"; }
 
+  /* 仕入値が未確定なら BLUE と言い切らない */
+  if (costUnknown && verdict === "blue") verdict = "probe";
+  if (w <= 0) reasons.push("重量が未入力。送料は最小重量帯の概算");
   if (demand && r.demand_note) reasons.push("需要の裏付け：" + r.demand_note);
 
   const score = Math.max(0,
@@ -770,6 +832,63 @@ function runAxis1(){
 }
 let LAST_AXIS1 = null;
 
+
+
+/* ===== 1件だけ判定 =====
+   バッチ判定は「候補リストにあるものしか評価できない」。
+   店頭で目の前にある1点は、まずリストに無い。ここはその1点のための口。 */
+function renderOne(){
+  const c = cfg();
+  const parcel = parcelOf($("o-g").value, $("o-l").value, $("o-w").value, $("o-h").value);
+  const row = {
+    sku: "CHECK", title_ja: $("o-title").value.trim(),
+    cost_incl_tax_jpy: $("o-cost").value, weight_g: $("o-g").value,
+    length_cm: $("o-l").value, width_cm: $("o-w").value, height_cm: $("o-h").value,
+    market_price_usd: $("o-price").value, competitor_count: $("o-comp").value,
+    has_demand_signal: $("o-demand").checked ? "yes" : "no", demand_note: "",
+    is_restricted: "no", restricted_reason: "",
+  };
+  const r = scoreOne(row, c);
+  const v = VERDICT[r.verdict];
+
+  $("o-verdict").textContent = v.label;
+  $("o-verdict").className = "v";
+  $("o-verdict").style.color = `var(--${v.cls})`;
+  $("o-verdict-n").textContent = v.desc;
+
+  const cost = +$("o-cost").value || 0;
+  $("o-cap").textContent = r.cap ? yen(r.cap) + " 円" : "—";
+  $("o-cap").className = "v" + (cost > r.cap ? " warn" : "");
+  $("o-cap-n").textContent = !r.cap ? ""
+    : (cost > r.cap
+       ? `いまの仕入 ${yen(cost)}円 は ${yen(cost - r.cap)}円 超過`
+       : `いまの仕入 ${yen(cost)}円 なら ${yen(r.cap - cost)}円 の余裕`);
+
+  $("o-out").innerHTML = `<div class="item i-${v.cls}">
+    <div class="top">
+      <span class="badge b-${v.cls}">${v.label}</span>
+      <span class="nm">${esc(row.title_ja || "(名称なし)")}</span>
+      <span class="st">競合 ${esc(String(row.competitor_count || "—"))}</span>
+    </div>
+    <ul>${r.reasons.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+  </div>`;
+
+  const bd = $("o-bd");
+  if (!r.profit){ bd.innerHTML = '<p class="hint" style="margin:0">相場を入力してください。</p>'; return; }
+  const b = r.profit, sf = shipFor(c, parcel);
+  const rows = [
+    ["売価", yen(b.price), ""],
+    ["eBay手数料", "−"+yen(b.fees), "neg"],
+    ["関税（DDP）", "−"+yen(b.duty), "neg"],
+    [sf.quote ? `国際送料（${CLABEL[sf.quote.carrier]} / 課金 ${sf.quote.chg}g）` : "国際送料", "−"+yen(b.ship), "neg"],
+    ["梱包資材", "−"+yen(b.pack), "neg"],
+    ["仕入（税込）", "−"+yen(b.cost), "neg"],
+    ["消費税還付", (b.refund>0?"+":"")+yen(b.refund), "pos"],
+  ];
+  bd.innerHTML = rows.map(([k,val,cl]) =>
+    `<div class="row ${cl}"><span>${k}</span><span>${val}</span></div>`).join("")
+    + `<div class="row total"><span>利益（利益率 ${(b.margin*100).toFixed(1)}%）</span><span>${yen(b.profit)} 円</span></div>`;
+}
 
 /* ===== 履歴と差分（history.py と同一） =====
    軸1が見ている数字は放っておいても動く。競合が増えれば BLUE は RED になり、
@@ -914,11 +1033,31 @@ function runAxis2(){
   const obs = rows.map(r => {
     const a = new Date(r.listed_on), b = new Date(r.observed_on);
     const days = (isNaN(a) || isNaN(b)) ? 0 : Math.max(0, Math.round((b-a)/86400000));
-    return {sku:r.sku, days, views:+r.views||0, watchers:+r.watchers||0, sold:+r.sold||0};
+    return {sku:r.sku, title:(r.title||"").trim(), days, observedOn:(r.observed_on||"").trim(),
+            views:+r.views||0, watchers:+r.watchers||0, sold:+r.sold||0};
   });
+  /* 観測CSVは追記して育てる。SKUごとに最新の1行だけを判定し、1つ前を前回比に使う */
+  const bySku = new Map();
+  obs.forEach(o => { const a = bySku.get(o.sku) || []; a.push(o); bySku.set(o.sku, a); });
+  const latest = [], prevOf = new Map();
+  for (const [sku, rows] of bySku){
+    rows.sort((a,b) => a.observedOn.localeCompare(b.observedOn));
+    latest.push(rows[rows.length-1]);
+    if (rows.length >= 2) prevOf.set(sku, rows[rows.length-2]);
+  }
   const ORDER = {promote:0, reprice:1, retitle:2, drop:3, keep:4};
-  const res = obs.map(decide)
-                 .sort((x,y) => ORDER[x.action]-ORDER[y.action] || y.o.sold-x.o.sold || y.o.watchers-x.o.watchers);
+  const res = latest.map(o => {
+      const d = decide(o), p = prevOf.get(o.sku);
+      if (p){
+        const days = Math.max(0, Math.round((new Date(o.observedOn) - new Date(p.observedOn))/86400000));
+        const dv = o.views-p.views, dw = o.watchers-p.watchers, ds = o.sold-p.sold;
+        d.delta = (dv === 0 && dw === 0 && ds === 0)
+          ? `前回（${p.observedOn}／${days}日前）から動きなし`
+          : `前回比（${days}日）: 閲覧 ${dv>=0?"+":""}${dv} / ウォッチ ${dw>=0?"+":""}${dw} / 販売 ${ds>=0?"+":""}${ds}`;
+      }
+      return d;
+    })
+    .sort((x,y) => ORDER[x.action]-ORDER[y.action] || y.o.sold-x.o.sold || y.o.watchers-x.o.watchers);
 
   const orders = +$("a2-orders").value || 0, cancels = +$("a2-cancel").value || 0;
   const rate = orders > 0 ? cancels/orders : 0;
@@ -943,10 +1082,10 @@ function runAxis2(){
     return `<div class="item i-${a.cls}">
       <div class="top">
         <span class="badge b-${a.cls}">${a.label}</span>
-        <span class="nm">${esc(r.o.sku || "(SKUなし)")}</span>
-        <span class="st">${r.o.days}日 / 閲覧${r.o.views} / ウォッチ${r.o.watchers} / 販売${r.o.sold}</span>
+        <span class="nm">${esc(r.o.title || r.o.sku || "(名称なし)")}</span>
+        <span class="st">${r.o.title ? esc(r.o.sku) + " / " : ""}${r.o.days}日 / 閲覧${r.o.views} / ウォッチ${r.o.watchers} / 販売${r.o.sold}</span>
       </div>
-      <ul><li>${esc(r.reason)}</li></ul>
+      <ul><li>${esc(r.reason)}</li>${r.delta ? `<li>${esc(r.delta)}</li>` : ""}</ul>
     </div>`;
   }).join("") : '<p class="hint">観測データを貼り付けて「判定する」を押してください。</p>';
 }
@@ -964,13 +1103,18 @@ FIG-001,限定フィギュア 2016年版（外箱付き）,28000,900,30,25,20,21
 TOOL-001,Makita cordless driver 18V with battery,18000,1600,19,19,9,290,9,yes,型番指名あり,yes,リチウム電池内蔵で航空輸送規制
 AMP-001,ヴィンテージ真空管アンプ,55000,8500,32,32,16,900,6,yes,重量物,no,`;
 
-const SAMPLE2 = `sku,listed_on,observed_on,views,watchers,sold
-LENS-002,2026-07-20,2026-08-23,142,5,1
-PEN-001,2026-08-10,2026-08-23,63,4,0
-VINYL-001,2026-08-01,2026-08-23,98,0,0
-REEL-001,2026-07-01,2026-08-23,6,0,0
-FIG-001,2026-05-01,2026-08-23,21,0,0
-LENS-001,2026-08-18,2026-08-23,12,1,0`;
+const SAMPLE2 = `sku,title,listed_on,observed_on,views,watchers,sold
+LENS-002,Konica Hexanon AR 40mm F1.8,2026-07-20,2026-08-16,118,3,0
+PEN-001,Pilot Custom 823 fountain pen amber,2026-08-10,2026-08-16,29,1,0
+VINYL-001,山下達郎 FOR YOU 帯付 LP,2026-08-01,2026-08-16,71,0,0
+REEL-001,Shimano Stella 2500 spinning reel,2026-07-01,2026-08-16,5,0,0
+FIG-001,限定フィギュア 2016年版（外箱付き）,2026-05-01,2026-08-16,21,0,0
+LENS-002,Konica Hexanon AR 40mm F1.8,2026-07-20,2026-08-23,142,5,1
+PEN-001,Pilot Custom 823 fountain pen amber,2026-08-10,2026-08-23,63,4,0
+VINYL-001,山下達郎 FOR YOU 帯付 LP,2026-08-01,2026-08-23,98,0,0
+REEL-001,Shimano Stella 2500 spinning reel,2026-07-01,2026-08-23,6,0,0
+FIG-001,限定フィギュア 2016年版（外箱付き）,2026-05-01,2026-08-23,21,0,0
+LENS-001,Nikon Ai-s 50mm F1.2 manual lens,2026-08-18,2026-08-23,12,1,0`;
 
 /* ===== 設定の保存（このブラウザのみ） ===== */
 const KEYS = ["market","level","fx","tm","fee","duty","ship","pack","perorder",
@@ -1006,6 +1150,8 @@ $("market").addEventListener("change", () => { fillProfileInputs(); refresh(); }
  "p-g","p-l","p-w","p-h","auto-ship"]
   .forEach(id => $(id).addEventListener("input", refresh));
 $("carrier").addEventListener("change", refresh);
+["o-title","o-cost","o-g","o-l","o-w","o-h","o-price","o-comp","o-demand"]
+  .forEach(id => $(id).addEventListener("input", renderOne));
 $("a1-run").addEventListener("click", runAxis1);
 $("a2-run").addEventListener("click", runAxis2);
 $("a1-save").addEventListener("click", () => {
@@ -1019,10 +1165,10 @@ $("a1-save").addEventListener("click", () => {
 $("a1-reset").addEventListener("click", () => { $("a1-in").value = SAMPLE1; runAxis1(); });
 $("a2-reset").addEventListener("click", () => { $("a2-in").value = SAMPLE2; runAxis2(); });
 
-function refresh(){ saveCfg(); renderCalc(); runAxis1(); }
+function refresh(){ saveCfg(); renderCalc(); renderOne(); runAxis1(); }
 
 if (!loadCfg()) fillProfileInputs();
 $("a1-in").value = SAMPLE1;
 $("a2-in").value = SAMPLE2;
-renderCalc(); runAxis1(); runAxis2();
+renderCalc(); renderOne(); runAxis1(); runAxis2();
 </script>

@@ -62,6 +62,7 @@ class ObservationDelta:
 @dataclass
 class Decision:
     sku: str
+    title: str
     action: Action
     reason: str
     days_listed: int
@@ -69,6 +70,10 @@ class Decision:
     watchers: int
     sold: int
     delta: ObservationDelta | None = None   # 前回の観測がある場合のみ
+
+    @property
+    def label(self) -> str:
+        return self.title or self.sku
 
 
 def delta_between(previous: Observation, current: Observation) -> ObservationDelta:
@@ -98,7 +103,8 @@ def decide(
     delta = delta_between(previous, obs) if previous is not None else None
 
     def mk(action: Action, reason: str) -> Decision:
-        return Decision(obs.sku, action, reason, d, obs.views, obs.watchers, obs.sold, delta)
+        return Decision(obs.sku, obs.title, action, reason, d,
+                        obs.views, obs.watchers, obs.sold, delta)
 
     # 1. 売れた = 需要が確定した。最優先で有在庫化する
     if obs.sold >= p.promote_on_sold:
@@ -173,6 +179,7 @@ def stockout_alert(rate: float, threshold: float = 0.02) -> str | None:
         return (
             f"在庫切れ率 {rate*100:.1f}% が閾値 {threshold*100:.0f}% を超過。"
             f"Below Standard に落ちると手数料が6ポイント上がり、必要な仕入倍率が "
-            f"2.35倍→2.79倍に悪化する。出品数を減らし、在庫連動の頻度を上げること"
+            f"2.35倍→2.79倍に悪化する（米国・売価$200・送料3,000円の前提。"
+            f"実際の倍率は荷姿と市場で変わる）。出品数を減らし、在庫連動の頻度を上げること"
         )
     return None

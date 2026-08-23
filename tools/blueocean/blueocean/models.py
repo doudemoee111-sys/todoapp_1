@@ -93,6 +93,14 @@ class Observation:
     views: int = 0
     watchers: int = 0
     sold: int = 0
+    # 商品名。SKUだけでは何の商品か分からず、判定を読んでも動けないため持つ。
+    # 観測CSVに title 列を書くか、候補CSVから結合して埋める。
+    title: str = ""
+
+    @property
+    def label(self) -> str:
+        """表示名。商品名があればそれを、無ければSKUを返す。"""
+        return self.title or self.sku
 
     @property
     def days_listed(self) -> int:

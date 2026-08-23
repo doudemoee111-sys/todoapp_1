@@ -56,8 +56,10 @@ def load_candidates(path: str | Path) -> list[Candidate]:
                     sku=row["sku"].strip(),
                     title_ja=row["title_ja"].strip(),
                     source_url=row.get("source_url", "").strip(),
-                    cost_incl_tax_jpy=float(row["cost_incl_tax_jpy"]),
-                    weight_g=int(row["weight_g"]),
+                    # 走査で出した雛形は仕入値も重量も空。国内で現物が見つかるまで
+                    # 埋まらないので、空でも読めるようにする（判定側で未入力を明示する）
+                    cost_incl_tax_jpy=float(row.get("cost_incl_tax_jpy") or 0),
+                    weight_g=int(float(row.get("weight_g") or 0)),
                     category=row.get("category", "").strip(),
                     # 寸法は任意だが、未入力だと容積重量を評価できない
                     length_cm=float(row.get("length_cm") or 0),
@@ -98,9 +100,28 @@ def load_observations(path: str | Path) -> list[Observation]:
                     views=int(row.get("views", 0) or 0),
                     watchers=int(row.get("watchers", 0) or 0),
                     sold=int(row.get("sold", 0) or 0),
+                    title=row.get("title", "").strip(),
                 )
             )
     return out
+
+
+def attach_titles(
+    observations: list[Observation], candidates: list[Candidate]
+) -> int:
+    """候補CSVの商品名を観測に結合する。埋めた件数を返す。
+
+    観測CSV（Seller Hubのエクスポート）にはSKUしか無いことが多い。
+    SKUだけを並べても「どの商品か分からない」ので判定を読んでも動けない。
+    候補CSVを持っているなら、そこから名前を引く。
+    """
+    names = {c.sku: c.title_ja for c in candidates if c.title_ja}
+    filled = 0
+    for o in observations:
+        if not o.title and o.sku in names:
+            o.title = names[o.sku]
+            filled += 1
+    return filled
 
 
 # ---------- 軸1 ----------

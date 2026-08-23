@@ -1,0 +1,23 @@
+# キーワード一覧。1行1件。# 以降はコメント。
+# 得意ジャンルの型番表を作って置いておく。一度作れば資産として残る。
+# 粒度は「型番まで」が基本。ブランド単位だと競合数が意味を持たなくなる。
+
+# --- オールドレンズ（国産マニュアルフォーカス） ---
+Konica Hexanon AR 40mm F1.8
+Nikon Ai-s 50mm F1.2
+Minolta MC Rokkor 58mm F1.2
+Canon FD 55mm F1.2 Aspherical
+Olympus OM Zuiko 21mm F2
+
+# --- 万年筆 ---
+Pilot Custom 823 amber
+Sailor Pro Gear King of Pen
+Platinum 3776 Century Chartres
+
+# --- 釣具 ---
+Shimano Stella 2500
+Daiwa Exist LT2500
+
+# --- レコード（シティポップ） ---
+Tatsuro Yamashita FOR YOU LP obi
+Mariya Takeuchi Variety LP

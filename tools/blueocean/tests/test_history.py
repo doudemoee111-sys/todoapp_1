@@ -274,3 +274,43 @@ def test_refresh_overrides_manual_values():
     fresh = MockSource().snapshot("固定の検索語")
     assert c[0].competitor_count == fresh.competitor_count
     assert c[0].market_price_usd == fresh.median_price_usd
+
+
+# --- 商品名 -----------------------------------------------------------------
+
+def test_titles_are_joined_from_candidates():
+    """観測CSVにはSKUしか無いことが多い。候補CSVから商品名を引けること。
+
+    SKUだけ並べても「どの商品か分からない」ので、判定を読んでも動けない。
+    """
+    from blueocean.models import Candidate
+    from blueocean.pipeline import attach_titles
+
+    o = [obs("LENS-002", "2026-08-23", 100)]
+    cands = [Candidate(sku="LENS-002", title_ja="Konica Hexanon AR 40mm F1.8",
+                       source_url="", cost_incl_tax_jpy=9800, weight_g=180, category="")]
+    assert attach_titles(o, cands) == 1
+    assert o[0].label == "Konica Hexanon AR 40mm F1.8"
+
+
+def test_existing_title_is_not_overwritten():
+    from blueocean.models import Candidate
+    from blueocean.pipeline import attach_titles
+
+    o = [obs("A", "2026-08-23", 10)]
+    o[0].title = "観測CSVに書いた名前"
+    attach_titles(o, [Candidate(sku="A", title_ja="別の名前", source_url="",
+                                cost_incl_tax_jpy=1, weight_g=1, category="")])
+    assert o[0].title == "観測CSVに書いた名前"
+
+
+def test_label_falls_back_to_sku():
+    assert obs("A", "2026-08-23", 10).label == "A"
+
+
+def test_decision_carries_the_title():
+    from blueocean.promotion import decide
+
+    o = obs("A", "2026-08-23", 10)
+    o.title = "商品名"
+    assert decide(o).label == "商品名"

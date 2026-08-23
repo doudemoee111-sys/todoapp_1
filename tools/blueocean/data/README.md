@@ -1,7 +1,24 @@
 # データファイル
 
+- `keywords.sample.txt` — `scan`（キーワード走査）の入力サンプル
 - `candidates.sample.csv` — 軸1の入力サンプル（国内の仕入候補）
 - `observations.sample.csv` — 軸2の入力サンプル（出品後の反応）
+
+流れは `keywords.txt` → `scan` → `candidates.csv`（雛形）→ 国内で現物を探して仕入値を書き足す
+→ `axis1` → 出品 → `observations.csv` → `axis2` です。
+
+## keywords.txt
+
+1行1件。`#` 以降と空行は無視します。得意ジャンルの型番表を置いてください。
+**粒度は型番まで**が基本です（ブランド単位だと競合数が意味を持たなくなります）。
+
+```
+# --- オールドレンズ（国産マニュアルフォーカス） ---
+Konica Hexanon AR 40mm F1.8
+Nikon Ai-s 50mm F1.2
+```
+
+一度作れば資産として残ります。100〜500行あれば毎週の走査に足ります。
 
 ## candidates.csv の列
 
@@ -49,9 +66,13 @@ zone3,2000,5900
 
 ## observations.csv の列
 
-`sku`, `listed_on`(YYYY-MM-DD), `observed_on`(YYYY-MM-DD), `views`, `watchers`, `sold`
+`sku`, `title`(任意), `listed_on`(YYYY-MM-DD), `observed_on`(YYYY-MM-DD), `views`, `watchers`, `sold`
 
 eBay Seller Hub のパフォーマンスレポートからエクスポートした値を想定しています。
+
+**`title` を入れてください。** SKUだけを並べても「どの商品か分からない」ので、
+判定を読んでも動けません。列が無い場合は `axis2 --candidates data/candidates.csv` で
+候補CSVから商品名を結合できます。
 
 **このファイルは追記して育てます。** 毎週の行を足していけば、同じSKUの行が何本も並びます。
 ツールはSKUごとに最新の1行だけを判定対象にし、1つ前の行を前回比の計算に使います。
