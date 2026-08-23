@@ -60,7 +60,7 @@ GENRES = {
     "space": {
         "key": "space",
         "label": "宇宙・科学解説",
-        "publish_hour_jst": 19,
+        "publish_hour_jst": 20,   # ミステリー(19時)と初速が食い合わないよう20時に分離
         "youtube_category_id": "27",   # Education
         "image_style": (
             "cinematic ultra-detailed space and science illustration, deep cosmos, "
