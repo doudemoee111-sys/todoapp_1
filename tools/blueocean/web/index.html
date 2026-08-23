@@ -1,0 +1,646 @@
+<title>Blue Ocean 仕入判断ツール</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --paper:#F2F4F6;--surface:#FFFFFF;--surface-2:#E9EDF0;--ink:#101820;--ink-2:#33404C;
+  --muted:#63727F;--rule:#CFD8DF;--rule-soft:#E1E7EC;
+  --accent:#0F6E76;--accent-soft:#D8EBEC;--accent-ink:#0B565C;
+  --blue:#0F6E76;--blue-bg:#D8EBEC;
+  --probe:#B98216;--probe-bg:#FBF0DA;
+  --thin:#7A6A55;--thin-bg:#EFEAE1;
+  --red:#B33A1A;--red-bg:#F8E4DC;
+  --dim:#8C99A4;--dim-bg:#E9EDF0;
+  --good:#1F6B4F;--good-bg:#DDEEE6;
+  --shadow:0 1px 2px rgba(16,24,32,.05),0 8px 24px -16px rgba(16,24,32,.3);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#0D1216;--surface:#151D22;--surface-2:#1D272D;--ink:#E4EBEF;--ink-2:#BAC7CF;
+  --muted:#83939E;--rule:#28343B;--rule-soft:#202B31;
+  --accent:#5FBFC4;--accent-soft:#122A2C;--accent-ink:#8AD5D8;
+  --blue:#5FBFC4;--blue-bg:#122A2C;
+  --probe:#D3A24A;--probe-bg:#2B2312;
+  --thin:#A2937C;--thin-bg:#262117;
+  --red:#E08560;--red-bg:#2C1A13;
+  --dim:#66757F;--dim-bg:#1D272D;
+  --good:#6BC49B;--good-bg:#14251E;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px -18px rgba(0,0,0,.9);
+}}
+:root[data-theme="dark"]{
+  --paper:#0D1216;--surface:#151D22;--surface-2:#1D272D;--ink:#E4EBEF;--ink-2:#BAC7CF;
+  --muted:#83939E;--rule:#28343B;--rule-soft:#202B31;
+  --accent:#5FBFC4;--accent-soft:#122A2C;--accent-ink:#8AD5D8;
+  --blue:#5FBFC4;--blue-bg:#122A2C;
+  --probe:#D3A24A;--probe-bg:#2B2312;
+  --thin:#A2937C;--thin-bg:#262117;
+  --red:#E08560;--red-bg:#2C1A13;
+  --dim:#66757F;--dim-bg:#1D272D;
+  --good:#6BC49B;--good-bg:#14251E;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px -18px rgba(0,0,0,.9);
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+  font-size:15px;line-height:1.7;-webkit-font-smoothing:antialiased;font-feature-settings:"palt" 1;}
+.wrap{max-width:1240px;margin:0 auto;padding:0 20px 80px;}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;}
+
+header{padding:36px 0 22px;border-bottom:1px solid var(--rule);display:flex;flex-direction:column;gap:10px;}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--muted);display:flex;gap:12px;align-items:center;flex-wrap:wrap;}
+.eyebrow .dot{width:5px;height:5px;border-radius:50%;background:var(--accent);}
+h1{font-size:clamp(22px,3vw,30px);font-weight:700;margin:0;line-height:1.35;}
+.lede{font-size:14.5px;color:var(--ink-2);max-width:76ch;margin:0;}
+
+/* settings */
+.settings{background:var(--surface);border:1px solid var(--rule);border-radius:4px;margin-top:22px;overflow:hidden;}
+.settings summary{padding:13px 18px;cursor:pointer;font-weight:700;font-size:14px;list-style:none;
+  display:flex;justify-content:space-between;align-items:center;gap:12px;}
+.settings summary::-webkit-details-marker{display:none;}
+.settings summary::after{content:"▾";color:var(--muted);font-size:12px;}
+.settings[open] summary{border-bottom:1px solid var(--rule);}
+.settings[open] summary::after{content:"▴";}
+.sgrid{padding:18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:14px;}
+label{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted);font-weight:500;}
+input,select,textarea{font-family:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--rule);
+  border-radius:3px;background:var(--surface);color:var(--ink);width:100%;}
+input[type=number]{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;}
+textarea{font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.65;min-height:170px;resize:vertical;white-space:pre;overflow-x:auto;}
+.chk{flex-direction:row;align-items:center;gap:8px;font-size:13px;color:var(--ink-2);}
+.chk input{width:auto;}
+
+/* tabs */
+nav.tabs{display:flex;gap:2px;margin-top:24px;border-bottom:1px solid var(--rule);flex-wrap:wrap;}
+nav.tabs button{background:none;border:none;border-bottom:2px solid transparent;padding:10px 16px;
+  font-family:inherit;font-size:14px;font-weight:700;color:var(--muted);cursor:pointer;}
+nav.tabs button[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent);}
+nav.tabs button:hover{color:var(--ink);}
+section.panel{display:none;padding-top:24px;}
+section.panel.on{display:block;}
+h2{font-size:16px;font-weight:700;margin:0 0 12px;}
+h3{font-size:13.5px;font-weight:700;margin:20px 0 8px;color:var(--ink);}
+p.hint{font-size:13px;color:var(--muted);margin:0 0 14px;max-width:74ch;}
+
+.split{display:grid;grid-template-columns:1fr;gap:20px;}
+@media(min-width:900px){.split{grid-template-columns:340px minmax(0,1fr);gap:26px;}}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:18px;}
+
+/* breakdown */
+.bd{display:flex;flex-direction:column;gap:0;}
+.bd .row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--rule-soft);font-size:14px;}
+.bd .row:last-child{border-bottom:none;}
+.bd .row.total{border-top:2px solid var(--rule);margin-top:4px;padding-top:11px;font-weight:700;font-size:15.5px;}
+.bd .row span:last-child{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;}
+.bd .neg span:last-child{color:var(--red);}
+.bd .pos span:last-child{color:var(--good);}
+.kpi{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:4px;overflow:hidden;margin-bottom:16px;}
+.kpi div{background:var(--surface);padding:14px 16px;display:flex;flex-direction:column;gap:3px;}
+.kpi .k{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);}
+.kpi .v{font-family:"IBM Plex Mono",monospace;font-size:22px;font-weight:600;color:var(--accent);font-variant-numeric:tabular-nums;}
+.kpi .v.warn{color:var(--red);}
+.kpi .n{font-size:11.5px;color:var(--muted);}
+
+/* results */
+.res{display:flex;flex-direction:column;gap:8px;}
+.item{border:1px solid var(--rule);border-left-width:3px;border-radius:3px;background:var(--surface);padding:12px 15px;}
+.item .top{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;}
+.badge{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;letter-spacing:.08em;
+  padding:2px 8px;border-radius:2px;white-space:nowrap;}
+.item .nm{font-weight:700;font-size:14px;flex:1;min-width:180px;}
+.item .st{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted);white-space:nowrap;}
+.item ul{margin:7px 0 0;padding-left:1.15em;display:flex;flex-direction:column;gap:3px;}
+.item li{font-size:12.5px;color:var(--ink-2);line-height:1.6;}
+.i-blue{border-left-color:var(--blue);} .b-blue{background:var(--blue-bg);color:var(--accent-ink);border:1px solid var(--blue);}
+.i-probe{border-left-color:var(--probe);} .b-probe{background:var(--probe-bg);color:var(--probe);border:1px solid var(--probe);}
+.i-thin{border-left-color:var(--thin);} .b-thin{background:var(--thin-bg);color:var(--thin);border:1px solid var(--thin);}
+.i-red{border-left-color:var(--red);} .b-red{background:var(--red-bg);color:var(--red);border:1px solid var(--red);}
+.i-dim{border-left-color:var(--dim);} .b-dim{background:var(--dim-bg);color:var(--muted);border:1px solid var(--rule);}
+.i-good{border-left-color:var(--good);} .b-good{background:var(--good-bg);color:var(--good);border:1px solid var(--good);}
+
+.tally{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+.tally .t{font-family:"IBM Plex Mono",monospace;font-size:11.5px;padding:4px 10px;border-radius:3px;border:1px solid var(--rule);background:var(--surface);}
+
+.alert{background:var(--red-bg);border:1px solid var(--red);border-radius:3px;padding:13px 15px;font-size:13.5px;margin-bottom:14px;}
+.alert b{color:var(--red);}
+.ok-note{background:var(--good-bg);border:1px solid var(--good);border-radius:3px;padding:11px 15px;font-size:13px;margin-bottom:14px;}
+.warnnote{background:var(--probe-bg);border:1px solid var(--probe);border-radius:3px;padding:13px 15px;font-size:13px;margin:16px 0;}
+.warnnote b{color:var(--probe);}
+
+button.act{background:var(--accent);color:var(--surface);border:none;border-radius:3px;padding:9px 18px;
+  font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer;}
+button.act:hover{filter:brightness(1.1);}
+button.ghost{background:none;color:var(--muted);border:1px solid var(--rule);border-radius:3px;
+  padding:8px 14px;font-family:inherit;font-size:12.5px;cursor:pointer;}
+button.ghost:hover{color:var(--accent);border-color:var(--accent);}
+.btnrow{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center;}
+
+.tbl{overflow-x:auto;border:1px solid var(--rule);border-radius:3px;background:var(--surface);margin:12px 0;}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:480px;}
+th{text-align:left;font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;padding:9px 13px;border-bottom:1px solid var(--rule);background:var(--surface-2);white-space:nowrap;}
+td{padding:9px 13px;border-bottom:1px solid var(--rule-soft);color:var(--ink-2);}
+tr:last-child td{border-bottom:none;}
+td.n{text-align:right;font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap;}
+tr.hl td{background:var(--accent-soft);color:var(--accent-ink);font-weight:700;}
+
+footer{margin-top:44px;padding-top:20px;border-top:1px solid var(--rule);font-size:12px;color:var(--muted);line-height:1.75;}
+footer a{color:var(--muted);}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px;}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow"><span class="dot"></span><span>提案④ 補論 / 軸1＋軸2</span><span>ブラウザ版</span></div>
+  <h1>Blue Ocean 仕入判断ツール</h1>
+  <p class="lede">
+    競合が少なく採算の合う商品を選び（軸1）、出品後の反応から有在庫化を判断する（軸2）。
+    リポジトリのPython版と<strong>同じ計算式</strong>をブラウザで動かします。入力はこのページから出ず、保存もされません。
+  </p>
+</header>
+
+<details class="settings" id="settings">
+  <summary>前提条件（市場・手数料・関税・為替）</summary>
+  <div class="sgrid">
+    <label>市場
+      <select id="market">
+        <option value="ebay_us">eBay 米国（DDP・関税セラー負担）</option>
+        <option value="ebay_eu">eBay 欧州</option>
+        <option value="ebay_au">eBay 豪州</option>
+        <option value="shopee_sea">Shopee 東南アジア・台湾</option>
+      </select>
+    </label>
+    <label>セラーレベル
+      <select id="level">
+        <option value="top_rated">Top Rated（手数料10%割引）</option>
+        <option value="above_standard" selected>Above Standard</option>
+        <option value="below_standard">Below Standard（+6ポイント）</option>
+      </select>
+    </label>
+    <label>為替（円/USD）<input type="number" id="fx" value="150" step="0.5" min="50"></label>
+    <label>目標利益率（%）<input type="number" id="tm" value="20" step="1" min="0" max="90"></label>
+    <label>手数料率（%）<input type="number" id="fee" step="0.1" min="0"></label>
+    <label>関税率（%）<input type="number" id="duty" step="0.1" min="0"></label>
+    <label>国際送料（円）<input type="number" id="ship" step="100" min="0"></label>
+    <label>梱包資材（円）<input type="number" id="pack" step="10" min="0"></label>
+    <label>注文ごと固定費（円）<input type="number" id="perorder" step="10" min="0"></label>
+    <label class="chk"><input type="checkbox" id="taxable" checked> 課税事業者（消費税還付を受ける）</label>
+  </div>
+</details>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" aria-selected="true" data-tab="calc">仕入上限の逆算</button>
+  <button role="tab" aria-selected="false" data-tab="axis1">軸1：出品候補の判定</button>
+  <button role="tab" aria-selected="false" data-tab="axis2">軸2：出品後の判定</button>
+</nav>
+
+<!-- ============ 仕入上限 ============ -->
+<section class="panel on" id="p-calc">
+  <div class="split">
+    <div>
+      <div class="card">
+        <h2>入力</h2>
+        <label style="margin-bottom:12px">eBayでの想定売価（USD）<input type="number" id="c-price" value="200" step="5" min="1"></label>
+        <label>実際の仕入価格（円・税込／任意）<input type="number" id="c-cost" value="12000" step="500" min="0"></label>
+        <p class="hint" style="margin-top:12px;margin-bottom:0">
+          仕入価格を空にすると上限だけを計算します。
+        </p>
+      </div>
+      <div class="warnnote">
+        <b>関税率は必ず確認してください。</b>米国の制度はこの半年で3回変わりました
+        （de minimis廃止 → 最高裁の違法判決 → 通商法122条 → 301条）。
+        既定値は2026年8月時点の対日12.5%です。
+      </div>
+    </div>
+    <div>
+      <div class="kpi">
+        <div><span class="k">仕入上限（税込）</span><span class="v" id="k-cap">—</span><span class="n" id="k-cap-n">目標利益率を満たす上限</span></div>
+        <div><span class="k">必要な 売価÷仕入</span><span class="v" id="k-mult">—</span><span class="n">この倍率を切る商品は見送る</span></div>
+      </div>
+      <div class="card">
+        <h2>損益の内訳</h2>
+        <div class="bd" id="bd"></div>
+      </div>
+      <h3>市場を変えるとどうなるか</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>市場</th><th class="n">手数料</th><th class="n">関税</th><th class="n">必要倍率</th></tr></thead>
+        <tbody id="cmp"></tbody>
+      </table></div>
+      <p class="hint">同じ商品でも売り先を変えるだけで難易度が変わります。米国一本足にしない理由がここにあります。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 軸1 ============ -->
+<section class="panel" id="p-axis1">
+  <p class="hint">
+    国内の仕入候補を貼り付けると、採算と競合環境から5段階で判定します。1行目は見出しのまま残してください。
+    <code>market_price_usd</code> と <code>competitor_count</code> は Terapeak 等で調べた値を入れます。
+  </p>
+  <div class="split">
+    <div>
+      <div class="card">
+        <h2>候補（CSV）</h2>
+        <textarea id="a1-in" spellcheck="false"></textarea>
+        <div class="btnrow">
+          <button class="act" id="a1-run">判定する</button>
+          <button class="ghost" id="a1-reset">サンプルに戻す</button>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="tally" id="a1-tally"></div>
+      <div class="res" id="a1-out"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 軸2 ============ -->
+<section class="panel" id="p-axis2">
+  <p class="hint">
+    出品後の反応を貼り付けると、有在庫化・価格見直し・撤退のいずれかを判定します。
+    eBay Seller Hub のレポートから <code>views / watchers / sold</code> を持ってくる想定です。
+  </p>
+  <div class="split">
+    <div>
+      <div class="card">
+        <h2>観測（CSV）</h2>
+        <textarea id="a2-in" spellcheck="false"></textarea>
+        <div class="sgrid" style="padding:14px 0 0;grid-template-columns:1fr 1fr;">
+          <label>総注文数<input type="number" id="a2-orders" value="120" min="0"></label>
+          <label>セラー都合キャンセル<input type="number" id="a2-cancel" value="5" min="0"></label>
+        </div>
+        <div class="btnrow">
+          <button class="act" id="a2-run">判定する</button>
+          <button class="ghost" id="a2-reset">サンプルに戻す</button>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div id="a2-alert"></div>
+      <div class="tally" id="a2-tally"></div>
+      <div class="res" id="a2-out"></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>
+    Python版と同じ計算式を実装しています（テスト32件）。
+    コード：<a href="https://github.com/doudemoee111-sys/todoapp_1/tree/claude/side-business-proposal-su9ie3/tools/blueocean">tools/blueocean</a>
+  </p>
+  <p>
+    本ツールの既定値は2026年8月時点の調査に基づく前提です。収益を保証するものではありません。
+    <strong>関税・手数料・プラットフォーム規約は変更されます。運用前に必ず最新情報をご確認ください。</strong>
+    中古品を扱う場合は古物商許可が、消費税還付には課税事業者の届出が必要です。
+  </p>
+</footer>
+</div>
+
+<script>
+"use strict";
+
+/* ===== 前提値（Python版 DEFAULT_PROFILES と同一） ===== */
+const PROFILES = {
+  ebay_us:    {fee:.18, per:60, duty:.125, ship:3000, pack:200, label:"eBay 米国"},
+  ebay_eu:    {fee:.18, per:60, duty:0,    ship:3000, pack:200, label:"eBay 欧州"},
+  ebay_au:    {fee:.18, per:60, duty:0,    ship:3000, pack:200, label:"eBay 豪州"},
+  shopee_sea: {fee:.08, per:40, duty:0,    ship:2000, pack:200, label:"Shopee 東南ア"},
+};
+const LEVEL_ADJ = {top_rated:-.02, above_standard:0, below_standard:.06};
+
+const $ = id => document.getElementById(id);
+const yen = n => Math.round(n).toLocaleString("ja-JP");
+
+function cfg(){
+  const m = $("market").value;
+  return {
+    market:m, level:$("level").value,
+    fx:+$("fx").value || 150,
+    target:(+$("tm").value || 0)/100,
+    fee:(+$("fee").value || 0)/100,
+    duty:(+$("duty").value || 0)/100,
+    ship:+$("ship").value || 0,
+    pack:+$("pack").value || 0,
+    per:+$("perorder").value || 0,
+    taxable:$("taxable").checked,
+  };
+}
+function fillProfileInputs(){
+  const p = PROFILES[$("market").value];
+  $("fee").value = (p.fee*100).toFixed(1);
+  $("duty").value = (p.duty*100).toFixed(1);
+  $("ship").value = p.ship;
+  $("pack").value = p.pack;
+  $("perorder").value = p.per;
+}
+
+/* ===== 利益計算（profit.py と同一） ===== */
+function effFee(c){ return Math.max(0, c.fee + LEVEL_ADJ[c.level]); }
+
+function compute(priceUsd, costJpy, c){
+  const price = priceUsd * c.fx;
+  const fees  = price * effFee(c) + c.per;
+  const duty  = price * c.duty;
+  const refund = c.taxable ? costJpy * 0.10 / 1.10 : 0;
+  const profit = price - fees - duty - c.ship - c.pack - costJpy + refund;
+  return {price, fees, duty, ship:c.ship, pack:c.pack, cost:costJpy, refund, profit,
+          margin: price ? profit/price : 0};
+}
+function maxCost(priceUsd, c, target){
+  const t = target === undefined ? c.target : target;
+  const price = priceUsd * c.fx;
+  const fees  = price * effFee(c) + c.per;
+  const duty  = price * c.duty;
+  const k = c.taxable ? 0.10/1.10 : 0;
+  return Math.max(0, (price*(1-t) - fees - duty - c.ship - c.pack) / (1-k));
+}
+function reqMultiple(priceUsd, c, target){
+  const cap = maxCost(priceUsd, c, target);
+  return cap <= 0 ? Infinity : (priceUsd*c.fx)/cap;
+}
+
+/* ===== 仕入上限タブ ===== */
+function renderCalc(){
+  const c = cfg();
+  const price = +$("c-price").value || 0;
+  const costRaw = $("c-cost").value.trim();
+  const cost = costRaw === "" ? null : (+costRaw || 0);
+
+  const cap = maxCost(price, c);
+  const mult = reqMultiple(price, c);
+  $("k-cap").textContent = price ? yen(cap) + " 円" : "—";
+  $("k-mult").textContent = isFinite(mult) ? mult.toFixed(2) + " 倍" : "—";
+  $("k-cap-n").textContent = `目標利益率 ${(c.target*100).toFixed(0)}% を満たす上限`;
+
+  const bd = $("bd");
+  if (!price){ bd.innerHTML = '<p class="hint" style="margin:0">売価を入力してください。</p>'; }
+  else {
+    const b = compute(price, cost === null ? cap : cost, c);
+    const usingCap = cost === null;
+    const rows = [
+      ["売価", yen(b.price), ""],
+      ["eBay手数料", "−"+yen(b.fees), "neg"],
+      ["関税（DDP）", "−"+yen(b.duty), "neg"],
+      ["国際送料", "−"+yen(b.ship), "neg"],
+      ["梱包資材", "−"+yen(b.pack), "neg"],
+      [usingCap ? "仕入（上限で試算）" : "仕入（税込）", "−"+yen(b.cost), "neg"],
+      ["消費税還付", (b.refund>0?"+":"")+yen(b.refund), "pos"],
+    ];
+    bd.innerHTML = rows.map(([k,v,cl]) =>
+      `<div class="row ${cl}"><span>${k}</span><span>${v}</span></div>`).join("")
+      + `<div class="row total"><span>利益（利益率 ${(b.margin*100).toFixed(1)}%）</span><span>${yen(b.profit)} 円</span></div>`;
+    $("k-cap").className = "v" + (cost !== null && cost > cap ? " warn" : "");
+  }
+
+  const tb = $("cmp");
+  tb.innerHTML = Object.entries(PROFILES).map(([key,p])=>{
+    const cc = {...c, fee:p.fee, duty:p.duty, ship:p.ship, pack:p.pack, per:p.per};
+    const mm = reqMultiple(price, cc);
+    return `<tr class="${key===c.market?'hl':''}"><td>${p.label}</td>`
+      + `<td class="n">${((p.fee+LEVEL_ADJ[c.level])*100).toFixed(1)}%</td>`
+      + `<td class="n">${(p.duty*100).toFixed(1)}%</td>`
+      + `<td class="n">${isFinite(mm)?mm.toFixed(2)+"倍":"—"}</td></tr>`;
+  }).join("");
+}
+
+/* ===== CSV ===== */
+function parseCsv(text){
+  const lines = text.trim().split(/\r?\n/).filter(l => l.trim() !== "");
+  if (!lines.length) return [];
+  const head = lines[0].split(",").map(s => s.trim());
+  return lines.slice(1).map(line => {
+    const cells = line.split(",");
+    const o = {};
+    head.forEach((h,i) => o[h] = (cells[i] ?? "").trim());
+    return o;
+  });
+}
+const truthy = v => ["1","true","yes","y"].includes(String(v||"").toLowerCase());
+
+/* ===== 軸1（scoring.py と同一） ===== */
+const POLICY = {blueMax:5, redMin:30, maxWeight:2000, minPrice:30};
+const VERDICT = {
+  blue:{cls:"blue", label:"BLUE",  desc:"最優先で出品"},
+  probe:{cls:"probe",label:"PROBE", desc:"少量で反応を試す"},
+  thin:{cls:"thin", label:"THIN",  desc:"採算割れ"},
+  red:{cls:"red",   label:"RED",   desc:"競合過多"},
+  excl:{cls:"dim",  label:"EXCL",  desc:"対象外"},
+};
+
+function scoreOne(r, c){
+  const reasons = [];
+  const out = v => ({verdict:v, score:0, reasons, row:r, profit:null, cap:0});
+
+  if (truthy(r.is_restricted)) { reasons.push("除外：" + (r.restricted_reason || "輸出規制・禁止品")); return out("excl"); }
+  const w = +r.weight_g || 0;
+  if (w > POLICY.maxWeight) { reasons.push(`除外：重量 ${w}g が上限 ${POLICY.maxWeight}g を超過`); return out("excl"); }
+  const price = r.market_price_usd === "" ? null : +r.market_price_usd;
+  if (price === null || !isFinite(price) || price <= 0) { reasons.push("除外：eBay側の相場が未入力"); return out("excl"); }
+  if (price < POLICY.minPrice) { reasons.push(`除外：想定売価 $${price} が下限 $${POLICY.minPrice} 未満`); return out("excl"); }
+
+  const cost = +r.cost_incl_tax_jpy || 0;
+  const cap = maxCost(price, c);
+  const profit = compute(price, cost, c);
+
+  if (cost > cap){
+    reasons.push(`採算割れ：仕入 ${yen(cost)}円 が上限 ${yen(cap)}円 を ${yen(cost-cap)}円 超過`
+      + `（実績利益率 ${(profit.margin*100).toFixed(1)}%）`);
+    return {verdict:"thin", score:0, reasons, row:r, profit, cap};
+  }
+
+  const nRaw = r.competitor_count;
+  const n = nRaw === "" || nRaw === undefined ? null : +nRaw;
+  const demand = truthy(r.has_demand_signal);
+  let verdict;
+
+  if (n === null){ reasons.push("競合数が未入力のため PROBE に分類"); verdict = "probe"; }
+  else if (n >= POLICY.redMin){
+    reasons.push(`競合 ${n}件。価格競争に巻き込まれるため見送り`);
+    return {verdict:"red", score:0, reasons, row:r, profit, cap};
+  }
+  else if (n === 0 && !demand){
+    reasons.push("競合0件だが需要の裏付けが無い。少量で反応を試す（軸2へ）");
+    verdict = "probe";
+  }
+  else if (n <= POLICY.blueMax){
+    reasons.push(`競合 ${n}件。値下げ圧力を受けにくい`);
+    verdict = demand ? "blue" : "probe";
+    if (!demand) reasons.push("需要の裏付けが無いため PROBE に据え置き");
+  }
+  else { reasons.push(`競合 ${n}件。ブルーではないが致命的でもない`); verdict = "probe"; }
+
+  if (demand && r.demand_note) reasons.push("需要の裏付け：" + r.demand_note);
+
+  const score = Math.max(0,
+      Math.min(profit.margin / (c.target || .2), 2) * 50
+    + 50 / (1 + (n || 0))
+    + (demand ? 20 : 0)
+    - (w / POLICY.maxWeight) * 10);
+
+  return {verdict, score:Math.round(score*10)/10, reasons, row:r, profit, cap};
+}
+
+function runAxis1(){
+  const c = cfg();
+  const rows = parseCsv($("a1-in").value);
+  const ORDER = {blue:0, probe:1, thin:2, red:3, excl:4};
+  const res = rows.map(r => scoreOne(r, c))
+                  .sort((a,b) => ORDER[a.verdict]-ORDER[b.verdict] || b.score-a.score);
+
+  const counts = {};
+  res.forEach(r => counts[r.verdict] = (counts[r.verdict]||0)+1);
+  $("a1-tally").innerHTML = Object.keys(ORDER)
+    .filter(k => counts[k])
+    .map(k => `<span class="t"><b style="color:var(--${VERDICT[k].cls})">${VERDICT[k].label}</b> ${counts[k]}件 — ${VERDICT[k].desc}</span>`)
+    .join("");
+
+  $("a1-out").innerHTML = res.length ? res.map(r => {
+    const v = VERDICT[r.verdict];
+    const m = r.profit ? `利益率 ${(r.profit.margin*100).toFixed(1)}%` : "利益率 —";
+    const n = r.row.competitor_count === "" ? "—" : r.row.competitor_count;
+    return `<div class="item i-${v.cls}">
+      <div class="top">
+        <span class="badge b-${v.cls}">${v.label}</span>
+        <span class="nm">${esc(r.row.title_ja || r.row.sku || "(名称なし)")}</span>
+        <span class="st">スコア ${r.score} / 競合 ${esc(String(n))} / ${m}</span>
+      </div>
+      <ul>${r.reasons.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+    </div>`;
+  }).join("") : '<p class="hint">候補を貼り付けて「判定する」を押してください。</p>';
+}
+
+/* ===== 軸2（promotion.py と同一） ===== */
+const ACT = {
+  promote:{cls:"good", label:"PROMOTE", desc:"有在庫化する"},
+  reprice:{cls:"probe",label:"REPRICE", desc:"価格を見直す"},
+  retitle:{cls:"probe",label:"RETITLE", desc:"検索語を直す"},
+  drop:{cls:"red",     label:"DROP",    desc:"出品を畳む"},
+  keep:{cls:"dim",     label:"KEEP",    desc:"観察継続"},
+};
+const P2 = {promoteSold:1, promoteWatch:3, watchWindow:14, repriceViews:50,
+            retitleDays:30, retitleViews:10, dropDays:90};
+
+function decide(o){
+  const d = o.days, mk = (a,r) => ({action:a, reason:r, o});
+  if (o.sold >= P2.promoteSold)
+    return mk("promote", `${o.sold}件 販売済み。需要が確定したので有在庫化し、ハンドリングを1〜2日に短縮する`);
+  if (o.watchers >= P2.promoteWatch && d <= P2.watchWindow)
+    return mk("promote", `${d}日で ウォッチ${o.watchers}件。購入意欲のある層が付いている`);
+  if (o.views >= P2.repriceViews && o.watchers === 0)
+    return mk("reprice", `閲覧${o.views}件に対しウォッチ0。露出はあるので価格が原因`);
+  if (d >= P2.retitleDays && o.views < P2.retitleViews)
+    return mk("retitle", `${d}日で閲覧${o.views}件。露出不足。海外バイヤーが実際に打つ語彙にタイトルを組み直す`);
+  if (d >= P2.dropDays && o.sold === 0 && o.watchers === 0)
+    return mk("drop", `${d}日間 無反応。出品を終了して枠を空ける`);
+  return mk("keep", `観察継続（${d}日目）`);
+}
+
+function runAxis2(){
+  const rows = parseCsv($("a2-in").value);
+  const obs = rows.map(r => {
+    const a = new Date(r.listed_on), b = new Date(r.observed_on);
+    const days = (isNaN(a) || isNaN(b)) ? 0 : Math.max(0, Math.round((b-a)/86400000));
+    return {sku:r.sku, days, views:+r.views||0, watchers:+r.watchers||0, sold:+r.sold||0};
+  });
+  const ORDER = {promote:0, reprice:1, retitle:2, drop:3, keep:4};
+  const res = obs.map(decide)
+                 .sort((x,y) => ORDER[x.action]-ORDER[y.action] || y.o.sold-x.o.sold || y.o.watchers-x.o.watchers);
+
+  const orders = +$("a2-orders").value || 0, cancels = +$("a2-cancel").value || 0;
+  const rate = orders > 0 ? cancels/orders : 0;
+  const c = cfg();
+  const norm = reqMultiple(200, {...c, level:"above_standard"});
+  const bad  = reqMultiple(200, {...c, level:"below_standard"});
+  $("a2-alert").innerHTML = rate > 0.02
+    ? `<div class="alert"><b>在庫切れ率 ${(rate*100).toFixed(1)}%</b> が閾値 2% を超過。
+       Below Standard に落ちると落札手数料に6ポイント上乗せされ、必要な仕入倍率が
+       <b>${norm.toFixed(2)}倍 → ${bad.toFixed(2)}倍</b> に悪化します。出品数を減らし、在庫連動の頻度を上げてください。</div>`
+    : (orders > 0
+       ? `<div class="ok-note">在庫切れ率 ${(rate*100).toFixed(1)}%（閾値2%以内）。セラーレベルは維持できています。</div>`
+       : "");
+
+  const counts = {};
+  res.forEach(r => counts[r.action] = (counts[r.action]||0)+1);
+  $("a2-tally").innerHTML = Object.keys(ORDER).filter(k=>counts[k])
+    .map(k => `<span class="t"><b style="color:var(--${ACT[k].cls})">${ACT[k].label}</b> ${counts[k]}件 — ${ACT[k].desc}</span>`).join("");
+
+  $("a2-out").innerHTML = res.length ? res.map(r => {
+    const a = ACT[r.action];
+    return `<div class="item i-${a.cls}">
+      <div class="top">
+        <span class="badge b-${a.cls}">${a.label}</span>
+        <span class="nm">${esc(r.o.sku || "(SKUなし)")}</span>
+        <span class="st">${r.o.days}日 / 閲覧${r.o.views} / ウォッチ${r.o.watchers} / 販売${r.o.sold}</span>
+      </div>
+      <ul><li>${esc(r.reason)}</li></ul>
+    </div>`;
+  }).join("") : '<p class="hint">観測データを貼り付けて「判定する」を押してください。</p>';
+}
+
+function esc(s){ return String(s).replace(/[&<>"]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch])); }
+
+/* ===== サンプル ===== */
+const SAMPLE1 = `sku,title_ja,cost_incl_tax_jpy,weight_g,market_price_usd,competitor_count,has_demand_signal,demand_note,is_restricted,restricted_reason
+LENS-001,Nikon Ai-s 50mm F1.2 manual lens,42000,320,620,4,yes,同型の落札を直近90日で12件確認,no,
+LENS-002,Konica Hexanon AR 40mm F1.8,9800,180,185,2,yes,近縁モデルの落札あり,no,
+REEL-001,Shimano Stella 2500 spinning reel,31000,240,480,11,yes,海外フォーラムで指名の書き込み多数,no,
+PEN-001,Pilot Custom 823 fountain pen amber,24000,90,330,3,yes,国内限定軸で海外に固定需要,no,
+VINYL-001,山下達郎 FOR YOU 帯付 LP,6500,320,140,0,no,,no,
+FIG-001,限定フィギュア 2016年版,28000,900,210,41,no,,no,
+TOOL-001,Makita cordless driver 18V with battery,18000,1600,290,9,yes,型番指名あり,yes,リチウム電池内蔵で航空輸送規制
+AMP-001,ヴィンテージ真空管アンプ,55000,8500,900,6,yes,重量物,no,`;
+
+const SAMPLE2 = `sku,listed_on,observed_on,views,watchers,sold
+LENS-002,2026-07-20,2026-08-23,142,5,1
+PEN-001,2026-08-10,2026-08-23,63,4,0
+VINYL-001,2026-08-01,2026-08-23,98,0,0
+REEL-001,2026-07-01,2026-08-23,6,0,0
+FIG-001,2026-05-01,2026-08-23,21,0,0
+LENS-001,2026-08-18,2026-08-23,12,1,0`;
+
+/* ===== 設定の保存（このブラウザのみ） ===== */
+const KEYS = ["market","level","fx","tm","fee","duty","ship","pack","perorder"];
+function saveCfg(){
+  try{
+    const o = {taxable:$("taxable").checked};
+    KEYS.forEach(k => o[k] = $(k).value);
+    localStorage.setItem("blueocean.cfg", JSON.stringify(o));
+  }catch(e){/* プライベートモード等では黙って諦める */}
+}
+function loadCfg(){
+  try{
+    const raw = localStorage.getItem("blueocean.cfg");
+    if(!raw) return false;
+    const o = JSON.parse(raw);
+    KEYS.forEach(k => { if(o[k] !== undefined) $(k).value = o[k]; });
+    if(o.taxable !== undefined) $("taxable").checked = o.taxable;
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ===== 起動 ===== */
+document.querySelectorAll("nav.tabs button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", String(b === btn)));
+    document.querySelectorAll("section.panel").forEach(p => p.classList.toggle("on", p.id === "p-" + btn.dataset.tab));
+  });
+});
+$("market").addEventListener("change", () => { fillProfileInputs(); refresh(); });
+["level","fx","tm","fee","duty","ship","pack","perorder","taxable","c-price","c-cost"]
+  .forEach(id => $(id).addEventListener("input", refresh));
+$("a1-run").addEventListener("click", runAxis1);
+$("a2-run").addEventListener("click", runAxis2);
+$("a1-reset").addEventListener("click", () => { $("a1-in").value = SAMPLE1; runAxis1(); });
+$("a2-reset").addEventListener("click", () => { $("a2-in").value = SAMPLE2; runAxis2(); });
+
+function refresh(){ saveCfg(); renderCalc(); }
+
+if (!loadCfg()) fillProfileInputs();
+$("a1-in").value = SAMPLE1;
+$("a2-in").value = SAMPLE2;
+renderCalc(); runAxis1(); runAxis2();
+</script>
