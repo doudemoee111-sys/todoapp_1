@@ -147,6 +147,10 @@ tr.hl td{background:var(--accent-soft);color:var(--accent-ink);font-weight:700;}
 
 footer{margin-top:44px;padding-top:20px;border-top:1px solid var(--rule);font-size:12px;color:var(--muted);line-height:1.75;}
 footer a{color:var(--muted);}
+ol.why{margin:6px 0 0;padding-left:1.25em;color:var(--ink-2);font-size:14px;line-height:1.75;}
+ol.why li{margin-bottom:10px;}
+ol.why li:last-child{margin-bottom:0;}
+ol.why code{font-size:12.5px;}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px;}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
 </style>
@@ -158,6 +162,7 @@ footer a{color:var(--muted);}
   <h1>Blue Ocean 仕入判断ツール</h1>
   <p class="lede">
     競合が少なく採算の合う商品を選び（軸1）、出品後の反応から有在庫化を判断する（軸2）。
+    送料は固定値ではなく、<strong>重量と寸法から課金重量を出して</strong>計算します。
     リポジトリのPython版と<strong>同じ計算式</strong>をブラウザで動かします。入力はこのページから出ず、保存もされません。
   </p>
 </header>
@@ -184,7 +189,7 @@ footer a{color:var(--muted);}
     <label>目標利益率（%）<input type="number" id="tm" value="20" step="1" min="0" max="90"></label>
     <label>手数料率（%）<input type="number" id="fee" step="0.1" min="0"></label>
     <label>関税率（%）<input type="number" id="duty" step="0.1" min="0"></label>
-    <label>国際送料（円）<input type="number" id="ship" step="100" min="0"></label>
+    <label>国際送料（円）<input type="number" id="ship" step="100" min="0" title="荷物の重量を入れると自動計算されます"></label>
     <label>梱包資材（円）<input type="number" id="pack" step="10" min="0"></label>
     <label>注文ごと固定費（円）<input type="number" id="perorder" step="10" min="0"></label>
     <label class="chk"><input type="checkbox" id="taxable" checked> 課税事業者（消費税還付を受ける）</label>
@@ -193,6 +198,7 @@ footer a{color:var(--muted);}
 
 <nav class="tabs" role="tablist">
   <button role="tab" aria-selected="true" data-tab="calc">仕入上限の逆算</button>
+  <button role="tab" aria-selected="false" data-tab="ship">送料（重量・サイズ）</button>
   <button role="tab" aria-selected="false" data-tab="axis1">軸1：出品候補の判定</button>
   <button role="tab" aria-selected="false" data-tab="axis2">軸2：出品後の判定</button>
 </nav>
@@ -207,6 +213,29 @@ footer a{color:var(--muted);}
         <label>実際の仕入価格（円・税込／任意）<input type="number" id="c-cost" value="12000" step="500" min="0"></label>
         <p class="hint" style="margin-top:12px;margin-bottom:0">
           仕入価格を空にすると上限だけを計算します。
+        </p>
+      </div>
+      <div class="card">
+        <h2>荷物（梱包後）</h2>
+        <label class="chk" style="margin-bottom:10px"><input type="checkbox" id="auto-ship" checked> 重量とサイズから送料を計算する</label>
+        <div class="sgrid" style="grid-template-columns:1fr 1fr;">
+          <label>実重量（g）<input type="number" id="p-g" value="400" step="10" min="0"></label>
+          <label>配送手段<select id="carrier">
+            <option value="auto">最安を自動選択</option>
+            <option value="ems">EMS</option>
+            <option value="parcel">国際小包</option>
+            <option value="epacket">eパケット</option>
+            <option value="courier">UGX / FedEx / DHL</option>
+          </select></label>
+        </div>
+        <div class="sgrid" style="grid-template-columns:1fr 1fr 1fr;">
+          <label>縦（cm）<input type="number" id="p-l" value="20" step="1" min="0"></label>
+          <label>横（cm）<input type="number" id="p-w" value="15" step="1" min="0"></label>
+          <label>高さ（cm）<input type="number" id="p-h" value="10" step="1" min="0"></label>
+        </div>
+        <p class="hint" style="margin-top:10px;margin-bottom:0">
+          寸法を入れないと<b>容積重量</b>を評価できません。軽くて大きいもの（衣類・外箱付きフィギュア）ほど、
+          寸法を入れないと送料が下振れします。
         </p>
       </div>
       <div class="warnnote">
@@ -226,10 +255,51 @@ footer a{color:var(--muted);}
       </div>
       <h3>市場を変えるとどうなるか</h3>
       <div class="tbl"><table>
-        <thead><tr><th>市場</th><th class="n">手数料</th><th class="n">関税</th><th class="n">必要倍率</th></tr></thead>
+        <thead><tr><th>市場</th><th class="n">手数料</th><th class="n">関税</th><th class="n">送料</th><th class="n">必要倍率</th></tr></thead>
         <tbody id="cmp"></tbody>
       </table></div>
       <p class="hint">同じ商品でも売り先を変えるだけで難易度が変わります。米国一本足にしない理由がここにあります。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 送料 ============ -->
+<section class="panel" id="p-ship">
+  <p class="hint">
+    梱包<b>後</b>の重量と寸法を入れると、配送手段を横並びで比較します。
+    上の「荷物（梱包後）」の入力をそのまま使います。市場を変えると地帯が変わり、料金も変わります。
+  </p>
+  <div class="split">
+    <div>
+      <div class="card">
+        <h2>なぜ固定送料では足りないのか</h2>
+        <ol class="why">
+          <li><b>料金は階段状に上がる。</b>950g と 1,050g では1段違います。梱包後に100g超えて
+            1段上がると、その差はそのまま利益から消えます。</li>
+          <li><b>嵩張るものは容積重量で課金される。</b>
+            <code>容積重量(g) = 縦×横×高さ(cm) ÷ 除数 × 1000</code>。
+            除数は手段ごとに違います（クーリエ 5,000／国際小包 6,000）。</li>
+          <li><b>EMSは容積重量を採りません（実重量のみ）。</b>だから軽くて嵩張る荷物では、
+            EMSがクーリエを逆転して最安になります。<b>この逆転は固定送料では見えません。</b></li>
+        </ol>
+      </div>
+      <div class="warnnote">
+        <b>料金表は暫定値です。</b>公表値として確認できた金額（アンカー）と、その間を刻み幅で内挿した推定値が
+        混ざっています。推定値には「推定」と表示します。運用前に
+        <a href="https://www.post.japanpost.jp/cgi-charge/" target="_blank" rel="noopener">日本郵便の公式料金計算</a>
+        で実際の地帯・重量帯を確認してください。
+      </div>
+    </div>
+    <div>
+      <div class="kpi">
+        <div><span class="k">課金重量</span><span class="v" id="s-chg">—</span><span class="n" id="s-chg-n">実重量と容積重量の大きい方</span></div>
+        <div><span class="k">最安の送料</span><span class="v" id="s-best">—</span><span class="n" id="s-best-n"></span></div>
+      </div>
+      <div class="tbl"><table>
+        <thead><tr><th>配送手段</th><th class="n">課金重量</th><th class="n">送料</th><th class="n">出典</th></tr></thead>
+        <tbody id="s-tbl"></tbody>
+      </table></div>
+      <div id="s-warn"></div>
     </div>
   </div>
 </section>
@@ -289,7 +359,7 @@ footer a{color:var(--muted);}
 
 <footer>
   <p>
-    Python版と同じ計算式を実装しています（テスト32件）。
+    Python版と同じ計算式を実装しています（テスト53件）。
     コード：<a href="https://github.com/doudemoee111-sys/todoapp_1/tree/claude/side-business-proposal-su9ie3/tools/blueocean">tools/blueocean</a>
   </p>
   <p>
@@ -327,16 +397,118 @@ function cfg(){
     pack:+$("pack").value || 0,
     per:+$("perorder").value || 0,
     taxable:$("taxable").checked,
+    zone: ZONE_OF[m],
+    autoShip: $("auto-ship").checked,
+    carrier: $("carrier").value,
   };
+}
+
+/* 荷物が入力されていれば、固定値ではなく実際の課金重量から送料を出す。
+   ここが「固定送料」との分かれ目。返り値は {ship, quote} 。 */
+function shipFor(c, parcel){
+  if (!c.autoShip || !parcel || parcel.g <= 0) return {ship:c.ship, quote:null};
+  const qs = quoteAll(parcel, c.zone);
+  if (!qs.length) return {ship:null, quote:null};   /* 使える手段が無い */
+  const q = c.carrier === "auto" ? qs[0] : (qs.find(x => x.carrier === c.carrier) || null);
+  return q ? {ship:q.jpy, quote:q} : {ship:null, quote:null};
 }
 function fillProfileInputs(){
   const p = PROFILES[$("market").value];
   $("fee").value = (p.fee*100).toFixed(1);
   $("duty").value = (p.duty*100).toFixed(1);
-  $("ship").value = p.ship;
+  if (!$("auto-ship").checked) $("ship").value = p.ship;
   $("pack").value = p.pack;
   $("perorder").value = p.per;
 }
+
+
+/* ===== 送料エンジン（shipping.py と同一） =====
+   固定送料をやめた理由は2つ。
+   (a) 料金は重量区切りで階段状に上がる（950g と 1,050g では1段違う）
+   (b) 軽くて嵩張るものは「容積重量」で課金される
+       容積重量(g) = 縦×横×高さ(cm) ÷ 除数 × 1000
+   そして EMS は容積重量を採らない。だから嵩張る荷物ではEMSが逆転して最安になる。
+   この逆転は固定送料では絶対に見えない。                                   */
+const ZONE_OF   = {ebay_us:"zone4", ebay_eu:"zone3", ebay_au:"zone3", shopee_sea:"zone2"};
+const ZONE_NAME = {zone2:"第2地帯（アジア）", zone3:"第3地帯（欧州・豪州・北米※米国除く）", zone4:"第4地帯（米国）"};
+const VDIV    = {ems:null, parcel:6000, epacket:null, courier:5000};   /* null = 容積重量を採らない */
+const WMAX    = {ems:30000, parcel:30000, epacket:2000, courier:30000};
+const DMAX    = {ems:[150,300,null], parcel:[150,300,null], epacket:[60,null,90], courier:[274,330,null]};
+const CFACTOR = {ems:1.00, parcel:0.80, epacket:0.55, courier:1.35};
+const CLABEL  = {ems:"EMS", parcel:"国際小包", epacket:"eパケット", courier:"UGX / FedEx / DHL"};
+const CARRIERS = ["ems","parcel","epacket","courier"];
+
+/* アンカー＝公表値として確認できた金額。その間は刻み幅から内挿する。
+   内挿値は必ず「推定」と表示し、事実として一人歩きさせない。 */
+function buildSteps(anchors, stepG, uptoG, inc){
+  const known = Object.keys(anchors).map(Number).sort((a,b)=>a-b);
+  const out = [];
+  let lastW = known[0], lastJ = anchors[known[0]];
+  for (let w = known[0]; w <= uptoG; w += stepG){
+    if (anchors[w] !== undefined){ lastW = w; lastJ = anchors[w]; out.push({w, jpy:anchors[w], anchor:true}); }
+    else out.push({w, jpy: Math.round(lastJ + inc*((w-lastW)/stepG)), anchor:false});
+  }
+  return out;
+}
+function emsTable(anchors, inc100, inc250){
+  const fine = buildSteps(anchors, 100, 1000, inc100);
+  const coarse = buildSteps({1000: fine[fine.length-1].jpy}, 250, 5000, inc250).slice(1)
+                 .map(b => ({...b, anchor:false}));
+  return fine.concat(coarse);
+}
+const EMS_TABLE = {
+  zone2: emsTable({500:2150,600:2400,700:2650,800:2900,900:3150}, 250, 200),
+  zone3: emsTable({500:3400,600:3650,700:3900,800:4150,900:4400}, 250, 310),
+  zone4: emsTable({500:4180,600:4460,700:4740,800:5020},          280, 350),
+};
+
+function volWeight(p, carrier){
+  const d = VDIV[carrier];
+  if (d === null || !(p.l>0 && p.w>0 && p.h>0)) return 0;
+  return Math.ceil(p.l*p.w*p.h/d*1000);
+}
+function chargeable(p, carrier){ return Math.max(p.g, volWeight(p, carrier)); }
+
+function overSize(p, carrier){
+  if (!(p.l>0 && p.w>0 && p.h>0)) return null;   /* 未入力は検査できない */
+  const [longest, girth, total] = DMAX[carrier];
+  const dims = [p.l,p.w,p.h].sort((a,b)=>b-a);
+  const g = dims[0] + 2*(dims[1]+dims[2]);
+  if (longest !== null && dims[0] > longest) return `最長辺 ${dims[0]}cm が上限 ${longest}cm を超過`;
+  if (girth   !== null && g > girth)         return `長さ+胴回り ${Math.round(g)}cm が上限 ${girth}cm を超過`;
+  if (total   !== null && p.l+p.w+p.h > total) return `三辺計 ${Math.round(p.l+p.w+p.h)}cm が上限 ${total}cm を超過`;
+  return null;
+}
+
+const US_NOTICE = "米国宛て：2025年8月のデミニミス（$800免税）撤廃を受け、日本郵便は物品を含む小形包装物・国際小包・EMS(物品)の引受を一時停止しました。2026年4月14日以降、米国税関が認証した事業者のアプリで関税を事前納付すれば指定郵便局で引受再開。その手当てが済むまで、米国宛ては UGX / FedEx / DHL で見積もってください。";
+
+/* 1手段の見積もり。使えない場合は {error} を返す。 */
+function quoteOne(p, zone, carrier){
+  const table = EMS_TABLE[zone];
+  if (!table) return {error:`${zone} の料金表が未登録`};
+  const os = overSize(p, carrier);
+  if (os) return {error:`${CLABEL[carrier]}：${os}`};
+  const chg = chargeable(p, carrier);
+  if (chg > WMAX[carrier]) return {error:`${CLABEL[carrier]}：課金重量 ${chg}g が上限 ${WMAX[carrier]}g を超過`};
+  const step = table.find(b => chg <= b.w);
+  if (!step) return {error:`料金表の上限 ${table[table.length-1].w}g を超過（課金重量 ${chg}g）`};
+
+  const warnings = [];
+  if (!(p.l>0 && p.w>0 && p.h>0) && VDIV[carrier] !== null)
+    warnings.push("寸法が未入力のため容積重量を評価していません。嵩張る商品では実際の送料が上振れします");
+  if (zone === "zone4" && carrier !== "courier") warnings.push(US_NOTICE);
+  const estimated = !step.anchor || CFACTOR[carrier] !== 1;
+  if (estimated) warnings.push("料金は内挿による推定値です。公式料金表で確認してから仕入判断に使ってください");
+
+  return {carrier, zone, jpy: Math.round(step.jpy*CFACTOR[carrier]),
+          actual:p.g, vol:volWeight(p,carrier), chg, estimated, warnings,
+          byVolume: volWeight(p,carrier) > p.g};
+}
+function quoteAll(p, zone){
+  return CARRIERS.map(c => quoteOne(p, zone, c)).filter(q => !q.error).sort((a,b)=>a.jpy-b.jpy);
+}
+function cheapestQuote(p, zone){ const q = quoteAll(p, zone); return q.length ? q[0] : null; }
+function parcelOf(g,l,w,h){ return {g:+g||0, l:+l||0, w:+w||0, h:+h||0}; }
 
 /* ===== 利益計算（profit.py と同一） ===== */
 function effFee(c){ return Math.max(0, c.fee + LEVEL_ADJ[c.level]); }
@@ -365,7 +537,14 @@ function reqMultiple(priceUsd, c, target){
 
 /* ===== 仕入上限タブ ===== */
 function renderCalc(){
-  const c = cfg();
+  const c0 = cfg();
+  const parcel = parcelOf($("p-g").value, $("p-l").value, $("p-w").value, $("p-h").value);
+  const sf = shipFor(c0, parcel);
+  const noCarrier = c0.autoShip && parcel.g > 0 && sf.ship === null;
+  const c = {...c0, ship: sf.ship === null ? c0.ship : sf.ship};
+  $("ship").value = Math.round(c.ship);
+  $("ship").disabled = c0.autoShip && parcel.g > 0 && !noCarrier;
+
   const price = +$("c-price").value || 0;
   const costRaw = $("c-cost").value.trim();
   const cost = costRaw === "" ? null : (+costRaw || 0);
@@ -385,7 +564,8 @@ function renderCalc(){
       ["売価", yen(b.price), ""],
       ["eBay手数料", "−"+yen(b.fees), "neg"],
       ["関税（DDP）", "−"+yen(b.duty), "neg"],
-      ["国際送料", "−"+yen(b.ship), "neg"],
+      [sf.quote ? `国際送料（${CLABEL[sf.quote.carrier]} / 課金 ${sf.quote.chg}g${sf.quote.byVolume?"・容積課金":""}）`
+                : "国際送料（固定値）", "−"+yen(b.ship), "neg"],
       ["梱包資材", "−"+yen(b.pack), "neg"],
       [usingCap ? "仕入（上限で試算）" : "仕入（税込）", "−"+yen(b.cost), "neg"],
       ["消費税還付", (b.refund>0?"+":"")+yen(b.refund), "pos"],
@@ -396,15 +576,57 @@ function renderCalc(){
     $("k-cap").className = "v" + (cost !== null && cost > cap ? " warn" : "");
   }
 
+  // 市場を変えると地帯が変わるので、送料も市場ごとに引き直す
   const tb = $("cmp");
   tb.innerHTML = Object.entries(PROFILES).map(([key,p])=>{
-    const cc = {...c, fee:p.fee, duty:p.duty, ship:p.ship, pack:p.pack, per:p.per};
+    const base = {...c, market:key, zone:ZONE_OF[key], fee:p.fee, duty:p.duty,
+                  ship:p.ship, pack:p.pack, per:p.per};
+    const s2 = shipFor(base, parcel);
+    const cc = {...base, ship: s2.ship === null ? p.ship : s2.ship};
     const mm = reqMultiple(price, cc);
     return `<tr class="${key===c.market?'hl':''}"><td>${p.label}</td>`
       + `<td class="n">${((p.fee+LEVEL_ADJ[c.level])*100).toFixed(1)}%</td>`
       + `<td class="n">${(p.duty*100).toFixed(1)}%</td>`
+      + `<td class="n">${s2.ship === null ? "—" : yen(cc.ship)}</td>`
       + `<td class="n">${isFinite(mm)?mm.toFixed(2)+"倍":"—"}</td></tr>`;
   }).join("");
+
+  renderShip(c0, parcel, noCarrier);
+}
+
+/* ===== 送料タブ ===== */
+function renderShip(c, parcel, noCarrier){
+  const qs = parcel.g > 0 ? quoteAll(parcel, c.zone) : [];
+  const best = qs.length ? qs[0] : null;
+
+  $("s-chg").textContent = best ? best.chg.toLocaleString("ja-JP") + " g" : "—";
+  $("s-chg-n").textContent = best
+    ? (best.byVolume
+       ? `容積重量で課金（実重量 ${best.actual}g）。梱包を薄くすると直接効きます`
+       : `実重量で課金（容積 ${best.vol||0}g）`)
+    : "実重量と容積重量の大きい方";
+  $("s-best").textContent = best ? yen(best.jpy) + " 円" : "—";
+  $("s-best-n").textContent = best ? `${CLABEL[best.carrier]}／${ZONE_NAME[c.zone]||c.zone}` : "";
+
+  $("s-tbl").innerHTML = qs.length ? qs.map(q => {
+    const vol = q.vol ? `（容積 ${q.vol}g）` : "";
+    return `<tr class="${q===best?'hl':''}"><td>${CLABEL[q.carrier]}</td>`
+      + `<td class="n">${q.chg.toLocaleString("ja-JP")}g${vol}${q.byVolume?" ← 容積課金":""}</td>`
+      + `<td class="n">${yen(q.jpy)} 円</td>`
+      + `<td class="n">${q.estimated ? "推定" : "公表値"}</td></tr>`;
+  }).join("")
+  : `<tr><td colspan="4">${parcel.g > 0
+       ? "この重量・寸法で使える配送手段がありません（重量または寸法の上限超過）。"
+       : "重量を入力してください。"}</td></tr>`;
+
+  const seen = new Set(); const ws = [];
+  qs.forEach(q => q.warnings.forEach(w => { if(!seen.has(w)){ seen.add(w); ws.push(w); }}));
+  const dropped = CARRIERS.map(x => quoteOne(parcel, c.zone, x)).filter(q => q.error);
+  $("s-warn").innerHTML =
+    (noCarrier ? `<div class="alert"><b>使える配送手段がありません。</b>この荷物は現状の料金表の範囲外です。送料は固定値のまま計算しています。</div>` : "")
+    + (parcel.g > 0 && dropped.length
+        ? `<div class="ok-note">候補から外れた手段：${dropped.map(d => esc(d.error)).join(" ／ ")}</div>` : "")
+    + ws.map(w => `<div class="warnnote">${esc(w)}</div>`).join("");
 }
 
 /* ===== CSV ===== */
@@ -436,15 +658,39 @@ function scoreOne(r, c){
   const out = v => ({verdict:v, score:0, reasons, row:r, profit:null, cap:0});
 
   if (truthy(r.is_restricted)) { reasons.push("除外：" + (r.restricted_reason || "輸出規制・禁止品")); return out("excl"); }
-  const w = +r.weight_g || 0;
-  if (w > POLICY.maxWeight) { reasons.push(`除外：重量 ${w}g が上限 ${POLICY.maxWeight}g を超過`); return out("excl"); }
+
+  // 重量の判定は「課金重量」で行う。実重量が軽くても嵩張れば送料は容積で決まる。
+  const parcel = parcelOf(r.weight_g, r.length_cm, r.width_cm, r.height_cm);
+  const w = parcel.g;
+  const chg = chargeable(parcel, c.carrier === "auto" ? "parcel" : c.carrier);
+  if (chg > POLICY.maxWeight) {
+    reasons.push(chg > w
+      ? `除外：容積重量 ${chg}g（実重量 ${w}g）が上限 ${POLICY.maxWeight}g を超過。軽いが嵩張るため送料で採算が崩れる`
+      : `除外：重量 ${w}g が上限 ${POLICY.maxWeight}g を超過`);
+    return out("excl");
+  }
   const price = r.market_price_usd === "" ? null : +r.market_price_usd;
   if (price === null || !isFinite(price) || price <= 0) { reasons.push("除外：eBay側の相場が未入力"); return out("excl"); }
   if (price < POLICY.minPrice) { reasons.push(`除外：想定売価 $${price} が下限 $${POLICY.minPrice} 未満`); return out("excl"); }
 
+  // 送料を先に確定する。送料が決まらないと採算は出せない。
+  const sf = shipFor(c, parcel);
+  if (sf.ship === null) {
+    reasons.push("除外：この重量・寸法で使える配送手段が無い（重量／寸法の上限超過）");
+    return out("excl");
+  }
+  const cc = {...c, ship: sf.ship};
+  if (sf.quote) {
+    reasons.push(`送料 ${yen(sf.quote.jpy)}円（${CLABEL[sf.quote.carrier]} / 課金重量 ${sf.quote.chg}g）`);
+    if (sf.quote.byVolume)
+      reasons.push(`送料は容積重量 ${sf.quote.chg}g で課金される（実重量 ${sf.quote.actual}g）。梱包を薄くすると直接効く`);
+    if (!(parcel.l>0 && parcel.w>0 && parcel.h>0))
+      reasons.push("寸法が未入力のため送料は実重量ベースの下振れ値");
+  }
+
   const cost = +r.cost_incl_tax_jpy || 0;
-  const cap = maxCost(price, c);
-  const profit = compute(price, cost, c);
+  const cap = maxCost(price, cc);
+  const profit = compute(price, cost, cc);
 
   if (cost > cap){
     reasons.push(`採算割れ：仕入 ${yen(cost)}円 が上限 ${yen(cap)}円 を ${yen(cost-cap)}円 超過`
@@ -479,7 +725,7 @@ function scoreOne(r, c){
       Math.min(profit.margin / (c.target || .2), 2) * 50
     + 50 / (1 + (n || 0))
     + (demand ? 20 : 0)
-    - (w / POLICY.maxWeight) * 10);
+    - (chg / POLICY.maxWeight) * 10);
 
   return {verdict, score:Math.round(score*10)/10, reasons, row:r, profit, cap};
 }
@@ -584,15 +830,15 @@ function runAxis2(){
 function esc(s){ return String(s).replace(/[&<>"]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch])); }
 
 /* ===== サンプル ===== */
-const SAMPLE1 = `sku,title_ja,cost_incl_tax_jpy,weight_g,market_price_usd,competitor_count,has_demand_signal,demand_note,is_restricted,restricted_reason
-LENS-001,Nikon Ai-s 50mm F1.2 manual lens,42000,320,620,4,yes,同型の落札を直近90日で12件確認,no,
-LENS-002,Konica Hexanon AR 40mm F1.8,9800,180,185,2,yes,近縁モデルの落札あり,no,
-REEL-001,Shimano Stella 2500 spinning reel,31000,240,480,11,yes,海外フォーラムで指名の書き込み多数,no,
-PEN-001,Pilot Custom 823 fountain pen amber,24000,90,330,3,yes,国内限定軸で海外に固定需要,no,
-VINYL-001,山下達郎 FOR YOU 帯付 LP,6500,320,140,0,no,,no,
-FIG-001,限定フィギュア 2016年版,28000,900,210,41,no,,no,
-TOOL-001,Makita cordless driver 18V with battery,18000,1600,290,9,yes,型番指名あり,yes,リチウム電池内蔵で航空輸送規制
-AMP-001,ヴィンテージ真空管アンプ,55000,8500,900,6,yes,重量物,no,`;
+const SAMPLE1 = `sku,title_ja,cost_incl_tax_jpy,weight_g,length_cm,width_cm,height_cm,market_price_usd,competitor_count,has_demand_signal,demand_note,is_restricted,restricted_reason
+LENS-001,Nikon Ai-s 50mm F1.2 manual lens,42000,320,18,14,12,620,4,yes,同型の落札を直近90日で12件確認,no,
+LENS-002,Konica Hexanon AR 40mm F1.8,9800,180,16,12,10,185,2,yes,近縁モデルの落札あり,no,
+REEL-001,Shimano Stella 2500 spinning reel,31000,240,10,10,5,480,11,yes,海外フォーラムで指名の書き込み多数,no,
+PEN-001,Pilot Custom 823 fountain pen amber,24000,90,7,7,4,330,3,yes,国内限定軸で海外に固定需要,no,
+VINYL-001,山下達郎 FOR YOU 帯付 LP,6500,320,33,33,3,140,0,no,,no,
+FIG-001,限定フィギュア 2016年版（外箱付き）,28000,900,30,25,20,210,41,no,,no,
+TOOL-001,Makita cordless driver 18V with battery,18000,1600,19,19,9,290,9,yes,型番指名あり,yes,リチウム電池内蔵で航空輸送規制
+AMP-001,ヴィンテージ真空管アンプ,55000,8500,32,32,16,900,6,yes,重量物,no,`;
 
 const SAMPLE2 = `sku,listed_on,observed_on,views,watchers,sold
 LENS-002,2026-07-20,2026-08-23,142,5,1
@@ -603,10 +849,11 @@ FIG-001,2026-05-01,2026-08-23,21,0,0
 LENS-001,2026-08-18,2026-08-23,12,1,0`;
 
 /* ===== 設定の保存（このブラウザのみ） ===== */
-const KEYS = ["market","level","fx","tm","fee","duty","ship","pack","perorder"];
+const KEYS = ["market","level","fx","tm","fee","duty","ship","pack","perorder",
+              "p-g","p-l","p-w","p-h","carrier"];
 function saveCfg(){
   try{
-    const o = {taxable:$("taxable").checked};
+    const o = {taxable:$("taxable").checked, autoShip:$("auto-ship").checked};
     KEYS.forEach(k => o[k] = $(k).value);
     localStorage.setItem("blueocean.cfg", JSON.stringify(o));
   }catch(e){/* プライベートモード等では黙って諦める */}
@@ -618,6 +865,7 @@ function loadCfg(){
     const o = JSON.parse(raw);
     KEYS.forEach(k => { if(o[k] !== undefined) $(k).value = o[k]; });
     if(o.taxable !== undefined) $("taxable").checked = o.taxable;
+    if(o.autoShip !== undefined) $("auto-ship").checked = o.autoShip;
     return true;
   }catch(e){ return false; }
 }
@@ -630,14 +878,16 @@ document.querySelectorAll("nav.tabs button").forEach(btn => {
   });
 });
 $("market").addEventListener("change", () => { fillProfileInputs(); refresh(); });
-["level","fx","tm","fee","duty","ship","pack","perorder","taxable","c-price","c-cost"]
+["level","fx","tm","fee","duty","ship","pack","perorder","taxable","c-price","c-cost",
+ "p-g","p-l","p-w","p-h","auto-ship"]
   .forEach(id => $(id).addEventListener("input", refresh));
+$("carrier").addEventListener("change", refresh);
 $("a1-run").addEventListener("click", runAxis1);
 $("a2-run").addEventListener("click", runAxis2);
 $("a1-reset").addEventListener("click", () => { $("a1-in").value = SAMPLE1; runAxis1(); });
 $("a2-reset").addEventListener("click", () => { $("a2-in").value = SAMPLE2; runAxis2(); });
 
-function refresh(){ saveCfg(); renderCalc(); }
+function refresh(){ saveCfg(); renderCalc(); runAxis1(); }
 
 if (!loadCfg()) fillProfileInputs();
 $("a1-in").value = SAMPLE1;

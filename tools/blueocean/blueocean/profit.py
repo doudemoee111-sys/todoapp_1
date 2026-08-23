@@ -55,9 +55,17 @@ def compute(
     fx_jpy_per_usd: float = 150.0,
     level: SellerLevel = SellerLevel.ABOVE_STANDARD,
     tax: TaxProfile | None = None,
+    shipping_jpy: float | None = None,
+    shipping_note: str = "",
 ) -> ProfitBreakdown:
-    """1件あたりの損益を計算する。"""
+    """1件あたりの損益を計算する。
+
+    ``shipping_jpy`` を渡すと、市場ごとの固定値ではなく実際の重量・寸法から
+    出した送料で計算する（shipping モジュール参照）。渡さない場合は
+    プロファイルの固定値にフォールバックするが、それは概算にすぎない。
+    """
     tax = tax or TaxProfile()
+    ship = profile.shipping_jpy if shipping_jpy is None else shipping_jpy
     price_jpy = price_usd * fx_jpy_per_usd
 
     fees = price_jpy * effective_fee_rate(profile, level) + profile.per_order_fee_jpy
@@ -75,7 +83,7 @@ def compute(
         price_jpy
         - fees
         - duty
-        - profile.shipping_jpy
+        - ship
         - profile.packaging_jpy
         - cost_incl_tax_jpy
         + vat_refund
@@ -86,12 +94,13 @@ def compute(
         price_jpy=price_jpy,
         fees_jpy=fees,
         duty_jpy=duty,
-        shipping_jpy=profile.shipping_jpy,
+        shipping_jpy=ship,
         packaging_jpy=profile.packaging_jpy,
         cost_jpy=cost_incl_tax_jpy,
         vat_refund_jpy=vat_refund,
         profit_jpy=profit,
         margin=margin,
+        shipping_note=shipping_note,
     )
 
 
@@ -103,6 +112,7 @@ def max_cost_for_margin(
     fx_jpy_per_usd: float = 150.0,
     level: SellerLevel = SellerLevel.ABOVE_STANDARD,
     tax: TaxProfile | None = None,
+    shipping_jpy: float | None = None,
 ) -> float:
     """目標利益率を満たす仕入上限（税込）を逆算する。
 
@@ -114,6 +124,7 @@ def max_cost_for_margin(
         C = (R·(1 − m) − F − D − S − P) / (1 − k)
     """
     tax = tax or TaxProfile()
+    ship = profile.shipping_jpy if shipping_jpy is None else shipping_jpy
     price_jpy = price_usd * fx_jpy_per_usd
 
     fees = price_jpy * effective_fee_rate(profile, level) + profile.per_order_fee_jpy
@@ -128,7 +139,7 @@ def max_cost_for_margin(
         price_jpy * (1.0 - target_margin)
         - fees
         - duty
-        - profile.shipping_jpy
+        - ship
         - profile.packaging_jpy
     )
     return max(0.0, numerator / (1.0 - k))

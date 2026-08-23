@@ -65,8 +65,14 @@ class Candidate:
     title_ja: str
     source_url: str
     cost_incl_tax_jpy: float          # 国内の仕入価格（税込）
-    weight_g: int
+    weight_g: int                     # 梱包後の実重量
     category: str
+    # --- 寸法（梱包後）。容積重量の判定に使う ---
+    # 未入力（0）でも動くが、その場合は実重量だけで送料を出すため、
+    # 嵩張る商品では見積もりが下振れする。軽くて大きいものほど必ず入れること。
+    length_cm: float = 0.0
+    width_cm: float = 0.0
+    height_cm: float = 0.0
     # --- eBay 側の観測（Browse API で取得） ---
     competitor_count: Optional[int] = None   # 同一/類似商品の現行出品数
     market_price_usd: Optional[float] = None # 競合の中央値価格
@@ -105,6 +111,7 @@ class ProfitBreakdown:
     vat_refund_jpy: float
     profit_jpy: float
     margin: float
+    shipping_note: str = ""   # 送料の根拠（手段・課金重量・容積課金かどうか）
 
     def as_row(self) -> dict:
         return {
@@ -129,3 +136,6 @@ class ScoredCandidate:
     profit: Optional[ProfitBreakdown]
     max_cost_jpy: float           # 目標利益率を満たす仕入上限
     reasons: list[str] = field(default_factory=list)
+    # 送料の注意書き（米国宛ての引受停止など）。候補ごとではなく市場全体に効くため、
+    # 判定理由とは分けて持ち、レポート末尾で1回だけ出す。
+    shipping_warnings: list[str] = field(default_factory=list)

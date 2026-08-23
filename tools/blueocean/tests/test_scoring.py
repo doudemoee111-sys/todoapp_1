@@ -84,3 +84,36 @@ def test_every_result_explains_itself():
     """判定には必ず理由が付くこと。ブラックボックスにしない。"""
     for c in [mk(), mk(competitor_count=50), mk(is_restricted=True), mk(cost_incl_tax_jpy=99999)]:
         assert score_one(c, US, P).reasons
+
+
+# --- 送料が採算に効くこと -----------------------------------------------------
+
+def test_bulky_light_candidate_is_excluded_by_volumetric_weight():
+    """実重量は軽いが嵩張る商品は、容積重量で除外されること。
+
+    実重量だけを見ていると通ってしまい、送料で利益が消える。
+    """
+    c = Candidate(
+        sku="BULK-1", title_ja="外箱付きフィギュア", source_url="",
+        cost_incl_tax_jpy=8000, weight_g=900,
+        length_cm=30, width_cm=25, height_cm=20,  # 容積重量 2,500g
+        category="figure", market_price_usd=210, competitor_count=2,
+        has_demand_signal=True,
+    )
+    s = score_one(c, US)
+    assert s.verdict is Verdict.EXCLUDE
+    assert any("容積重量" in r for r in s.reasons)
+
+
+def test_heavier_candidate_gets_a_lower_purchase_cap():
+    """同じ売価でも重い方が仕入上限は下がること。送料が採算に効いている証拠。"""
+    def cap(weight_g: int) -> float:
+        c = Candidate(
+            sku="W", title_ja="t", source_url="", cost_incl_tax_jpy=1000,
+            weight_g=weight_g, length_cm=15, width_cm=10, height_cm=6,
+            category="x", market_price_usd=200, competitor_count=2,
+            has_demand_signal=True,
+        )
+        return score_one(c, US).max_cost_jpy
+
+    assert cap(1500) < cap(300)

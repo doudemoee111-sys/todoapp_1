@@ -49,6 +49,10 @@ def load_candidates(path: str | Path) -> list[Candidate]:
                     cost_incl_tax_jpy=float(row["cost_incl_tax_jpy"]),
                     weight_g=int(row["weight_g"]),
                     category=row.get("category", "").strip(),
+                    # 寸法は任意だが、未入力だと容積重量を評価できない
+                    length_cm=float(row.get("length_cm") or 0),
+                    width_cm=float(row.get("width_cm") or 0),
+                    height_cm=float(row.get("height_cm") or 0),
                     # 相場は任意。APIが使えない場合は手動調査の値をCSVで渡せる
                     market_price_usd=(
                         float(row["market_price_usd"])
@@ -127,7 +131,8 @@ def write_listing_plan(scored: list[ScoredCandidate], path: str | Path) -> int:
         w = csv.writer(f)
         w.writerow(
             ["sku", "verdict", "score", "title_ja", "price_usd", "cost_jpy",
-             "max_cost_jpy", "margin", "competitors", "reasons"]
+             "max_cost_jpy", "margin", "shipping_jpy", "shipping_note",
+             "competitors", "reasons"]
         )
         for s in rows:
             c = s.candidate
@@ -136,6 +141,8 @@ def write_listing_plan(scored: list[ScoredCandidate], path: str | Path) -> int:
                 f"{c.market_price_usd:.2f}" if c.market_price_usd else "",
                 round(c.cost_incl_tax_jpy), round(s.max_cost_jpy),
                 f"{s.profit.margin:.3f}" if s.profit else "",
+                round(s.profit.shipping_jpy) if s.profit else "",
+                s.profit.shipping_note if s.profit else "",
                 c.competitor_count if c.competitor_count is not None else "",
                 " / ".join(s.reasons),
             ])
