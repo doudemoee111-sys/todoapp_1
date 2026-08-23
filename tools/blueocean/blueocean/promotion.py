@@ -1,0 +1,122 @@
+"""軸2：無在庫を「需要検知センサー」として使い、当たりだけ有在庫化する。
+
+無在庫の弱点（ハンドリング5〜10営業日・在庫切れ・低単価）は、無在庫を最終形に
+しないことで回避できる。無在庫で幅広く出して需要を測り、反応が出た商品だけを
+有在庫化してハンドリングを1〜2日に縮める。
+
+このモジュールには、もう一つ重要な役割がある。
+eBayの Marketplace Insights API（落札実績の取得）は主要パートナー以外には
+開放されていないため、個人セラーは「何が売れているか」を外部データとして
+買えない。**自分の出品の反応そのものが、唯一手に入る需要データになる。**
+軸1で欠けたデータを、軸2が埋める構造になっている。
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from .models import Action, Observation
+
+
+@dataclass(frozen=True)
+class PromotionPolicy:
+    """有在庫化・撤退の閾値。"""
+    promote_on_sold: int = 1          # 1件でも売れたら当たりとみなす
+    promote_watchers: int = 3         # ウォッチがこの数に達したら有在庫化を検討
+    watch_window_days: int = 14       # ウォッチを評価する期間
+    reprice_views: int = 50           # 閲覧は多いのにウォッチ0 → 価格が高い
+    retitle_days: int = 30            # この日数で
+    retitle_views: int = 10           # 閲覧がこれ未満 → そもそも露出していない
+    drop_days: int = 90               # 無反応でこの日数を超えたら畳む
+
+
+@dataclass
+class Decision:
+    sku: str
+    action: Action
+    reason: str
+    days_listed: int
+    views: int
+    watchers: int
+    sold: int
+
+
+def decide(obs: Observation, policy: PromotionPolicy | None = None) -> Decision:
+    """観測1件から次の一手を決める。"""
+    p = policy or PromotionPolicy()
+    d = obs.days_listed
+
+    def mk(action: Action, reason: str) -> Decision:
+        return Decision(obs.sku, action, reason, d, obs.views, obs.watchers, obs.sold)
+
+    # 1. 売れた = 需要が確定した。最優先で有在庫化する
+    if obs.sold >= p.promote_on_sold:
+        return mk(
+            Action.PROMOTE,
+            f"{obs.sold}件 販売済み。需要が確定したので有在庫化し、"
+            f"ハンドリングを1〜2日に短縮する",
+        )
+
+    # 2. ウォッチが付いている = 買う気のある人が実在する
+    if obs.watchers >= p.promote_watchers and d <= p.watch_window_days:
+        return mk(
+            Action.PROMOTE,
+            f"{d}日で ウォッチ{obs.watchers}件。購入意欲のある層が付いている",
+        )
+
+    # 3. 見られているのに動かない = 価格が合っていない
+    if obs.views >= p.reprice_views and obs.watchers == 0:
+        return mk(
+            Action.REPRICE,
+            f"閲覧{obs.views}件に対しウォッチ0。露出はあるので価格が原因",
+        )
+
+    # 4. そもそも見られていない = 検索語が当たっていない（軸4の出番）
+    if d >= p.retitle_days and obs.views < p.retitle_views:
+        return mk(
+            Action.RETITLE,
+            f"{d}日で閲覧{obs.views}件。露出不足。"
+            f"海外バイヤーが実際に打つ語彙にタイトルを組み直す",
+        )
+
+    # 5. 長期間まったく反応がない = 畳む
+    if d >= p.drop_days and obs.sold == 0 and obs.watchers == 0:
+        return mk(Action.DROP, f"{d}日間 無反応。出品を終了して枠を空ける")
+
+    return mk(Action.KEEP, f"観察継続（{d}日目）")
+
+
+def decide_all(
+    observations: list[Observation], policy: PromotionPolicy | None = None
+) -> list[Decision]:
+    """観測群を処理し、対応が必要なものを先頭に並べる。"""
+    decisions = [decide(o, policy) for o in observations]
+    order = {
+        Action.PROMOTE: 0,
+        Action.REPRICE: 1,
+        Action.RETITLE: 2,
+        Action.DROP: 3,
+        Action.KEEP: 4,
+    }
+    return sorted(decisions, key=lambda x: (order[x.action], -x.sold, -x.watchers))
+
+
+def stockout_rate(total_orders: int, seller_cancellations: int) -> float:
+    """在庫切れ率。Below Standard の主因なので、毎週これを見る。
+
+    eBayは在庫切れによるセラー都合キャンセルをセラーレベルに反映する。
+    Below Standard に落ちると落札手数料に6ポイント上乗せされ、検索順位も下がる。
+    """
+    if total_orders <= 0:
+        return 0.0
+    return seller_cancellations / total_orders
+
+
+def stockout_alert(rate: float, threshold: float = 0.02) -> str | None:
+    """在庫切れ率が閾値を超えたら警告を返す。"""
+    if rate > threshold:
+        return (
+            f"在庫切れ率 {rate*100:.1f}% が閾値 {threshold*100:.0f}% を超過。"
+            f"Below Standard に落ちると手数料が6ポイント上がり、必要な仕入倍率が "
+            f"2.35倍→2.79倍に悪化する。出品数を減らし、在庫連動の頻度を上げること"
+        )
+    return None

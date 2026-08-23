@@ -4,3 +4,9 @@ out
 .vercel
 *.log
 .env*.local
+
+# blueocean
+__pycache__/
+*.pyc
+.pytest_cache/
+tools/blueocean/plan.csv

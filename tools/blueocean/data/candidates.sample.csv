@@ -1,0 +1,9 @@
+sku,title_ja,source_url,cost_incl_tax_jpy,weight_g,category,market_price_usd,competitor_count,has_demand_signal,demand_note,is_restricted,restricted_reason
+LENS-001,Nikon Ai-s 50mm F1.2 manual lens,https://example.invalid/1,42000,320,camera,620,4,yes,同型の落札を直近90日で12件確認,no,
+LENS-002,Konica Hexanon AR 40mm F1.8,https://example.invalid/2,9800,180,camera,185,2,yes,近縁モデルの落札あり,no,
+REEL-001,Shimano Stella 2500 spinning reel,https://example.invalid/3,31000,240,fishing,480,11,yes,海外フォーラムで指名の書き込み多数,no,
+PEN-001,Pilot Custom 823 fountain pen amber,https://example.invalid/4,24000,90,stationery,330,3,yes,国内限定軸で海外に固定需要,no,
+VINYL-001,山下達郎 FOR YOU 帯付 LP,https://example.invalid/5,6500,320,vinyl,140,0,no,,no,
+FIG-001,限定フィギュア 2016年版,https://example.invalid/6,28000,900,figure,210,41,no,,no,
+TOOL-001,Makita cordless driver 18V with battery,https://example.invalid/7,18000,1600,tool,290,9,yes,型番指名あり,yes,リチウム電池内蔵で航空輸送規制
+AMP-001,ヴィンテージ真空管アンプ,https://example.invalid/8,55000,8500,audio,900,6,yes,重量物,no,

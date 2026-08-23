@@ -1,0 +1,5 @@
+# 実運用（eBay Browse API を叩く場合）
+requests>=2.31
+
+# 開発
+pytest>=8.0
