@@ -25,6 +25,13 @@ from .discovery import (
     write_candidate_template,
 )
 from .history import ChangeKind, history_of, load_snapshots
+from .pricing import (
+    breakeven_duty_rate,
+    breakeven_fx,
+    list_price_for_margin,
+    offer_ladder,
+    return_impact,
+)
 from .models import Market, SellerLevel, TaxProfile, Verdict
 from .pipeline import (
     attach_titles,
@@ -42,6 +49,7 @@ from .shipping import (
     MARKET_ZONE,
     Carrier,
     Parcel,
+    cheapest,
     load_rate_table_csv,
     quote_all,
     shipping_jpy_for,
@@ -437,6 +445,83 @@ def cmd_check(args) -> int:
     return 0
 
 
+def cmd_price(args) -> int:
+    """仕入れた後の値決め。出品価格・値下げ耐性・感度・返品の影響をまとめて出す。"""
+    profile = DEFAULT_PROFILES[Market(args.market)]
+    level = SellerLevel(args.level)
+    tax = TaxProfile(is_taxable_entity=not args.no_tax_refund)
+
+    ship = None
+    ship_note = "プロファイル既定の概算値"
+    if args.weight_g:
+        parcel = Parcel(args.weight_g, args.length_cm, args.width_cm, args.height_cm)
+        q = cheapest(parcel, MARKET_ZONE[Market(args.market)], tables=_rate_tables(args))
+        if q is None:
+            print("この重量・寸法で使える配送手段がありません。", file=sys.stderr)
+            return 1
+        ship, ship_note = q.jpy, f"{q.carrier.value} / 課金重量 {q.chargeable_weight_g}g"
+
+    kw = dict(fx_jpy_per_usd=args.fx, level=level, tax=tax, shipping_jpy=ship)
+    listed = args.price_usd or list_price_for_margin(
+        args.cost, args.target_margin, profile, **kw
+    )
+    if listed == float("inf"):
+        print("手数料＋関税＋目標利益率が100%を超えています。目標を下げてください。",
+              file=sys.stderr)
+        return 1
+
+    b = compute(listed, args.cost, profile, **kw)
+    print(f"\n=== 値決め（仕入 {args.cost:,.0f}円 / {args.market}）===")
+    print(f"\n送料 {b.shipping_jpy:,.0f}円（{ship_note}） / 為替 {args.fx:.0f}円")
+    if args.price_usd:
+        print(f"\n  出品価格（指定）      ${listed:,.2f}  → 利益 {b.profit_jpy:,.0f}円"
+              f"（利益率 {b.margin*100:.1f}%）")
+    else:
+        print(f"\n  出品価格              ${listed:,.2f}"
+              f"（目標利益率 {args.target_margin*100:.0f}%）")
+
+    print("\n--- Best Offer をどこまで受けられるか ---\n")
+    print(f"{_pad('利益率', 8)}{_pad('受諾価格', 12, right=True)}"
+          f"{_pad('手取り', 12, right=True)}{_pad('値引き', 10, right=True)}")
+    # 出品価格より高い段は Best Offer の文脈では意味がないので落とす
+    for st in offer_ladder(args.cost, profile, list_price_usd=listed, **kw):
+        if st.discount_from_list is not None and st.discount_from_list < -1e-9:
+            continue
+        disc = f"{st.discount_from_list*100:>6.0f}%" if st.discount_from_list is not None else "     -"
+        profit = 0.0 if abs(st.profit_jpy) < 0.5 else st.profit_jpy
+        print(f"{_pad(f'{st.margin*100:.0f}%', 8)}{_pad(f'${st.price_usd:,.2f}', 12, right=True)}"
+              f"{_pad(f'{profit:,.0f}円', 12, right=True)}{_pad(disc, 10, right=True)}")
+    print("\n  出品時にこの表を控えておくと、Best Offer にその場で返事ができます。")
+
+    fx0 = breakeven_fx(listed, args.cost, profile, level=level, tax=tax, shipping_jpy=ship)
+    d0 = breakeven_duty_rate(listed, args.cost, profile, **kw)
+    print("\n--- どこまで環境が悪化しても耐えられるか ---\n")
+    print(f"  為替    {fx0:,.1f}円/USD を下回ると赤字"
+          f"（いま {args.fx:.0f}円。あと {args.fx - fx0:,.1f}円の余裕）")
+    print(f"  関税    {d0*100:.1f}% を超えると赤字"
+          f"（いま {profile.duty_rate*100:.1f}%。あと {(d0 - profile.duty_rate)*100:.1f}ポイントの余裕）")
+
+    r = return_impact(
+        listed, args.cost, profile,
+        return_shipping_jpy=args.return_shipping_jpy,
+        seller_pays_return=not args.buyer_pays_return,
+        item_recovered=not args.item_lost, **kw,
+    )
+    print("\n--- 返品されたら ---\n")
+    print(f"  1件あたりの損失      {r.loss_per_return_jpy:,.0f}円"
+          f"（往復の送料＋梱包＋注文ごと固定費{'' if r.item_recovered else '＋戻らない原価'}）")
+    print(f"  売れた1件の利益      {r.profit_per_sale_jpy:,.0f}円")
+    if r.tolerable_one_in == float("inf"):
+        print("  許容できる返品率      0%（この出品はそもそも赤字）")
+    else:
+        print(f"  許容できる返品率      {r.tolerable_rate*100:.1f}%"
+              f"（{r.tolerable_one_in:.1f}件に1件まで）")
+    if r.is_fragile:
+        print("\n  [注意] 返品1件で売上2件分以上の利益が消えます。"
+              "説明文と状態表記を厚くして、返品そのものを減らすほうが早い。")
+    return 0
+
+
 def cmd_bundle(args) -> int:
     """セット販売（まとめ売り）の採算を、個別売却と並べて出す。"""
     items = load_items(args.items)
@@ -578,6 +663,23 @@ def main(argv=None) -> int:
     sc.add_argument("--top", type=int, default=25, help="表示件数")
     sc.add_argument("--all", action="store_true", help="全件表示する")
     sc.set_defaults(func=cmd_scan)
+
+    pr = sub.add_parser("price", help="仕入れた後の値決め（出品価格・値下げ耐性・感度・返品）")
+    pr.add_argument("--cost", type=float, required=True, help="仕入価格（円・税込）")
+    pr.add_argument("--price-usd", type=float, default=None,
+                    help="出品価格を指定する（省略時は目標利益率から順算）")
+    pr.add_argument("--fx", type=float, default=150.0)
+    pr.add_argument("--weight-g", type=int, default=0)
+    pr.add_argument("--length-cm", type=float, default=0.0)
+    pr.add_argument("--width-cm", type=float, default=0.0)
+    pr.add_argument("--height-cm", type=float, default=0.0)
+    pr.add_argument("--return-shipping-jpy", type=float, default=None,
+                    help="返送料（省略時は往路と同額とみなす）")
+    pr.add_argument("--buyer-pays-return", action="store_true",
+                    help="返送料をバイヤーが負担する前提で計算する")
+    pr.add_argument("--item-lost", action="store_true",
+                    help="商品が戻らない前提（紛失・破損）で計算する")
+    pr.set_defaults(func=cmd_price)
 
     bu = sub.add_parser("bundle", help="セット販売の採算を個別売却と並べる")
     bu.add_argument("--items", required=True, help="構成品CSV")

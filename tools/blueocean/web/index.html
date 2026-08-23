@@ -151,6 +151,45 @@ ol.why{margin:6px 0 0;padding-left:1.25em;color:var(--ink-2);font-size:14px;line
 ol.why li{margin-bottom:10px;}
 ol.why li:last-child{margin-bottom:0;}
 ol.why code{font-size:12.5px;}
+/* 設定バー・トースト */
+.settings summary{display:flex;align-items:baseline;gap:12px;}
+.sumline{font-family:"IBM Plex Mono",monospace;font-size:11.5px;font-weight:400;color:var(--muted);
+  flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cfgbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:0 18px 16px;}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(8px);
+  background:var(--ink);color:var(--paper);font-size:13px;font-weight:700;
+  padding:10px 20px;border-radius:3px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:20;}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* 使い方 */
+/* 読み物は 70ch に絞り、図と表は全幅に出す */
+.guide h2{font-size:19px;margin:38px 0 10px;letter-spacing:-.01em;max-width:70ch;}
+.guide h2:first-child{margin-top:0;}
+.guide h3{font-size:15px;margin:24px 0 6px;color:var(--accent-ink);max-width:70ch;}
+.guide p{font-size:14px;line-height:1.85;color:var(--ink-2);margin:0 0 12px;max-width:70ch;}
+.guide > ul,.guide > ol{margin:0 0 12px;padding-left:1.3em;font-size:14px;line-height:1.85;
+  color:var(--ink-2);max-width:70ch;}
+.guide li{margin-bottom:5px;}
+.guide code{font-size:12.5px;}
+figure{margin:22px 0;padding:18px;border:1px solid var(--rule);border-radius:4px;background:var(--surface);}
+figure svg{display:block;width:100%;max-width:100%;height:auto;color:var(--ink-2);}
+figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;text-align:center;}
+.steps{display:flex;flex-direction:column;gap:12px;margin:16px 0 0;list-style:none;padding:0;max-width:none;}
+.steps li{display:grid;grid-template-columns:32px 1fr;gap:14px;align-items:start;
+  border:1px solid var(--rule);border-radius:4px;background:var(--surface);padding:14px 16px;margin:0;}
+.steps .no{font-family:"IBM Plex Mono",monospace;font-size:13px;font-weight:600;
+  width:28px;height:28px;border-radius:50%;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--accent-ink);}
+.steps .bd2 b{display:block;font-size:14.5px;color:var(--ink);margin-bottom:4px;}
+.steps .bd2{font-size:13.5px;line-height:1.8;color:var(--ink-2);}
+.steps .bd2 em{font-style:normal;color:var(--muted);font-size:12.5px;display:block;margin-top:5px;}
+.termlist{border:1px solid var(--rule);border-radius:4px;background:var(--surface);overflow:hidden;max-width:none;}
+.termlist div{display:grid;grid-template-columns:170px 1fr;gap:14px;padding:11px 16px;
+  border-bottom:1px solid var(--rule-soft);font-size:13px;line-height:1.7;}
+.termlist div:last-child{border-bottom:none;}
+.termlist dt2,.termlist .t{font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600;color:var(--accent-ink);}
+.termlist .d{color:var(--ink-2);}
+@media (max-width:640px){.termlist div{grid-template-columns:1fr;gap:4px;}}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px;}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
 </style>
@@ -169,7 +208,7 @@ ol.why code{font-size:12.5px;}
 </header>
 
 <details class="settings" id="settings">
-  <summary>前提条件（市場・手数料・関税・為替）</summary>
+  <summary><span>前提条件</span><span class="sumline" id="cfg-sum">—</span></summary>
   <div class="sgrid">
     <label>市場
       <select id="market">
@@ -195,19 +234,194 @@ ol.why code{font-size:12.5px;}
     <label>注文ごと固定費（円）<input type="number" id="perorder" step="10" min="0"></label>
     <label class="chk"><input type="checkbox" id="taxable" checked> 課税事業者（消費税還付を受ける）</label>
   </div>
+  <div class="cfgbar">
+    <button class="act" id="cfg-apply">この条件で全部を計算し直す</button>
+    <button class="ghost" id="cfg-reset">市場の既定値に戻す</button>
+    <span class="hint" style="margin:0">入力するたびに自動でも再計算されます。このボタンは確認用です。</span>
+  </div>
 </details>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <nav class="tabs" role="tablist">
-  <button role="tab" aria-selected="true" data-tab="calc">仕入上限の逆算</button>
+  <button role="tab" aria-selected="true" data-tab="guide">使い方</button>
+  <button role="tab" aria-selected="false" data-tab="calc">仕入上限の逆算</button>
   <button role="tab" aria-selected="false" data-tab="ship">送料（重量・サイズ）</button>
   <button role="tab" aria-selected="false" data-tab="one">1件だけ判定</button>
   <button role="tab" aria-selected="false" data-tab="axis1">軸1：出品候補の判定</button>
+  <button role="tab" aria-selected="false" data-tab="price">値決め</button>
   <button role="tab" aria-selected="false" data-tab="bundle">セット販売</button>
   <button role="tab" aria-selected="false" data-tab="axis2">軸2：出品後の判定</button>
 </nav>
 
+<!-- ============ 使い方 ============ -->
+<section class="panel on" id="p-guide">
+<div class="guide">
+
+<h2>このツールは何をするものか</h2>
+<p>
+  日本の商品を海外（eBay・Shopee）に売るとき、<b>「その値段で買っていいか」「いくらで出すか」</b>を
+  数字で決めるための道具です。手数料・関税・国際送料・消費税還付をすべて織り込んで計算します。
+</p>
+<p>
+  出品作業そのものはしません。<b>判断だけを担当します。</b>
+  出品は SAATS Commerce などの既存ツールが得意なので、そちらに任せる前提です。
+</p>
+
+<figure>
+  <svg viewBox="0 0 900 312" role="img"
+       aria-label="ジャンル走査で何を探すか決め、判定して出品し、反応を見て、有在庫化・価格の直し・セット販売に振り分ける流れ。売れ残りは束ねて再出品する。">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+      </marker>
+    </defs>
+
+    <!-- 上段：本流 -->
+    <rect x="16" y="56" width="160" height="56" rx="3" fill="none" stroke="currentColor" stroke-width="1"/>
+    <text x="96" y="79" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">何を探すか決める</text>
+    <text x="96" y="97" text-anchor="middle" font-size="11" fill="currentColor" opacity=".65">ジャンル走査</text>
+
+    <rect x="216" y="56" width="160" height="56" rx="3" fill="none" stroke="var(--accent)" stroke-width="2"/>
+    <text x="296" y="79" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent)">買うか決める</text>
+    <text x="296" y="97" text-anchor="middle" font-size="11" fill="var(--accent)" opacity=".8">1件だけ判定 / 軸1</text>
+
+    <rect x="416" y="56" width="130" height="56" rx="3" fill="none" stroke="currentColor"
+          stroke-width="1" stroke-dasharray="4 3" opacity=".55"/>
+    <text x="481" y="79" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor" opacity=".7">出品する</text>
+    <text x="481" y="97" text-anchor="middle" font-size="11" fill="currentColor" opacity=".5">ツールの外</text>
+
+    <rect x="586" y="56" width="160" height="56" rx="3" fill="none" stroke="var(--accent)" stroke-width="2"/>
+    <text x="666" y="79" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent)">売れるか見る</text>
+    <text x="666" y="97" text-anchor="middle" font-size="11" fill="var(--accent)" opacity=".8">軸2</text>
+
+    <line x1="176" y1="84" x2="210" y2="84" stroke="currentColor" stroke-width="1" marker-end="url(#ar)"/>
+    <text x="193" y="76" text-anchor="middle" font-size="10" fill="currentColor" opacity=".6">型番</text>
+    <line x1="376" y1="84" x2="410" y2="84" stroke="currentColor" stroke-width="1" marker-end="url(#ar)"/>
+    <line x1="546" y1="84" x2="580" y2="84" stroke="currentColor" stroke-width="1" marker-end="url(#ar)"/>
+    <text x="563" y="76" text-anchor="middle" font-size="10" fill="currentColor" opacity=".6">1週間</text>
+
+    <!-- 分岐 -->
+    <line x1="666" y1="112" x2="666" y2="150" stroke="currentColor" stroke-width="1"/>
+    <line x1="490" y1="150" x2="800" y2="150" stroke="currentColor" stroke-width="1"/>
+    <line x1="490" y1="150" x2="490" y2="172" stroke="currentColor" stroke-width="1" marker-end="url(#ar)"/>
+    <line x1="640" y1="150" x2="640" y2="172" stroke="currentColor" stroke-width="1" marker-end="url(#ar)"/>
+    <line x1="800" y1="150" x2="800" y2="172" stroke="currentColor" stroke-width="1" marker-end="url(#ar)"/>
+
+    <rect x="430" y="178" width="120" height="46" rx="3" fill="none" stroke="currentColor" stroke-width="1"/>
+    <text x="490" y="199" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">売れた</text>
+    <text x="490" y="215" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".65">有在庫化する</text>
+
+    <rect x="580" y="178" width="120" height="46" rx="3" fill="none" stroke="currentColor" stroke-width="1"/>
+    <text x="640" y="199" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">動かない</text>
+    <text x="640" y="215" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".65">値決め / 語を直す</text>
+
+    <rect x="730" y="178" width="140" height="46" rx="3" fill="none" stroke="var(--probe)" stroke-width="1.6"/>
+    <text x="800" y="199" text-anchor="middle" font-size="12" font-weight="700" fill="var(--probe)">売れ残った</text>
+    <text x="800" y="215" text-anchor="middle" font-size="10.5" fill="var(--probe)" opacity=".85">セット販売</text>
+
+    <!-- 戻り -->
+    <path d="M800 224 L800 272 L390 272 L390 140 L475 140 L475 118"
+          fill="none" stroke="var(--probe)" stroke-width="1.6" stroke-dasharray="5 3" marker-end="url(#ar)"/>
+    <text x="595" y="264" text-anchor="middle" font-size="11" fill="var(--probe)">売れ残りを束ねて出し直す</text>
+
+    <text x="16" y="32" font-size="10.5" font-weight="700" fill="currentColor" opacity=".5" letter-spacing="1.5">探す</text>
+    <text x="216" y="32" font-size="10.5" font-weight="700" fill="currentColor" opacity=".5" letter-spacing="1.5">決める</text>
+    <text x="586" y="32" font-size="10.5" font-weight="700" fill="currentColor" opacity=".5" letter-spacing="1.5">確かめる</text>
+  </svg>
+  <figcaption>
+    太い枠が「判断する場所」。出品そのものはツールの外です。<br>
+    <b>売れ残りは捨てずにセットにして出し直す</b> ── ここが1周して戻るのがこのツールの形です。
+  </figcaption>
+</figure>
+
+<h2>始める前に用意するもの</h2>
+<ul>
+  <li><b>古物商許可</b>（中古を扱うなら着手<em style="font-style:normal">前</em>に取得）。無許可営業は3年以下の拘禁刑または100万円以下の罰金です</li>
+  <li><b>課税事業者の届出</b>。輸出免税による消費税還付（税込仕入 × 10/110）が無いと、利益率20%はほぼ届きません</li>
+  <li><b>eBayアカウント</b>（相場と競合数を自分で調べるため）</li>
+  <li><b>1g単位のはかりとメジャー</b>。<b>送料は重量と寸法で階段状に変わります。</b>目分量では判断できません</li>
+</ul>
+
+<h2>手順</h2>
+<ol class="steps">
+  <li><span class="no">1</span><span class="bd2"><b>前提条件を自分の状況に合わせる</b>
+    ページ上部の「前提条件」を開き、市場・為替・目標利益率・セラーレベルを入れて
+    <b>「この条件で全部を計算し直す」</b>を押します。以降すべてのタブがこの条件で計算されます。
+    <em>関税率は変わります。既定値は2026年8月時点の対日12.5%です。運用前に必ず最新を確認してください。</em></span></li>
+
+  <li><span class="no">2</span><span class="bd2"><b>いくらまでなら買えるかを掴む</b>
+    「仕入上限の逆算」タブ。想定売価と荷姿を入れると、<b>その値段までなら買っていい</b>という上限が出ます。
+    <em>「必要な 売価÷仕入」倍率が、その市場での難易度です。米国は関税で倍率が跳ね上がります。</em></span></li>
+
+  <li><span class="no">3</span><span class="bd2"><b>目の前の1点を判定する</b>
+    「1件だけ判定」タブ。店頭やフリマアプリを見ている最中に使う画面です。
+    eBayで同じ商品を検索して、<b>出品件数</b>と<b>価格帯</b>を見て入力します。
+    <em>eBayの検索結果に出る「1,234 results」が競合数。左メニューの Sold Items にチェックを入れると、実際に売れた価格が見えます。</em></span></li>
+
+  <li><span class="no">4</span><span class="bd2"><b>まとめて候補を選ぶ</b>
+    「軸1」タブ。候補をCSVで貼り付けると5段階で判定します。
+    「今回の結果を記録する」を押しておくと、次回に<b>前回からの変化</b>（BLUE→RED、採算割れ）が出ます。
+    <em>競合数と相場は日々動くので、判定結果には賞味期限があります。</em></span></li>
+
+  <li><span class="no">5</span><span class="bd2"><b>仕入れたら値段を決める</b>
+    「値決め」タブ。<b>出品価格</b>と、<b>Best Offer をどこまで受けられるか</b>の一覧が出ます。
+    円安が止まったとき・関税が上がったときにどこで赤字になるかも出します。
+    <em>Best Offer はその場で返事が要ります。出品時にこの表を控えておいてください。</em></span></li>
+
+  <li><span class="no">6</span><span class="bd2"><b>出品して、反応を見る</b>
+    「軸2」タブ。eBay Seller Hub のレポートから閲覧・ウォッチ・販売数を持ってきて貼り付けます。
+    毎週<b>追記</b>していけば、最新の1行で判定し、前回からの増分も出ます。
+    <em>PROMOTE が出たら当たり。無在庫をやめて手元に仕入れ、発送を1〜2日に縮めます。</em></span></li>
+
+  <li><span class="no">7</span><span class="bd2"><b>売れ残りを束ねる</b>
+    「セット販売」タブ。単品では売れない在庫を売れ筋に混ぜると、<b>送料が1回で済む</b>ぶん採算が変わります。
+    <em>単価の低いものほど効きます。米国向けなら、個別に売ると赤字の構成がセットで黒字になることがあります。</em></span></li>
+</ol>
+
+<h3>「送料（重量・サイズ）」タブはいつ使うか</h3>
+<p>
+  どの手順でも使う補助画面です。<b>配送手段を横並びで比較</b>できます。
+  軽くて嵩張るもの（衣類・外箱付きフィギュア）は容積重量で課金されるため、
+  <b>EMSが逆にいちばん安くなる</b>ことがあります。固定送料では見えない逆転です。
+</p>
+
+<h2>用語</h2>
+<div class="termlist">
+  <div><span class="t">BLUE</span><span class="d">競合が少なく、需要の裏付けもある。最優先で出す</span></div>
+  <div><span class="t">PROBE</span><span class="d">競合は少ないが需要が未確認。<b>少量で出して軸2で確かめる</b></span></div>
+  <div><span class="t">THIN</span><span class="d">採算が目標に届かない。仕入値が下がれば再評価</span></div>
+  <div><span class="t">RED</span><span class="d">競合が多すぎる。値下げ競争になるので見送り</span></div>
+  <div><span class="t">EXCL</span><span class="d">規制品・重量超過・低単価で対象外</span></div>
+  <div><span class="t">課金重量</span><span class="d">実重量と容積重量の<b>大きいほう</b>。送料はこれで決まる</span></div>
+  <div><span class="t">容積重量</span><span class="d">縦×横×高さ(cm) ÷ 除数 × 1000。クーリエ5,000／国際小包6,000。<b>EMSは採らない</b></span></div>
+  <div><span class="t">DDP</span><span class="d">関税をセラーが負担して届ける方式。米国向け$2,500以下は原則これ</span></div>
+  <div><span class="t">Below Standard</span><span class="d">eBayのセラーレベル最下位。落札手数料に6ポイント上乗せ。在庫切れキャンセルが主因</span></div>
+  <div><span class="t">消費税還付</span><span class="d">輸出は免税なので、仕入で払った消費税が戻る（税込仕入 × 10/110）。<b>課税事業者のみ</b></span></div>
+  <div><span class="t">損益分岐のセット売価</span><span class="d">個別に売ったのと同じ利益になるセット価格。これを下回るならセットにする意味がない</span></div>
+</div>
+
+<h2>よくある外し方</h2>
+<ul>
+  <li><b>寸法を入れない。</b>実重量だけで計算すると、嵩張る商品で送料が下振れします。判定が甘くなる方向に外れます</li>
+  <li><b>梱包<em style="font-style:normal">前</em>の重量を入れる。</b>緩衝材と箱で100〜300g増えます。段が1つ上がればその差はそのまま利益から消えます</li>
+  <li><b>競合ゼロを「空いている」と読む。</b>誰も出していないのは、売れないからかもしれません。このツールが PROBE に落とすのはそのためです</li>
+  <li><b>米国だけを見る。</b>関税制度はこの半年で3回変わりました。市場を切り替えて比べてください</li>
+  <li><b>古いデータで仕入れる。</b>競合数と相場は毎日動きます。軸1の記録機能で前回からの変化を見てください</li>
+</ul>
+
+<h2>このツールがやらないこと</h2>
+<ul>
+  <li><b>国内で現物を探すこと。</b>メルカリ・ヤフオク等は自動取得を規約で制限しています。<b>何を</b>探すかはジャンル走査が決めますが、探すのは人の仕事です</li>
+  <li><b>出品作業。</b>既存の出品ツールの担当です</li>
+  <li><b>落札実績の取得。</b>eBayのMarketplace Insights APIは主要パートナー以外に開放されていません。だから軸2（自分の出品の反応）が唯一の需要データになります</li>
+  <li><b>送料の実額の保証。</b>料金表は公表値と推定が混ざっています。「推定」と出た金額は公式料金表で確認してください</li>
+</ul>
+
+</div>
+</section>
+
 <!-- ============ 仕入上限 ============ -->
-<section class="panel on" id="p-calc">
+<section class="panel" id="p-calc">
   <div class="split">
     <div>
       <div class="card">
@@ -380,6 +594,57 @@ ol.why code{font-size:12.5px;}
   </div>
 </section>
 
+<!-- ============ 値決め ============ -->
+<section class="panel" id="p-price">
+  <p class="hint">
+    仕入れた<b>後</b>の画面です。「いくらで出すか」「Best Offer をどこまで受けるか」
+    「円安が止まったらどうなるか」「返品されたらいくら損するか」を一度に出します。
+    <b>Best Offer はその場で返事が要る</b>ので、出品時にこの表を控えておいてください。
+  </p>
+  <div class="split">
+    <div>
+      <div class="card">
+        <h2>この商品</h2>
+        <div class="sgrid" style="grid-template-columns:1fr 1fr;">
+          <label>仕入価格（円・税込）<input type="number" id="pr-cost" value="9800" step="500" min="0"></label>
+          <label>実重量（g）<input type="number" id="pr-g" value="180" step="10" min="0"></label>
+        </div>
+        <div class="sgrid" style="grid-template-columns:1fr 1fr 1fr;">
+          <label>縦（cm）<input type="number" id="pr-l" value="16" step="1" min="0"></label>
+          <label>横（cm）<input type="number" id="pr-w" value="12" step="1" min="0"></label>
+          <label>高さ（cm）<input type="number" id="pr-h" value="10" step="1" min="0"></label>
+        </div>
+        <label style="margin-top:12px">出品価格（USD・空なら目標利益率から自動計算）
+          <input type="number" id="pr-price" value="" step="5" min="0" placeholder="自動"></label>
+      </div>
+      <div class="card">
+        <h2>返品の前提</h2>
+        <label class="chk"><input type="checkbox" id="pr-seller-return" checked> 返送料はこちらが負担する</label>
+        <label class="chk" style="margin-top:8px"><input type="checkbox" id="pr-lost"> 商品は戻らない（紛失・破損）</label>
+        <p class="hint" style="margin:10px 0 0">
+          落札手数料は返金時に戻る前提です。<b>往復の国際送料は戻りません。</b>
+        </p>
+      </div>
+    </div>
+    <div>
+      <div class="kpi">
+        <div><span class="k">出品価格</span><span class="v" id="pr-list">—</span><span class="n" id="pr-list-n"></span></div>
+        <div><span class="k">これ以上は値下げできない</span><span class="v" id="pr-floor">—</span><span class="n">利益ゼロの線</span></div>
+      </div>
+      <h3 style="margin:22px 0 8px;font-size:15px">Best Offer をどこまで受けられるか</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>利益率</th><th class="n">受諾価格</th><th class="n">手取り</th><th class="n">値引き</th></tr></thead>
+        <tbody id="pr-ladder"></tbody>
+      </table></div>
+      <h3 style="margin:22px 0 8px;font-size:15px">どこまで環境が悪化しても耐えられるか</h3>
+      <div class="bd" id="pr-sens"></div>
+      <h3 style="margin:22px 0 8px;font-size:15px">返品されたら</h3>
+      <div class="bd" id="pr-ret"></div>
+      <div id="pr-notes"></div>
+    </div>
+  </div>
+</section>
+
 <!-- ============ セット販売 ============ -->
 <section class="panel" id="p-bundle">
   <p class="hint">
@@ -468,7 +733,7 @@ ol.why code{font-size:12.5px;}
 
 <footer>
   <p>
-    Python版と同じ計算式を実装しています（テスト123件）。
+    Python版と同じ計算式を実装しています（テスト145件）。
     コード：<a href="https://github.com/doudemoee111-sys/todoapp_1/tree/claude/side-business-proposal-su9ie3/tools/blueocean">tools/blueocean</a>
   </p>
   <p>
@@ -526,6 +791,7 @@ function fillProfileInputs(){
   $("fee").value = (p.fee*100).toFixed(1);
   $("duty").value = (p.duty*100).toFixed(1);
   if (!$("auto-ship").checked) $("ship").value = p.ship;
+  $("perorder").value = p.per;
   $("pack").value = p.pack;
   $("perorder").value = p.per;
 }
@@ -1049,6 +1315,116 @@ function renderChanges(prev, cur){
 }
 
 
+
+/* ===== 値決め（pricing.py と同一） =====
+   「買っていいか」の次に来るのは「いくらで出すか」「この値下げを受けるか」で、
+   どちらも毎日発生する。既存の利益式の変形で出せるのに出していなかった穴。
+     利益 = P − P·f − P·d − Fo − S − K − C + C·k                     */
+function fixedCosts(cost, c, ship){
+  const k = c.taxable ? 0.10/1.10 : 0;
+  return c.per + ship + c.pack + cost * (1 - k);
+}
+function varRate(c){ return effFee(c) + c.duty; }
+
+/* P(1 − f − d − m) = Fo + S + K + C(1 − k) */
+function listPriceForMargin(cost, margin, c, ship){
+  const denom = 1 - varRate(c) - margin;
+  if (denom <= 0) return Infinity;
+  return fixedCosts(cost, c, ship) / denom / c.fx;
+}
+function breakevenFx(priceUsd, cost, c, ship){
+  const denom = 1 - varRate(c);
+  if (priceUsd <= 0 || denom <= 0) return Infinity;
+  return fixedCosts(cost, c, ship) / denom / priceUsd;
+}
+function breakevenDuty(priceUsd, cost, c, ship){
+  const pj = priceUsd * c.fx;
+  if (pj <= 0) return 0;
+  return Math.max(0, (pj * (1 - effFee(c)) - fixedCosts(cost, c, ship)) / pj);
+}
+/* (1−r)·利益 − r·損失 = 0 → r = 利益 /(利益 + 損失) */
+function returnImpact(priceUsd, cost, c, ship, opt){
+  const b = compute(priceUsd, cost, {...c, ship});
+  let loss = b.ship + c.pack + c.per;
+  if (opt.sellerPays) loss += b.ship;          /* 返送料は往路と同額とみなす */
+  if (!opt.recovered) loss += cost - b.refund;
+  const profit = b.profit;
+  const rate = profit > 0 ? profit / (profit + loss) : 0;
+  return {profit, loss, rate, oneIn: rate > 0 ? 1/rate : Infinity,
+          fragile: profit > 0 && loss > profit * 2, recovered: opt.recovered};
+}
+
+function renderPrice(){
+  const c0 = cfg();
+  const parcel = parcelOf($("pr-g").value, $("pr-l").value, $("pr-w").value, $("pr-h").value);
+  const sf = shipFor(c0, parcel);
+  const ship = sf.ship === null ? c0.ship : sf.ship;
+  const c = {...c0, ship};
+  const cost = +$("pr-cost").value || 0;
+
+  const auto = listPriceForMargin(cost, c.target, c, ship);
+  const typed = $("pr-price").value.trim();
+  const listed = typed === "" ? auto : (+typed || 0);
+
+  if (!isFinite(listed) || listed <= 0){
+    $("pr-list").textContent = "—";
+    $("pr-list-n").textContent = "手数料＋関税＋目標利益率が100%を超えています。目標を下げてください。";
+    $("pr-ladder").innerHTML = ""; $("pr-sens").innerHTML = "";
+    $("pr-ret").innerHTML = ""; $("pr-notes").innerHTML = ""; return;
+  }
+
+  const b = compute(listed, cost, c);
+  const floor = listPriceForMargin(cost, 0, c, ship);
+  $("pr-list").textContent = "$" + listed.toFixed(2);
+  $("pr-list-n").textContent = typed === ""
+    ? `目標利益率 ${(c.target*100).toFixed(0)}% から逆算。利益 ${yen(b.profit)}円`
+    : `指定価格。利益 ${yen(b.profit)}円（利益率 ${(b.margin*100).toFixed(1)}%）`;
+  $("pr-list").className = "v" + (b.profit < 0 ? " warn" : "");
+  $("pr-floor").textContent = "$" + floor.toFixed(2);
+
+  /* 出品価格より高い段は Best Offer の文脈では意味がないので落とす */
+  const rows = [0.30,0.25,0.20,0.15,0.10,0.05,0].map(m => {
+    const price = listPriceForMargin(cost, m, c, ship);
+    return {m, price, profit: compute(price, cost, c).profit, disc: 1 - price/listed};
+  }).filter(r => isFinite(r.price) && r.disc >= -1e-9);
+  $("pr-ladder").innerHTML = rows.map(r =>
+    `<tr class="${Math.abs(r.m - c.target) < 1e-9 ? 'hl' : ''}">`
+    + `<td>${(r.m*100).toFixed(0)}%</td>`
+    + `<td class="n">$${r.price.toFixed(2)}</td>`
+    + `<td class="n">${yen(Math.abs(r.profit) < 0.5 ? 0 : r.profit)}円</td>`
+    + `<td class="n">${(r.disc*100).toFixed(0)}%</td></tr>`).join("")
+    || '<tr><td colspan="4">この仕入値では受けられる価格帯がありません。</td></tr>';
+
+  const fx0 = breakevenFx(listed, cost, c, ship);
+  const d0 = breakevenDuty(listed, cost, c, ship);
+  $("pr-sens").innerHTML =
+      `<div class="row"><span>為替がこれを下回ると赤字</span><span>${fx0.toFixed(1)} 円/USD</span></div>`
+    + `<div class="row ${c.fx > fx0 ? 'pos' : 'neg'}"><span>いまの為替（${c.fx.toFixed(0)}円）との差</span><span>${(c.fx - fx0).toFixed(1)} 円</span></div>`
+    + `<div class="row"><span>関税がこれを超えると赤字</span><span>${(d0*100).toFixed(1)}%</span></div>`
+    + `<div class="row ${d0 > c.duty ? 'pos' : 'neg'}"><span>いまの関税（${(c.duty*100).toFixed(1)}%）との差</span><span>${((d0-c.duty)*100).toFixed(1)} ポイント</span></div>`;
+
+  const r = returnImpact(listed, cost, c, ship, {
+    sellerPays: $("pr-seller-return").checked, recovered: !$("pr-lost").checked});
+  $("pr-ret").innerHTML =
+      `<div class="row neg"><span>返品1件あたりの損失</span><span>−${yen(r.loss)} 円</span></div>`
+    + `<div class="row pos"><span>売れた1件の利益</span><span>${yen(r.profit)} 円</span></div>`
+    + `<div class="row total"><span>耐えられる返品率</span><span>${
+        r.oneIn === Infinity ? "0%（この価格では赤字）"
+        : `${(r.rate*100).toFixed(1)}%（${r.oneIn.toFixed(1)}件に1件まで）`}</span></div>`;
+
+  const notes = [];
+  if (r.fragile) notes.push(
+    "<b>返品1件で、売れた2件分以上の利益が消えます。</b>越境ECの返品が重いのは往復の国際送料が丸ごと損失になるからです。値下げより先に、説明文と状態表記を厚くして返品そのものを減らすほうが効きます。");
+  if (b.profit < 0) notes.push(
+    "<b>この価格では赤字です。</b>仕入値を下げるか、関税のかからない市場（欧州・東南アジア）に切り替えてください。");
+  if (c.fx - fx0 < 15 && isFinite(fx0)) notes.push(
+    `<b>為替の余裕が ${(c.fx-fx0).toFixed(0)}円 しかありません。</b>円高が進むと赤字に落ちます。ドル建てで受け取って寝かせない、あるいは利益率の目標を上げてください。`);
+  if (sf.quote) notes.push(
+    `送料は ${CLABEL[sf.quote.carrier]}・課金重量 ${sf.quote.chg}g で ${yen(sf.quote.jpy)}円 として計算しています。`
+    + (sf.quote.byVolume ? "<b>容積重量で課金されているので、箱を詰めれば直接効きます。</b>" : ""));
+  $("pr-notes").innerHTML = notes.map(n => `<div class="warnnote">${n}</div>`).join("");
+}
+
 /* ===== セット販売（bundle.py と同一） =====
    セット化が効く理由は「比較されない」だけではない。原価構造が変わる。
      個別に5点売る → 注文5件・送料5回・注文ごと固定費5回・梱包5回
@@ -1319,6 +1695,17 @@ $("market").addEventListener("change", () => { fillProfileInputs(); refresh(); }
 $("carrier").addEventListener("change", refresh);
 ["o-title","o-cost","o-g","o-l","o-w","o-h","o-price","o-comp","o-demand"]
   .forEach(id => $(id).addEventListener("input", renderOne));
+["pr-cost","pr-g","pr-l","pr-w","pr-h","pr-price","pr-seller-return","pr-lost"]
+  .forEach(id => $(id).addEventListener("input", renderPrice));
+$("cfg-apply").addEventListener("click", () => {
+  refresh(); runAxis2();
+  $("settings").open = false;
+  toast("この条件で計算し直しました");
+});
+$("cfg-reset").addEventListener("click", () => {
+  fillProfileInputs(); refresh(); runAxis2();
+  toast(`${MKT_LABEL[cfg().market]} の既定値に戻しました`);
+});
 $("a1-run").addEventListener("click", runAxis1);
 $("b-run").addEventListener("click", runBundle);
 $("b-reset").addEventListener("click", () => { $("b-in").value = SAMPLE3; runBundle(); });
@@ -1335,11 +1722,31 @@ $("a1-save").addEventListener("click", () => {
 $("a1-reset").addEventListener("click", () => { $("a1-in").value = SAMPLE1; runAxis1(); });
 $("a2-reset").addEventListener("click", () => { $("a2-in").value = SAMPLE2; runAxis2(); });
 
-function refresh(){ saveCfg(); renderCalc(); renderOne(); runAxis1(); runBundle(); }
+const MKT_LABEL = {ebay_us:"eBay 米国", ebay_eu:"eBay 欧州", ebay_au:"eBay 豪州", shopee_sea:"Shopee 東南ア"};
+const LV_LABEL = {top_rated:"Top Rated", above_standard:"Above Standard", below_standard:"Below Standard"};
+function renderCfgSummary(){
+  const c = cfg();
+  $("cfg-sum").textContent =
+    `${MKT_LABEL[c.market]} / ${c.fx.toFixed(0)}円 / 目標 ${(c.target*100).toFixed(0)}% / `
+    + `手数料 ${(c.fee*100).toFixed(1)}% / 関税 ${(c.duty*100).toFixed(1)}% / ${LV_LABEL[c.level]}`
+    + (c.taxable ? " / 課税事業者" : " / 免税事業者");
+}
+let TOAST_T = null;
+function toast(msg){
+  const t = $("toast");
+  t.textContent = msg; t.classList.add("on");
+  clearTimeout(TOAST_T);
+  TOAST_T = setTimeout(() => t.classList.remove("on"), 2200);
+}
+function refresh(){
+  saveCfg(); renderCfgSummary();
+  renderCalc(); renderOne(); renderPrice(); runAxis1(); runBundle();
+}
 
 if (!loadCfg()) fillProfileInputs();
 $("a1-in").value = SAMPLE1;
 $("a2-in").value = SAMPLE2;
 $("b-in").value = SAMPLE3;
-renderCalc(); renderOne(); runAxis1(); runBundle(); runAxis2();
+renderCfgSummary();
+renderCalc(); renderOne(); renderPrice(); runAxis1(); runBundle(); runAxis2();
 </script>
