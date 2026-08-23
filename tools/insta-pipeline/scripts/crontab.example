@@ -1,0 +1,18 @@
+# ============================================================
+# 毎日投稿の仕組み化（crontab -e に貼る）
+#   NODE_BIN は `which node` の結果に置き換えてください
+#   PIPELINE は insta-pipeline の絶対パスに置き換えてください
+# ============================================================
+NODE_BIN=/usr/local/bin/node
+PIPELINE=/path/to/todoapp_1/tools/insta-pipeline
+
+# 毎朝7:00 JST — その日の素材一式（企画→台本→画像→音声→動画→キャプション→法務チェック）を生成
+0 7 * * *  cd $PIPELINE && NODE_BIN=$NODE_BIN ./scripts/daily.sh
+
+# 毎週月曜8:00 JST — 週次インサイトレポートを生成
+0 8 * * 1  cd $PIPELINE && NODE_BIN=$NODE_BIN ./scripts/weekly-report.sh
+
+# 【任意】毎日19:00 JST — 承認済みのものだけ自動公開
+#   ※ APPROVED ファイルが無いものは投稿されません（人間承認ゲート）
+#   ※ PUBLIC_ASSET_BASE_URL の設定が必要です
+# 0 19 * * *  cd $PIPELINE && $NODE_BIN src/steps/08-publish.mjs >> out/_logs/publish.log 2>&1

@@ -1,0 +1,4 @@
+.env
+out/
+assets/recordings/
+node_modules/

@@ -1,0 +1,15 @@
+{
+  "name": "insta-pipeline",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Instagram daily posting pipeline (OpenAI + Stability AI + Google TTS + Instagram Graph API)",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "daily": "node src/run.mjs",
+    "dry": "node src/run.mjs --dry-run",
+    "publish": "node src/steps/08-publish.mjs",
+    "insights": "node src/steps/09-insights.mjs",
+    "doctor": "node src/run.mjs --doctor"
+  }
+}

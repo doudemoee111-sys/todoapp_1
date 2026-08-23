@@ -1,0 +1,54 @@
+{
+  "account": {
+    "handle": "@your_account",
+    "genre": "AIツール実演 × バックオフィス業務",
+    "persona": "従業員10人以下の会社の事務担当、および一人社長・フリーランス。経理・請求書処理・契約書チェック・議事録・資料作成に毎週数時間を取られている。ITに詳しくはないが、AIに興味はある。",
+    "tone": "誇張しない。実際に触った結果だけを話す。専門用語は使う前に一言で言い換える。",
+    "ngExpressions": [
+      "絶対",
+      "必ず稼げ",
+      "誰でも簡単に",
+      "100%",
+      "完全無料でずっと"
+    ]
+  },
+  "post": {
+    "type": "reel",
+    "durationSec": 30,
+    "sceneCount": 5,
+    "aspectRatio": "9:16",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "hashtagCount": 4,
+    "prLabel": "PR",
+    "ctaText": "プロフィールのリンクから比較表を配布中",
+    "imageStylePrompt": "clean flat vector infographic, muted navy and warm off-white palette, generous negative space, minimal Japanese business aesthetic, no text, no letters, no logos, no human faces"
+  },
+  "compliance": {
+    "requirePrLabel": true,
+    "bannedPatterns": [
+      "治り(ます|ました)",
+      "治療でき",
+      "効果があります",
+      "効きます",
+      "痩せ(ます|られます)",
+      "副作用は(ありません|ない)",
+      "医薬品と同(じ|等)",
+      "完治",
+      "必ず(儲か|稼げ|成功)",
+      "絶対に(儲か|稼げ|成功)",
+      "元本保証",
+      "リスクは(ありません|ない)",
+      "業界(No\\\\.?1|ナンバー?ワン)",
+      "日本一",
+      "最安値保証",
+      "誰でも(簡単に)?稼げ"
+    ],
+    "requireHumanApproval": true
+  },
+  "publish": {
+    "scheduleHourJst": 19,
+    "aiLabelRequired": true
+  }
+}
