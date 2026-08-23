@@ -81,17 +81,57 @@ def promote_published(title: str, video_id: str, pkg: dict | None = None,
         return {"threads": f"error: {e}"}
 
 
+def _fmt_when(publish_at_jst) -> str:
+    """publish_at を『YYYY-MM-DD HH:MM JST』の一言に整える（不明なら空文字）。"""
+    if publish_at_jst is None:
+        return ""
+    try:
+        return publish_at_jst.strftime("%Y-%m-%d %H:%M JST")
+    except Exception:  # noqa: BLE001  (str や isoformat 済みが来た場合)
+        return str(publish_at_jst)
+
+
+def build_draft(title: str, video_id: str, pkg: dict | None = None,
+                is_short: bool = False, publish_at_jst=None) -> dict:
+    """公開時に『手動で』投稿するための Threads 下書きを作って返す（投稿はしない）。
+    ユーザー方針: 自動投稿ではなく、都度この下書きを確認して自分でThreadsへ貼る。"""
+    url = f"https://youtu.be/{video_id}"
+    return {
+        "kind": "予告編ショート" if is_short else "長尺",
+        "draft_text": craft_threads_text(title, url, pkg, is_short),
+        "url": url,
+        "publish_at_jst": _fmt_when(publish_at_jst),
+        "is_short": is_short,
+    }
+
+
+def format_draft_block(draft: dict) -> str:
+    """トリガーの最終報告にそのまま貼れる、コピペ用の下書きブロックを整形する。"""
+    when = draft.get("publish_at_jst") or "公開時刻はYouTube Studioで確認"
+    return (
+        f"\n=========== THREADS 下書き（{draft.get('kind', '')}）===========\n"
+        f"公開予定: {when} ／ ★リンクが有効になる“公開後”に投稿してください\n"
+        f"--- ここからコピー ---\n"
+        f"{draft['draft_text']}\n"
+        f"--- ここまで ---\n"
+        f"===============================================================\n"
+    )
+
+
 def promote_everywhere(title: str, video_id: str, pkg: dict | None = None,
                        genre_key: str | None = None, publish_at_jst=None) -> dict:
-    """Called from the generation run. Because uploads are SCHEDULED (private +
-    publishAt), the YouTube link is not live yet — so we do NOT post now; the
-    publish-time promo routine posts once the video is public. Returns the
-    deferral note (or posts immediately if the pipeline is set to public)."""
+    """Called from the generation run. Uploads are SCHEDULED (private + publishAt),
+    so the YouTube link is not live yet. ユーザー方針＝『自動投稿はせず、毎回Threads
+    下書きを作ってユーザーが手動投稿』。よってここでは投稿せず、下書きを返す
+    （UPLOAD_PRIVACY=public の即時公開時のみ、従来どおり自動投稿も行える）。"""
     from config import UPLOAD_PRIVACY
+    is_short = "#Shorts" in (title or "")
+    draft = build_draft(title, video_id, pkg, is_short=is_short,
+                        publish_at_jst=publish_at_jst)
     if UPLOAD_PRIVACY == "public":
-        return promote_published(title, video_id, pkg,
-                                 is_short="#Shorts" in (title or ""))
-    return {"threads": "deferred: 公開時トリガーで投稿（予約投稿のためリンク未公開）"}
+        posted = promote_published(title, video_id, pkg, is_short=is_short)
+        return {**posted, **draft}  # 自動投稿の結果に下書きも同梱
+    return {"threads": "draft", **draft}
 
 
 # ---- analysis loop -----------------------------------------------------------

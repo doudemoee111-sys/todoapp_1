@@ -212,6 +212,7 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
         except Exception as e:  # noqa: BLE001
             print(f"      [related] 関連動画最適化はスキップ: {e}")
 
+        pub = None
         if publish_now:
             # Immediate public post (make-up for a missed day). The channel guard
             # in upload_video still blocks the wrong channel.
@@ -234,17 +235,26 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
         if pl_id and add_to_playlist(vid, pl_id):
             result["playlist"] = pl_title
 
-        # 6c. External promotion (best-effort; only if configured).
+        # 6c. External promotion: 予約投稿なので自動投稿はせず、公開後に手動投稿する
+        #     ための Threads 下書きを毎回作って報告に出す（ユーザー方針＝都度手動投稿）。
         try:
-            from social_promote import promote_everywhere
-            result["promo"] = promote_everywhere(pkg["title"], vid, pkg, genre_key, publish_at_jst=pub)
+            from social_promote import promote_everywhere, format_draft_block
+            promo = promote_everywhere(pkg["title"], vid, pkg, genre_key, publish_at_jst=pub)
+            result["promo"] = promo
+            if promo.get("draft_text"):
+                print(format_draft_block(promo))
+                (work / "threads_draft_long.txt").write_text(promo["draft_text"], encoding="utf-8")
+                result.setdefault("threads_drafts", []).append(
+                    {k: promo.get(k) for k in ("kind", "draft_text", "url", "publish_at_jst")})
         except Exception as e:  # noqa: BLE001
-            print(f"      [promo] 外部シェアはスキップ: {e}")
+            print(f"      [promo] Threads下書きはスキップ: {e}")
 
         # 7. Teaser short ("CM" for this long-form): same topic, linked back.
         if make_teaser:
             try:
                 result["teaser"] = _build_and_upload_teaser(genre_key, pkg, vid, pub, work)
+                if result["teaser"].get("threads_draft"):
+                    result.setdefault("threads_drafts", []).append(result["teaser"]["threads_draft"])
             except Exception as e:  # noqa: BLE001
                 print(f"[teaser] 予告編ショートの生成に失敗（本編は投稿済み）: {e}")
     else:
@@ -290,7 +300,19 @@ def _build_and_upload_teaser(genre_key: str, source_pkg: dict, long_video_id: st
     post_comment(vid, f"👇 事件の全貌・結末はこちら（本編・約15分）\n{long_url}")
     url = f"https://youtu.be/{vid}"
     print(f"[7/7] teaser done {url} -> links to {long_url}")
-    return {"video_id": vid, "url": url, "title": title, "links_to": long_url}
+    teaser_result = {"video_id": vid, "url": url, "title": title, "links_to": long_url}
+    # 予告編ショート用の Threads 下書きも都度作成（公開後に手動投稿）。
+    try:
+        from social_promote import promote_everywhere, format_draft_block
+        tdraft = promote_everywhere(title, vid, t, genre_key, publish_at_jst=publish_at_jst)
+        if tdraft.get("draft_text"):
+            print(format_draft_block(tdraft))
+            (tdir / "threads_draft_teaser.txt").write_text(tdraft["draft_text"], encoding="utf-8")
+            teaser_result["threads_draft"] = {
+                k: tdraft.get(k) for k in ("kind", "draft_text", "url", "publish_at_jst")}
+    except Exception as e:  # noqa: BLE001
+        print(f"[teaser] Threads下書きはスキップ: {e}")
+    return teaser_result
 
 
 def _load_narration(path: str) -> str:
