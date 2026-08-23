@@ -76,15 +76,23 @@ def build_related_boost(genre_key: str, topic: str, title: str) -> dict:
     """Return {'tags': [...], 'desc_keywords': [...]} to merge into the upload so
     the video aligns with the popular-video cluster for this topic. Never raises."""
     genre = GENRES[genre_key]
-    # Query the cluster with the topic plus the genre's core term.
-    query = f"{topic} {genre['label']}".strip()
-    ctx = _top_context(query)
-    if not ctx["titles"]:
-        # Fall back to a genre-level query so we still align to the broad cluster.
-        ctx = _top_context(genre["label"])
-    boost = _synth_tags(genre, topic, title, ctx["titles"])
+    # 「このジャンルで“再生数が多い”動画に寄せる」ため、2つのクラスタを再生数順で収集して統合する:
+    #  (1) このテーマ + ジャンル語 の上位再生動画（最も文脈が近い層）
+    #  (2) ジャンル語だけの上位再生動画（ジャンル全体の“大きい”動画の層）
+    # search は order=viewCount なので、各リストは再生数の多い順。テーマ側を優先しつつ両者を混ぜる。
+    topic_ctx = _top_context(f"{topic} {genre['label']}".strip())
+    genre_ctx = _top_context(genre["label"])
+    seen, titles = set(), []
+    for t in topic_ctx["titles"] + genre_ctx["titles"]:  # テーマ優先→ジャンル全体の順
+        k = t.strip().lower()
+        if t.strip() and k not in seen:
+            seen.add(k)
+            titles.append(t.strip())
+    titles = titles[:30]
+    boost = _synth_tags(genre, topic, title, titles)
     if boost["tags"]:
-        print(f"  [related] 上位{len(ctx['titles'])}本のクラスタに寄せたタグ {len(boost['tags'])}個を付与")
+        print(f"  [related] 再生数上位クラスタ（テーマ{len(topic_ctx['titles'])}＋ジャンル{len(genre_ctx['titles'])}本）"
+              f"に寄せたタグ {len(boost['tags'])}個を付与")
     return boost
 
 

@@ -39,9 +39,11 @@ def _chat(messages, temperature=0.85, json_mode=False):
 def _avoid_block(avoid_titles: list[str] | None) -> str:
     if not avoid_titles:
         return ""
-    joined = "\n".join(f"- {t}" for t in avoid_titles[:20])
-    return ("\n\n【重要】次は最近このチャンネルで既に扱ったテーマ/タイトルです。"
-            "これらと本質的に同じ題材・切り口は避け、明確に異なる新規テーマにしてください:\n"
+    joined = "\n".join(f"- {t}" for t in avoid_titles[:40])
+    return ("\n\n【重要・重複回避】次は最近このチャンネルで既に扱ったテーマ/タイトルです。"
+            "これらと『同じ具体的な事件・現象・題材の焼き直し』は避けてください。"
+            "ただし同じ系統（例: 未解決の失踪事件、宇宙の謎）でも、"
+            "扱う事件・場所・人物・結末が明確に異なる“別の話”ならOKです。全系統を避ける必要はありません:\n"
             + joined)
 
 
@@ -59,10 +61,14 @@ def _is_duplicate(topic: str, avoid_titles: list[str]) -> bool:
     recent title — catches paraphrases and re-skins, not just exact matches."""
     if not avoid_titles:
         return False
-    joined = "\n".join(f"- {t}" for t in avoid_titles[:20])
+    joined = "\n".join(f"- {t}" for t in avoid_titles[:40])
     user = (f"新しい動画テーマ案: 「{topic}」\n\n最近の動画タイトル:\n{joined}\n\n"
-            "このテーマ案は、上のいずれかと『本質的に同じ題材・内容』ですか？"
-            "言い回しや切り口が違っても、中心となる題材が同じなら duplicate とみなします。"
+            "このテーマ案は、上のいずれかと『同じ具体的な事件・現象の焼き直し』ですか？\n"
+            "判定基準:\n"
+            "- 同じ事件・同じ場所・同じ人物・同じ現象を、言い回しだけ変えて再度扱う → duplicate: true\n"
+            "- 同じ系統・ジャンル（例: 村の失踪、宇宙の謎、都市伝説）でも、"
+            "扱う事件・場所・人物・結末が明確に異なる“別の話” → duplicate: false（重複ではない）\n"
+            "『系統が同じ』というだけでは duplicate にしないこと。あくまで“同じ話の焼き直し”だけを重複とみなす。\n"
             'JSONで {"duplicate": true または false} のみ出力。')
     try:
         data = json.loads(_chat(
