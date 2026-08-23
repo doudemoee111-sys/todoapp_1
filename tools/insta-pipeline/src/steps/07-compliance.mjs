@@ -37,6 +37,19 @@ export async function compliance(date) {
   // 3) ハッシュタグ数
   if (cap.hashtags.length > 5) issues.push({ level: 'warn', rule: 'ハッシュタグ', detail: `${cap.hashtags.length}個。3〜5個推奨（過剰はスパム判定）` });
 
+  // 3b) アフィリエイト案件レジストリ照合（ASP規約違反の事前検出）
+  if (config.compliance.checkAffiliateRegistry) {
+    for (const prog of config.affiliate?.programs || []) {
+      const name = String(prog.name || '').replace(/^（例）/, '').trim();
+      if (!name || !allText.includes(name)) continue;
+      if (prog.instagramAllowed === false) {
+        issues.push({ level: 'block', rule: 'ASP規約', detail: `「${name}」は Instagram 掲載不可の案件です（${prog.asp || 'ASP未記載'}）` });
+      } else if (prog.instagramAllowed !== true) {
+        issues.push({ level: 'block', rule: 'ASP規約', detail: `「${name}」の Instagram 掲載可否が未確認です。ASP管理画面で確認し config.json の instagramAllowed を true/false にしてください` });
+      }
+    }
+  }
+
   // 4) AIによる一次レビュー
   let aiReview = { verdict: 'skipped', findings: [] };
   if (!isDry()) {
@@ -77,7 +90,7 @@ ${issues.length === 0 ? '自動検出された問題はありません。\n' : i
 - [ ] 台本の**数値・料金・仕様**が現在の一次ソースと一致しているか（AIは平気で古い値を書く）
 - [ ] 紹介するサービスのASP案件が**「SNS可 / Instagram掲載可」**か
 - [ ] 使用した**音源・画像・フォント**の権利が問題ないか
-- [ ] AI生成素材を使った場合、投稿時に**AIラベルを申告**したか
+${config.publish?.aiLabelRequired === false ? '' : '- [ ] AI生成素材を使った場合、投稿時に**AIラベルを申告**したか\n'}- [ ] 紹介するサービスが config.json の affiliate.programs に登録され、instagramAllowed が確認済みか
 - [ ] 冒頭のPR表記が**ハッシュタグ内ではなく本文冒頭**にあるか
 
 ## 承認するには

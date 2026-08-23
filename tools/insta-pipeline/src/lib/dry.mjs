@@ -46,7 +46,7 @@ export function writeSolidPng(outPath, w = 540, h = 960, rgb = [24, 34, 58]) {
   return outPath;
 }
 
-export function stubScript(plan, cfg) {
+export function stubScript(plan, cfg, cta = '') {
   const n = cfg.post.sceneCount;
   return {
     title: `[DRY] ${plan.topic}`,
@@ -57,13 +57,13 @@ export function stubScript(plan, cfg) {
       onScreenText: `シーン${i + 1}のテロップ`,
       imagePrompt: 'flat vector infographic, muted navy palette, no text',
     })),
-    cta: cfg.post.ctaText,
+    cta,
   };
 }
 
-export function stubCaption(plan, cfg) {
+export function stubCaption(plan, cfg, { cta = '', pool = [], pick = 2 } = {}) {
   return {
-    caption: `${cfg.post.prLabel}\n\n[DRY] ${plan.topic}\n\nダミーのキャプション本文です。\n\n${cfg.post.ctaText}`,
-    hashtags: ['#経理', '#業務効率化', '#AI活用', '#バックオフィス'].slice(0, cfg.post.hashtagCount),
+    caption: `[DRY] ${plan.topic}\n\nダミーのキャプション本文です。\n\n${cta}`,
+    hashtags: pool.slice(0, pick),
   };
 }

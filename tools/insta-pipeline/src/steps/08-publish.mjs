@@ -25,6 +25,10 @@ export async function publish(date) {
     return { published: false, reason: 'compliance_block' };
   }
 
+  if ((config.post.type || 'reel') !== 'reel') {
+    throw new Error(`post.type="${config.post.type}" は未対応です。現在サポートしているのは "reel" のみです。`);
+  }
+
   const igUser = requireEnv('IG_USER_ID');
   const token = requireEnv('IG_ACCESS_TOKEN');
   const ver = env('IG_API_VERSION', 'v21.0');

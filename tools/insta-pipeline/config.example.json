@@ -1,54 +1,135 @@
 {
   "account": {
     "handle": "@your_account",
-    "genre": "AIツール実演 × バックオフィス業務",
-    "persona": "従業員10人以下の会社の事務担当、および一人社長・フリーランス。経理・請求書処理・契約書チェック・議事録・資料作成に毎週数時間を取られている。ITに詳しくはないが、AIに興味はある。",
-    "tone": "誇張しない。実際に触った結果だけを話す。専門用語は使う前に一言で言い換える。",
+    "genre": "（例）AIツール実演 × バックオフィス業務",
+    "persona": "誰に届けるかを、年齢や属性ではなく『どの作業で何時間困っているか』で書く。決裁権と予算感まで書けると台本の精度が上がる。",
+    "expertise": "何を根拠に語るか。当事者としての権威か、検証者としての一次情報か。",
+    "tone": "文体・断定の強さ・使わない語り口を具体的に書く。",
     "ngExpressions": [
       "絶対",
       "必ず稼げ",
       "誰でも簡単に",
       "100%",
-      "完全無料でずっと"
+      "完全無料でずっと",
+      "知らないと損",
+      "もう遅い"
+    ],
+    "forbiddenTopics": [
+      "個別の投資判断",
+      "健康・美容の効能",
+      "特定企業や個人の批判"
     ]
   },
   "post": {
     "type": "reel",
-    "durationSec": 30,
+    "durationSec": 32,
     "sceneCount": 5,
     "aspectRatio": "9:16",
     "width": 1080,
     "height": 1920,
     "fps": 30,
-    "hashtagCount": 4,
     "prLabel": "PR",
-    "ctaText": "プロフィールのリンクから比較表を配布中",
-    "imageStylePrompt": "clean flat vector infographic, muted navy and warm off-white palette, generous negative space, minimal Japanese business aesthetic, no text, no letters, no logos, no human faces"
+    "imageStylePrompt": "clean flat vector infographic, muted navy (#1B2A4A) and warm off-white (#F5F1E8) palette with a single muted orange accent, generous negative space, simple geometric shapes, minimal Japanese business documentation aesthetic, soft even lighting, no text, no letters, no numbers, no logos, no human faces, no hands",
+    "hookPatterns": [
+      "数字を先に出す（例:「請求書30枚、5分」）",
+      "手間の実感を先に出す（例:「毎月3時間かけてたやつ」）",
+      "否定から入る（例:「これはAIに任せない方がいい」）",
+      "結果を先に見せる（例:「これ、全部自動で出ました」）",
+      "対象を名指しする（例:「一人でお金まわりやってる人へ」）"
+    ],
+    "formatRotation": {
+      "mon": {
+        "name": "実演（手順）",
+        "goal": "保存",
+        "structure": "①…②…③…④…⑤CTA（5シーンの構成を書く）"
+      },
+      "tue": {
+        "name": "比較検証",
+        "goal": "保存",
+        "structure": "①…②…③…④…⑤CTA（5シーンの構成を書く）"
+      },
+      "wed": {
+        "name": "失敗・注意喚起",
+        "goal": "シェア",
+        "structure": "①…②…③…④…⑤CTA（5シーンの構成を書く）"
+      },
+      "thu": {
+        "name": "数字・損益分岐",
+        "goal": "保存",
+        "structure": "①…②…③…④…⑤CTA（5シーンの構成を書く）"
+      },
+      "fri": {
+        "name": "逆張り（任せない方がいい）",
+        "goal": "シェア・コメント",
+        "structure": "①…②…③…④…⑤CTA（5シーンの構成を書く）"
+      },
+      "sat": {
+        "name": "チェックリスト",
+        "goal": "保存",
+        "structure": "①…②…③…④…⑤CTA（5シーンの構成を書く）"
+      },
+      "sun": {
+        "name": "質問回答・小ネタ",
+        "goal": "関係性",
+        "structure": "①…②…③…④…⑤CTA（5シーンの構成を書く）"
+      }
+    },
+    "ctaVariants": [
+      "（CTAを複数書くと日替わりでローテーションします）"
+    ]
+  },
+  "hashtags": {
+    "count": 4,
+    "fixed": [
+      "#固定タグ1",
+      "#固定タグ2"
+    ],
+    "pool": [
+      "#候補1",
+      "#候補2",
+      "#候補3",
+      "#候補4"
+    ]
+  },
+  "affiliate": {
+    "note": "instagramAllowed が true 以外の案件名が本文に出たら 07 がブロックします。",
+    "programs": [
+      {
+        "name": "案件名",
+        "asp": "A8.net",
+        "snsAllowed": null,
+        "instagramAllowed": null,
+        "cpaYen": null,
+        "note": "ASP管理画面で確認してから true/false を入れる"
+      }
+    ]
   },
   "compliance": {
     "requirePrLabel": true,
+    "requireHumanApproval": true,
+    "checkAffiliateRegistry": true,
     "bannedPatterns": [
       "治り(ます|ました)",
       "治療でき",
       "効果があります",
       "効きます",
-      "痩せ(ます|られます)",
       "副作用は(ありません|ない)",
       "医薬品と同(じ|等)",
-      "完治",
       "必ず(儲か|稼げ|成功)",
       "絶対に(儲か|稼げ|成功)",
       "元本保証",
       "リスクは(ありません|ない)",
-      "業界(No\\\\.?1|ナンバー?ワン)",
+      "業界(No\\.?1|ナンバー?ワン)",
       "日本一",
       "最安値保証",
-      "誰でも(簡単に)?稼げ"
-    ],
-    "requireHumanApproval": true
+      "誰でも(簡単に)?稼げ",
+      "税務署に(バレ|ばれ)ませんか?",
+      "節税に(なります|なる)",
+      "この設定だけで(OK|大丈夫)"
+    ]
   },
   "publish": {
-    "scheduleHourJst": 19,
     "aiLabelRequired": true
-  }
+  },
+  "_readme": "これはスキーマの雛形です。実際に使う値の記入例は config.json を参照してください（AIツール実演×バックオフィス業務で作り込んであります）。"
 }
