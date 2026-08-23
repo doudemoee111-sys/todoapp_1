@@ -1,5 +1,6 @@
 # データファイル
 
+- `jobs.sample.json` — `job`（抽出条件の保存と再実行）の設定サンプル
 - `keywords.sample.txt` — `scan`（キーワード走査）の入力サンプル
 - `bundle.sample.csv` — `bundle`（セット販売の採算）の入力サンプル
 - `candidates.sample.csv` — 軸1の入力サンプル（国内の仕入候補）
@@ -7,6 +8,14 @@
 
 流れは `keywords.txt` → `scan` → `candidates.csv`（雛形）→ 国内で現物を探して仕入値を書き足す
 → `axis1` → 出品 → `observations.csv` → `axis2` です。
+
+## jobs.json
+
+抽出条件をここに固定すると、`job --name <ジョブ名>` で毎回同じ条件で回せます。
+**同じ条件で回すからこそ、前回との差分が意味を持ちます。**
+知らない項目を書くとエラーになります（綴り違いを黙って既定値にすると、
+意図と違う条件で抽出し続けることになるため）。詳細は
+[ツールのREADME](../README.md#抽出条件を保存してを毎回同じ条件で回す) を見てください。
 
 ## keywords.txt
 

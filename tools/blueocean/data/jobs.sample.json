@@ -1,0 +1,34 @@
+{
+  "anime-set": {
+    "label": "アニメ・フィギュアのまとめ売り",
+    "market": "ebay_us",
+    "target_margin": 0.20,
+    "scan": {
+      "genre": "anime_figure",
+      "mode": "set",
+      "limit": 40,
+      "assume": {"weight_g": 1100, "length_cm": 32, "width_cm": 24, "height_cm": 18},
+      "out": "out/anime-candidates.csv",
+      "sheet": "out/anime-hunt.html"
+    }
+  },
+  "lens-weekly": {
+    "label": "オールドレンズ（週次の見直し）",
+    "market": "ebay_us",
+    "target_margin": 0.20,
+    "scan": {
+      "genre": "camera_lens",
+      "mode": "single",
+      "limit": 30,
+      "assume": {"weight_g": 400, "length_cm": 20, "width_cm": 15, "height_cm": 10},
+      "sheet": "out/lens-hunt.html"
+    },
+    "judge": {
+      "candidates": "data/candidates.sample.csv",
+      "history": "data/history.jsonl",
+      "refresh": true,
+      "out": "out/lens-plan.csv",
+      "sheet": "out/lens-plan.html"
+    }
+  }
+}

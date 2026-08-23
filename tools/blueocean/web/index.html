@@ -140,6 +140,25 @@ button.ghost:hover{color:var(--accent);border-color:var(--accent);}
 .btnrow{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center;}
 
 .tbl{overflow-x:auto;border:1px solid var(--rule);border-radius:3px;background:var(--surface);margin:12px 0;}
+pre.cmd{margin:0;padding:12px 14px;background:var(--surface-2);border:1px solid var(--rule);
+  border-radius:3px;overflow-x:auto;font-family:"IBM Plex Mono",monospace;font-size:11.5px;
+  line-height:1.7;color:var(--ink-2);white-space:pre;}
+.tblhead{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;}
+.tbl.edit table{min-width:900px;}
+.tbl.edit td{padding:5px 7px;vertical-align:middle;}
+.tbl.edit input[type=text],.tbl.edit input[type=number]{width:100%;min-width:52px;padding:5px 7px;
+  border:1px solid var(--rule);border-radius:3px;background:var(--paper);color:var(--ink);
+  font-family:inherit;font-size:12.5px;}
+.tbl.edit input[type=number]{text-align:right;font-family:"IBM Plex Mono",monospace;}
+.tbl.edit input:focus{border-color:var(--accent);outline:none;}
+.tbl.edit .nmcell{display:flex;flex-direction:column;gap:3px;}
+.tbl.edit .nmcell .shots-links{flex-direction:row;gap:10px;}
+.tbl.edit .del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;
+  line-height:1;padding:2px 5px;font-family:inherit;}
+.tbl.edit .del:hover{color:var(--red);}
+.tbl.edit td.cap{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  text-align:right;white-space:nowrap;font-size:12px;}
+.tbl.edit td.cap.over{color:var(--red);font-weight:700;}
 table{border-collapse:collapse;width:100%;font-size:13px;min-width:480px;}
 th{text-align:left;font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
   color:var(--muted);font-weight:600;padding:9px 13px;border-bottom:1px solid var(--rule);background:var(--surface-2);white-space:nowrap;}
@@ -406,6 +425,78 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
   軽くて嵩張るもの（衣類・外箱付きフィギュア）は容積重量で課金されるため、
   <b>EMSが逆にいちばん安くなる</b>ことがあります。固定送料では見えない逆転です。
 </p>
+
+<h2>仕入値はどこに入れるのか</h2>
+<p>
+  <b>「軸1」タブの表の「仕入(円)」欄です。</b>行に直接入力すると、その場で判定と仕入上限が変わります。
+  判定を動かせる変数は3つあり、そのうち<b>自分で決められるのは仕入値だけ</b>なので、
+  ここだけは表で直に触れるようにしてあります。
+</p>
+<div class="termlist">
+  <div><span class="t">1件だけ試す</span><span class="d">
+    「1件だけ判定」タブの「仕入価格」欄。店頭でその1点を判定するとき</span></div>
+  <div><span class="t">まとめて見る</span><span class="d">
+    <b>「軸1」タブの表の「仕入(円)」欄。</b>候補が複数あるとき。入力すると即座に判定が変わります</span></div>
+  <div><span class="t">CSVで入れる</span><span class="d">
+    <code>cost_incl_tax_jpy</code> 列。走査の出力を読み込んでから表で埋めるのが楽です</span></div>
+  <div><span class="t">仕入れた後</span><span class="d">
+    「値決め」タブの「仕入価格」欄。ここからは出品価格と値下げ幅の話になります</span></div>
+</div>
+<p>
+  仕入上限を超えると、その行の上限が<b>赤字</b>になり判定が <code>THIN</code> に落ちます。
+  判定カードの「↕」に<b>「仕入をあと◯円下げれば採算に乗る」</b>と出るので、
+  そのまま値切り交渉の目標額として使えます。
+</p>
+
+<h2>候補はどうやって集めるのか</h2>
+<p>
+  候補は<b>キーワード（型番）を起点に、eBay側を引いて作ります。</b>
+  条件は次の4つで、これをファイルに固定して毎回同じ条件で回します。
+</p>
+<div class="termlist">
+  <div><span class="t">抽出元</span><span class="d">
+    ジャンル（シリーズ×形態に展開）またはキーワード一覧ファイル</span></div>
+  <div><span class="t">絞り込み</span><span class="d">
+    競合 5件以下＝空き／30件以上＝過密／相場 $30未満＝低単価で除外</span></div>
+  <div><span class="t">荷姿の仮定</span><span class="d">
+    現物が手元に無い段階なので、重量と寸法を仮定して送料を出します（予算の計算に効きます）</span></div>
+  <div><span class="t">市場と目標</span><span class="d">
+    上の「前提条件」（市場・為替・関税・目標利益率・セラーレベル）</span></div>
+</div>
+
+<h3>毎回同じ条件で抜く仕組み</h3>
+<p>
+  条件を <code>jobs.json</code> に書いておくと、<b>コマンド1本で毎回同じ条件で抽出できます。</b>
+  そして<b>2回目からは前回からの変化だけ</b>が出ます（BLUE→RED、採算割れ、競合の急増）。
+  条件が固定されているからこそ差分が意味を持つ、という作りです。
+</p>
+<pre class="cmd">python -m blueocean.cli job --config data/jobs.json --name anime-set</pre>
+<pre class="cmd">=== アニメ・フィギュアのまとめ売り（anime-set）===
+  条件: ebay_us / セラーレベル above_standard / 目標利益率 20% / 為替 150円
+
+  [鮮度の警告] 前回の取得から 14日 経っています（2026-08-09）。
+
+  走査 40件 → 探す価値あり 19件
+  判定 8件 → 出品対象 4件
+
+  前回からの変化 2件（うち要対応 1件）
+    [判定悪化] LENS-002     BLUE → RED（2026-08-09 → 2026-08-23）
+
+  書き出し: out/anime-hunt.html   ← 写真つきの照合シート
+  書き出し: out/anime-plan.csv    ← 出品対象</pre>
+
+<h3>この画面でできること・できないこと</h3>
+<div class="termlist">
+  <div><span class="t">できる</span><span class="d">
+    <b>抽出条件を組み立てること</b>（軸1タブの「抽出条件をつくる」）。
+    設定とコマンドをそのまま出すので、コピーして Python版で実行できます</span></div>
+  <div><span class="t">できる</span><span class="d">
+    抽出結果のCSVを読み込んで、<b>仕入値を入れて判定すること</b></span></div>
+  <div><span class="t">できない</span><span class="d">
+    <b>抽出そのもの（eBayを検索して候補を作る工程）。</b>
+    eBayのAPIを呼ぶ必要があり、この画面は外部への通信をしない設計だからです。
+    <b>抽出は Python版で行ってください。</b></span></div>
+</div>
 
 <h2>軸1の判定は、何を基準に変わるのか</h2>
 <p>
@@ -691,32 +782,110 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
 <!-- ============ 軸1 ============ -->
 <section class="panel" id="p-axis1">
   <p class="hint">
-    国内の仕入候補を貼り付けると、採算と競合環境から5段階で判定します。1行目は見出しのまま残してください。
-    <code>market_price_usd</code> と <code>competitor_count</code> は Terapeak 等で調べた値を入れます。
+    <b>ここが候補の一覧です。</b>行に直接入力すると、その場で判定が変わります。
+    <b>仕入値は「仕入(円)」の欄に入れてください</b> ── 判定を動かせる唯一の変数です。
+    相場と競合数は eBay で調べた値を入れます（各行の「写真/相場を見る」から開けます）。
   </p>
-  <div class="split">
-    <div>
-      <div class="card">
-        <h2>候補（CSV）</h2>
-        <textarea id="a1-in" spellcheck="false"></textarea>
-        <div class="btnrow">
-          <button class="act" id="a1-run">判定する</button>
-          <button class="ghost" id="a1-save">今回の結果を記録する</button>
-          <button class="ghost" id="a1-reset">サンプルに戻す</button>
-        </div>
-        <p class="hint" style="margin-top:12px;margin-bottom:0">
-          記録するとこのブラウザに保存され、次回に<b>前回からの変化</b>が出ます。
-          競合数と相場は日々動くので、判定結果には賞味期限があります。
-          記録はこの端末から出ません（サーバーには送りません）。
-        </p>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="tblhead">
+      <h2 style="margin:0">候補</h2>
+      <div class="btnrow" style="margin:0">
+        <button class="ghost" id="a1-add">＋ 行を追加</button>
+        <button class="ghost" id="a1-save">今回の結果を記録する</button>
+        <button class="ghost" id="a1-reset">サンプルに戻す</button>
       </div>
     </div>
-    <div>
-      <div id="a1-changes"></div>
-      <div class="tally" id="a1-tally"></div>
-      <div class="res" id="a1-out"></div>
-    </div>
+    <div class="tbl edit"><table>
+      <thead><tr>
+        <th style="min-width:190px">商品名（eBayでの検索語）</th>
+        <th class="n">仕入(円)</th><th class="n">重量(g)</th>
+        <th class="n">縦</th><th class="n">横</th><th class="n">高</th>
+        <th class="n">相場($)</th><th class="n">競合</th>
+        <th>需要</th><th>判定</th><th class="n">仕入上限</th><th></th>
+      </tr></thead>
+      <tbody id="a1-rows"></tbody>
+    </table></div>
+    <p class="hint" style="margin:12px 0 0">
+      <b>需要</b>にチェックを入れるのは、同型の落札実績を実際に見たときだけにしてください。
+      裏付けの無い候補は <code>PROBE</code> に留まり、少量で試す扱いになります。
+    </p>
   </div>
+
+  <details class="settings" id="a1-extract" style="margin:0 0 18px">
+    <summary><span>抽出条件をつくる</span><span class="sumline">同じ条件で毎回抜くための設定を組み立てる</span></summary>
+    <div style="padding:0 18px 16px">
+      <p class="hint" style="margin:0 0 12px">
+        <b>抽出そのもの（eBayを検索して候補を作る工程）は、このページではできません。</b>
+        eBayのAPIを呼ぶ必要があり、このページは外部への通信をしない設計だからです。
+        ここでは条件を組み立てて、<b>Python版でそのまま実行できる設定とコマンド</b>を作ります。
+      </p>
+      <div class="sgrid" style="grid-template-columns:1fr 1fr;">
+        <label>抽出元
+          <select id="ex-src">
+            <option value="genre">ジャンル（掛け合わせて展開する）</option>
+            <option value="keywords">キーワード一覧ファイル</option>
+          </select>
+        </label>
+        <label>ジャンル
+          <select id="ex-genre">
+            <option value="anime_figure">アニメ・フィギュア</option>
+            <option value="vinyl">レコード（和モノ・シティポップ）</option>
+            <option value="camera_lens">オールドレンズ・フィルムカメラ</option>
+            <option value="trading_card">トレーディングカード</option>
+          </select>
+        </label>
+        <label>対象
+          <select id="ex-mode">
+            <option value="both">単品＋まとめ売り</option>
+            <option value="single">単品だけ</option>
+            <option value="set">まとめ売りだけ</option>
+          </select>
+        </label>
+        <label>クエリ数の上限<input type="number" id="ex-limit" value="40" step="10" min="1"></label>
+      </div>
+      <div class="sgrid" style="grid-template-columns:1fr 1fr 1fr 1fr;">
+        <label>荷姿 重量(g)<input type="number" id="ex-g" value="1100" step="50" min="0"></label>
+        <label>縦(cm)<input type="number" id="ex-l" value="32" step="1" min="0"></label>
+        <label>横(cm)<input type="number" id="ex-w" value="24" step="1" min="0"></label>
+        <label>高さ(cm)<input type="number" id="ex-h" value="18" step="1" min="0"></label>
+      </div>
+      <label style="margin-top:10px">ジョブ名（保存と再実行に使う）<input type="text" id="ex-name" value="anime-set"></label>
+
+      <h3 style="margin:20px 0 6px;font-size:14px">① この内容を <code>jobs.json</code> に保存する</h3>
+      <pre class="cmd" id="ex-json"></pre>
+      <h3 style="margin:16px 0 6px;font-size:14px">② 毎回このコマンドで回す</h3>
+      <pre class="cmd" id="ex-cmd"></pre>
+      <div class="btnrow">
+        <button class="ghost" id="ex-copy-json">設定をコピー</button>
+        <button class="ghost" id="ex-copy-cmd">コマンドをコピー</button>
+      </div>
+      <p class="hint" style="margin-top:12px;margin-bottom:0">
+        2回目からは<b>前回からの変化だけ</b>が出ます（BLUE→RED、採算割れ、競合の急増）。
+        <b>同じ条件で回すからこそ差分が意味を持ちます。</b>
+        出てきた <code>candidates.csv</code> は、上の「CSVで入れる／出す」から表に読み込んでください。
+      </p>
+    </div>
+  </details>
+
+  <details class="settings" id="a1-io" style="margin:0 0 18px">
+    <summary><span>CSVで入れる／出す</span><span class="sumline">走査の出力を貼り付ける・表を書き出す</span></summary>
+    <div style="padding:0 18px 16px">
+      <textarea id="a1-in" spellcheck="false" style="min-height:150px"></textarea>
+      <div class="btnrow">
+        <button class="act" id="a1-import">貼り付けたCSVを表に読み込む</button>
+        <button class="ghost" id="a1-export">いまの表をCSVにする</button>
+      </div>
+      <p class="hint" style="margin-top:12px;margin-bottom:0">
+        Python版の <code>scan --out candidates.csv</code> が書き出す雛形をそのまま貼れます。
+        雛形は仕入値が空なので、表に読み込んでから<b>「仕入(円)」を埋めてください。</b>
+      </p>
+    </div>
+  </details>
+
+  <div id="a1-changes"></div>
+  <div class="tally" id="a1-tally"></div>
+  <div class="res" id="a1-out"></div>
 </section>
 
 <!-- ============ 値決め ============ -->
@@ -864,7 +1033,7 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
 
 <footer>
   <p>
-    Python版と同じ計算式を実装しています（テスト165件）。
+    Python版と同じ計算式を実装しています（テスト185件）。
     コード：<a href="https://github.com/doudemoee111-sys/todoapp_1/tree/claude/side-business-proposal-su9ie3/tools/blueocean">tools/blueocean</a>
   </p>
   <p>
@@ -1149,6 +1318,147 @@ function parseCsv(text){
 }
 const truthy = v => ["1","true","yes","y"].includes(String(v||"").toLowerCase());
 
+
+
+/* ===== 抽出条件の組み立て =====
+   抽出そのものは eBay のAPIが要るのでこのページではできない。
+   だが**条件を決めるのは人の仕事**で、そこはここでできる。
+   決めた条件を jobs.json とコマンドの形で出し、Python版にそのまま渡す。 */
+function extractSpec(){
+  const c = cfg();
+  const src = $("ex-src").value;
+  const scan = {};
+  if (src === "genre"){
+    scan.genre = $("ex-genre").value;
+    scan.mode = $("ex-mode").value;
+    scan.limit = +$("ex-limit").value || 40;
+  } else {
+    scan.keywords_file = "data/keywords.txt";
+  }
+  scan.assume = {weight_g:+$("ex-g").value||0, length_cm:+$("ex-l").value||0,
+                 width_cm:+$("ex-w").value||0, height_cm:+$("ex-h").value||0};
+  const name = ($("ex-name").value || "my-job").trim();
+  scan.out = `out/${name}-candidates.csv`;
+  scan.sheet = `out/${name}-hunt.html`;
+  return {name, job: {[name]: {
+    label: $("ex-src").value === "genre"
+      ? $("ex-genre").selectedOptions[0].text : "キーワード一覧",
+    market: c.market, level: c.level,
+    target_margin: +(c.target.toFixed(4)), fx_jpy_per_usd: c.fx, taxable: c.taxable,
+    scan,
+    judge: {candidates: scan.out, history: "data/history.jsonl", refresh: true,
+            out: `out/${name}-plan.csv`, sheet: `out/${name}-plan.html`},
+  }}};
+}
+function renderExtract(){
+  const {name, job} = extractSpec();
+  $("ex-json").textContent = JSON.stringify(job, null, 2);
+  $("ex-cmd").textContent =
+    `cd tools/blueocean\n`
+  + `python -m blueocean.cli job --config data/jobs.json --name ${name} \\\n`
+  + `    --ebay-client-id "$EBAY_CLIENT_ID" --ebay-client-secret "$EBAY_CLIENT_SECRET"`;
+  $("ex-genre").closest("label").style.opacity = $("ex-src").value === "genre" ? "1" : ".4";
+}
+function copyText(text, msg){
+  const done = ok => toast(ok ? msg : "コピーできませんでした。手で選択してください");
+  if (navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(text).then(() => done(true), () => done(false));
+  else done(false);
+}
+
+/* ===== 軸1の表 =====
+   候補をCSVのテキストとして持っていたのは失敗だった。
+   **仕入値は判定を動かせる唯一の変数**なのに、それを直すのに
+   テキストを編集させていた。行に直接入れて、その場で判定が変わるようにする。 */
+const A1KEY = "blueocean.rows";
+let A1_ROWS = [];
+
+function blankRow(){
+  return {title:"", cost:"", g:"", l:"", w:"", h:"", price:"", comp:"", demand:false, note:""};
+}
+function rowToCsvObj(r){
+  return {
+    sku: r.sku || "", title_ja: r.title, cost_incl_tax_jpy: r.cost, weight_g: r.g,
+    length_cm: r.l, width_cm: r.w, height_cm: r.h,
+    market_price_usd: r.price, competitor_count: r.comp,
+    has_demand_signal: r.demand ? "yes" : "no", demand_note: r.note || "",
+    is_restricted: r.restricted ? "yes" : "no", restricted_reason: r.rreason || "",
+  };
+}
+function csvObjToRow(o){
+  return {
+    sku: (o.sku||"").trim(), title: (o.title_ja||"").trim(),
+    cost: (o.cost_incl_tax_jpy||"").trim(), g: (o.weight_g||"").trim(),
+    l: (o.length_cm||"").trim(), w: (o.width_cm||"").trim(), h: (o.height_cm||"").trim(),
+    price: (o.market_price_usd||"").trim(), comp: (o.competitor_count||"").trim(),
+    demand: truthy(o.has_demand_signal), note: (o.demand_note||"").trim(),
+    restricted: truthy(o.is_restricted), rreason: (o.restricted_reason||"").trim(),
+  };
+}
+function saveRows(){
+  try{ localStorage.setItem(A1KEY, JSON.stringify(A1_ROWS)); }catch(e){/* 保存できなくても動く */}
+}
+function loadRows(){
+  try{
+    const raw = localStorage.getItem(A1KEY);
+    if (!raw) return null;
+    const a = JSON.parse(raw);
+    return Array.isArray(a) && a.length ? a : null;
+  }catch(e){ return null; }
+}
+
+function renderA1Rows(scored){
+  const c = cfg();
+  const byIdx = new Map((scored||[]).map(r => [r.idx, r]));
+  $("a1-rows").innerHTML = A1_ROWS.map((r, i) => {
+    const s = byIdx.get(i);
+    const v = s ? VERDICT[s.verdict] : null;
+    const over = s && +r.cost > s.cap;
+    return `<tr>
+      <td><div class="nmcell">
+        <input type="text" data-i="${i}" data-f="title" value="${esc(r.title)}" placeholder="Konica Hexanon AR 40mm F1.8">
+        ${r.title ? photoLinks(r.title, c.market) : ""}
+      </div></td>
+      <td><input type="number" step="100" min="0" data-i="${i}" data-f="cost" value="${esc(r.cost)}" placeholder="仕入値"></td>
+      <td><input type="number" step="10" min="0" data-i="${i}" data-f="g" value="${esc(r.g)}"></td>
+      <td><input type="number" step="1" min="0" data-i="${i}" data-f="l" value="${esc(r.l)}"></td>
+      <td><input type="number" step="1" min="0" data-i="${i}" data-f="w" value="${esc(r.w)}"></td>
+      <td><input type="number" step="1" min="0" data-i="${i}" data-f="h" value="${esc(r.h)}"></td>
+      <td><input type="number" step="5" min="0" data-i="${i}" data-f="price" value="${esc(r.price)}"></td>
+      <td><input type="number" step="1" min="0" data-i="${i}" data-f="comp" value="${esc(r.comp)}"></td>
+      <td style="text-align:center"><input type="checkbox" data-i="${i}" data-f="demand" ${r.demand ? "checked" : ""}></td>
+      <td>${v ? `<span class="badge b-${v.cls}">${v.label}</span>` : "—"}</td>
+      <td class="cap${over ? " over" : ""}">${s && s.cap ? yen(s.cap) : "—"}</td>
+      <td><button class="del" data-del="${i}" title="この行を消す">×</button></td>
+    </tr>`;
+  }).join("") || '<tr><td colspan="12">「＋ 行を追加」か、CSVの読み込みから始めてください。</td></tr>';
+}
+
+document.addEventListener("input", ev => {
+  const t = ev.target;
+  if (!t || !t.dataset || t.dataset.i === undefined || !t.dataset.f) return;
+  const r = A1_ROWS[+t.dataset.i];
+  if (!r) return;
+  r[t.dataset.f] = t.type === "checkbox" ? t.checked : t.value;
+  saveRows();
+  runAxis1({keepFocus:true});
+});
+document.addEventListener("click", ev => {
+  const d = ev.target && ev.target.dataset && ev.target.dataset.del;
+  if (d === undefined) return;
+  A1_ROWS.splice(+d, 1); saveRows(); runAxis1();
+});
+
+function rowsToCsv(){
+  const cols = ["sku","title_ja","cost_incl_tax_jpy","weight_g","length_cm","width_cm",
+                "height_cm","market_price_usd","competitor_count","has_demand_signal",
+                "demand_note","is_restricted","restricted_reason"];
+  const esc2 = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g,'""')}"` : String(v);
+  return [cols.join(",")].concat(
+    A1_ROWS.map(r => { const o = rowToCsvObj(r); return cols.map(k => esc2(o[k] ?? "")).join(","); })
+  ).join("\n");
+}
+
 /* ===== 軸1（scoring.py と同一） ===== */
 const POLICY = {blueMax:5, redMin:30, maxWeight:2000, minPrice:30};
 const VERDICT = {
@@ -1273,12 +1583,15 @@ function scoreOne(r, c){
   return {verdict, score:Math.round(score*10)/10, reasons, row:r, profit, cap, flip};
 }
 
-function runAxis1(){
+function runAxis1(opt){
   const c = cfg();
-  const rows = parseCsv($("a1-in").value);
   const ORDER = {blue:0, probe:1, thin:2, red:3, excl:4};
-  const res = rows.map(r => scoreOne(r, c))
-                  .sort((a,b) => ORDER[a.verdict]-ORDER[b.verdict] || b.score-a.score);
+  const res = A1_ROWS
+    .map((r, idx) => Object.assign(scoreOne(rowToCsvObj(r), c), {idx}))
+    .sort((a,b) => ORDER[a.verdict]-ORDER[b.verdict] || b.score-a.score);
+
+  // 入力中に表を作り直すとフォーカスが飛ぶので、判定セルだけ差し替える
+  if (opt && opt.keepFocus) updateA1Cells(res); else renderA1Rows(res);
 
   const counts = {};
   res.forEach(r => counts[r.verdict] = (counts[r.verdict]||0)+1);
@@ -1304,6 +1617,7 @@ function runAxis1(){
   }).join("") : '<p class="hint">候補を貼り付けて「判定する」を押してください。</p>';
 
   LAST_AXIS1 = res.length ? snapshotOf(res) : null;
+  saveRows();
   renderChanges(loadHistory(), LAST_AXIS1 || {takenOn: todayISO(), rows: []});
 }
 let LAST_AXIS1 = null;
@@ -1737,6 +2051,21 @@ function breakevenSetPrice(items, packParcel, c){
   return Math.max(0, (target + c.per + s.jpy + c.pack + cost - cost*k) / denom / c.fx);
 }
 
+/* 表を作り直さずに判定セルだけ更新する（入力中のフォーカスを守る） */
+function updateA1Cells(scored){
+  const byIdx = new Map(scored.map(r => [r.idx, r]));
+  const trs = $("a1-rows").querySelectorAll("tr");
+  A1_ROWS.forEach((r, i) => {
+    const tr = trs[i]; if (!tr) return;
+    const s = byIdx.get(i), v = s ? VERDICT[s.verdict] : null;
+    const cells = tr.querySelectorAll("td");
+    if (cells.length < 11) return;
+    cells[9].innerHTML = v ? `<span class="badge b-${v.cls}">${v.label}</span>` : "—";
+    cells[10].textContent = s && s.cap ? yen(s.cap) : "—";
+    cells[10].className = "cap" + (s && +r.cost > s.cap ? " over" : "");
+  });
+}
+
 function runBundle(){
   const c = cfg();
   const items = parseCsv($("b-in").value).map(r => ({
@@ -1969,7 +2298,27 @@ $("cfg-reset").addEventListener("click", () => {
   fillProfileInputs(); refresh(); runAxis2();
   toast(`${MKT_LABEL[cfg().market]} の既定値に戻しました`);
 });
-$("a1-run").addEventListener("click", runAxis1);
+["ex-src","ex-genre","ex-mode","ex-limit","ex-g","ex-l","ex-w","ex-h","ex-name"]
+  .forEach(id => $(id).addEventListener("input", renderExtract));
+$("ex-src").addEventListener("change", renderExtract);
+$("ex-copy-json").addEventListener("click", () => copyText($("ex-json").textContent, "設定をコピーしました"));
+$("ex-copy-cmd").addEventListener("click", () => copyText($("ex-cmd").textContent, "コマンドをコピーしました"));
+$("a1-add").addEventListener("click", () => {
+  A1_ROWS.push(blankRow()); saveRows(); runAxis1();
+  const inputs = $("a1-rows").querySelectorAll('input[data-f="title"]');
+  if (inputs.length) inputs[inputs.length-1].focus();
+});
+$("a1-import").addEventListener("click", () => {
+  const rows = parseCsv($("a1-in").value);
+  if (!rows.length){ toast("読み込める行がありません"); return; }
+  A1_ROWS = rows.map(csvObjToRow); saveRows(); runAxis1();
+  $("a1-io").open = false;
+  toast(`${rows.length}件を表に読み込みました`);
+});
+$("a1-export").addEventListener("click", () => {
+  $("a1-in").value = rowsToCsv();
+  toast("いまの表をCSVにしました");
+});
 $("b-run").addEventListener("click", runBundle);
 $("b-reset").addEventListener("click", () => { $("b-in").value = SAMPLE3; runBundle(); });
 ["b-price","b-g","b-l","b-w","b-h"].forEach(id => $(id).addEventListener("input", runBundle));
@@ -1982,7 +2331,10 @@ $("a1-save").addEventListener("click", () => {
     : "このブラウザでは保存できません";
   setTimeout(() => { btn.textContent = "今回の結果を記録する"; }, 2600);
 });
-$("a1-reset").addEventListener("click", () => { $("a1-in").value = SAMPLE1; runAxis1(); });
+$("a1-reset").addEventListener("click", () => {
+  A1_ROWS = parseCsv(SAMPLE1).map(csvObjToRow); saveRows(); runAxis1();
+  toast("サンプルに戻しました");
+});
 $("a2-reset").addEventListener("click", () => { $("a2-in").value = SAMPLE2; runAxis2(); });
 
 const MKT_LABEL = {ebay_us:"eBay 米国", ebay_eu:"eBay 欧州", ebay_au:"eBay 豪州", shopee_sea:"Shopee 東南ア"};
@@ -2002,14 +2354,14 @@ function toast(msg){
   TOAST_T = setTimeout(() => t.classList.remove("on"), 2200);
 }
 function refresh(){
-  saveCfg(); renderCfgSummary();
+  saveCfg(); renderCfgSummary(); renderExtract();
   renderCalc(); renderOne(); renderPrice(); runAxis1(); runBundle();
 }
 
 if (!loadCfg()) fillProfileInputs();
-$("a1-in").value = SAMPLE1;
+A1_ROWS = loadRows() || parseCsv(SAMPLE1).map(csvObjToRow);
 $("a2-in").value = SAMPLE2;
 $("b-in").value = SAMPLE3;
-renderCfgSummary();
+renderCfgSummary(); renderExtract();
 renderCalc(); renderOne(); renderPrice(); runAxis1(); runBundle(); runAxis2();
 </script>

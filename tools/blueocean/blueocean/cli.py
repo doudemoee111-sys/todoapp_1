@@ -25,6 +25,7 @@ from .discovery import (
     write_candidate_template,
 )
 from .history import ChangeKind, history_of, load_snapshots
+from .jobs import JobError, load_jobs, run_job
 from .pricing import (
     breakeven_duty_rate,
     breakeven_fx,
@@ -598,6 +599,63 @@ def cmd_bundle(args) -> int:
     return 0
 
 
+def cmd_job(args) -> int:
+    """保存した抽出条件で回す。**毎回同じ条件だからこそ差分が意味を持つ。**"""
+    try:
+        jobs = load_jobs(args.config)
+    except (JobError, ValueError) as e:
+        print(f"ジョブ定義を読めません: {e}", file=sys.stderr)
+        return 1
+
+    if args.list:
+        print(f"\n=== ジョブ一覧（{args.config}）===\n")
+        for name, j in jobs.items():
+            steps = " → ".join(x for x in ("探す" if j.scan else "", "判定" if j.judge else "") if x)
+            src = (j.scan.get("genre") or
+                   ("キーワード" if j.scan.get("keywords") or j.scan.get("keywords_file") else "—")
+                   ) if j.scan else "—"
+            print(f"  {name:<16} {j.title}")
+            print(f"                   {j.market} / 目標{j.target_margin*100:.0f}% / "
+                  f"{steps or '—'} / 抽出元 {src}")
+        return 0
+
+    targets = list(jobs.values()) if args.all else (
+        [jobs[args.name]] if args.name in jobs else []
+    )
+    if not targets:
+        print(f"ジョブ {args.name} がありません。--list で一覧を見てください。", file=sys.stderr)
+        return 1
+
+    rc = 0
+    for j in targets:
+        print(f"\n=== {j.title}（{j.name}）===")
+        print(f"  条件: {j.market} / セラーレベル {j.level} / 目標利益率 "
+              f"{j.target_margin*100:.0f}% / 為替 {j.fx_jpy_per_usd:.0f}円")
+        try:
+            r = run_job(j, _source(args), record=not args.no_record)
+        except (JobError, FileNotFoundError, ValueError) as e:
+            print(f"  [失敗] {e}", file=sys.stderr)
+            rc = 1
+            continue
+
+        if r.stale_warning:
+            print(f"\n  [鮮度の警告] {r.stale_warning}")
+        if j.scan:
+            print(f"\n  走査 {r.scanned}件 → 探す価値あり {r.hunt_worthy}件")
+        if j.judge:
+            print(f"  判定 {r.judged}件 → 出品対象 {r.listable}件")
+        if r.changes:
+            act = r.actionable_changes
+            print(f"\n  前回からの変化 {len(r.changes)}件（うち要対応 {len(act)}件）")
+            for c in (act or r.changes)[:8]:
+                print(f"    [{_CHANGE_ICON[c.kind]}] {c.sku:<12} {c.detail}")
+        elif j.judge:
+            print("\n  前回からの変化なし。")
+        for w in r.written:
+            print(f"\n  書き出し: {w}")
+    return rc
+
+
 def cmd_history(args) -> int:
     """1つのSKU、または全体の推移を表示する。"""
     snaps = load_snapshots(args.history)
@@ -733,6 +791,14 @@ def main(argv=None) -> int:
     ck.add_argument("--url", default=None)
     ck.add_argument("--category", default=None)
     ck.set_defaults(func=cmd_check)
+
+    jb = sub.add_parser("job", help="保存した抽出条件で回す（毎回同じ条件で差分を出す）")
+    jb.add_argument("--config", required=True, help="ジョブ定義JSON")
+    jb.add_argument("--name", default=None, help="実行するジョブ名")
+    jb.add_argument("--all", action="store_true", help="定義された全ジョブを回す")
+    jb.add_argument("--list", action="store_true", help="ジョブ一覧を表示する")
+    jb.add_argument("--no-record", action="store_true", help="履歴に追記しない")
+    jb.set_defaults(func=cmd_job)
 
     hi = sub.add_parser("history", help="履歴を表示する")
     hi.add_argument("--history", required=True)
