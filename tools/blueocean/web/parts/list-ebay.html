@@ -1,0 +1,40 @@
+<!-- ③出す（eBay）。値決めと、束ねて出すかの判断。 -->
+<section class="screen" id="sc-list">
+  <h2 class="sc"><span class="n">STEP 03</span>出す</h2>
+  <p class="sc">仕入れが決まった品の出品価格を決めます。②選ぶ で行を選んでいれば、その数字が入った状態で開きます。</p>
+
+  <div class="panel">
+    <h3>値決め<span class="sub" id="lp-who"></span></h3>
+    <div class="row">
+      <div class="f"><label for="lp-cost">仕入値（税込・円）</label>
+        <input type="number" id="lp-cost" value="9800"></div>
+      <div class="f"><label for="lp-g">重量（g）</label><input type="number" id="lp-g" value="320"></div>
+      <div class="f"><label for="lp-l">縦(cm)</label><input type="number" id="lp-l" value="18"></div>
+      <div class="f"><label for="lp-w">横(cm)</label><input type="number" id="lp-w" value="14"></div>
+      <div class="f"><label for="lp-h">高(cm)</label><input type="number" id="lp-h" value="12"></div>
+      <div class="f"><label for="lp-price">実際に付ける売価（$）<span class="why">空欄なら目標から逆算</span></label>
+        <input type="number" id="lp-price" step="any"></div>
+    </div>
+    <div class="btns"><button class="btn" id="lp-run">値決めを出す</button></div>
+    <div id="lp-out"></div>
+  </div>
+
+  <div class="panel">
+    <h3>束ねて出すか、1点ずつ出すか<span class="sub">送料が1回で済むぶん、低単価ほど効きます</span></h3>
+    <p class="hint" style="margin-bottom:8px">1行1点で入れてください。単品では売れない見込みの品は、単価を <code>0</code> にすると「死に筋をセットに混ぜる効果」として計算します。</p>
+    <textarea id="bd-in" rows="5">name,cost_incl_tax_jpy,solo_price_usd,weight_g,length_cm,width_cm,height_cm
+Konica AR 40mm F1.8,9800,185,180,16,12,10
+Konica AR 135mm F3.2,4200,0,300,18,10,10
+純正フード 2種,1500,25,80,10,8,4</textarea>
+    <div class="row" style="margin-top:10px">
+      <div class="f"><label for="bd-price">セットの売価（$）</label>
+        <input type="number" id="bd-price" value="240"></div>
+      <div class="f"><label for="bd-g">梱包後の重量（g）</label><input type="number" id="bd-g" value="700"></div>
+      <div class="f"><label for="bd-l">縦(cm)</label><input type="number" id="bd-l" value="24"></div>
+      <div class="f"><label for="bd-w">横(cm)</label><input type="number" id="bd-w" value="18"></div>
+      <div class="f"><label for="bd-h">高(cm)</label><input type="number" id="bd-h" value="12"></div>
+    </div>
+    <div class="btns"><button class="btn" id="bd-run">並べて比べる</button></div>
+    <div id="bd-out"></div>
+  </div>
+</section>

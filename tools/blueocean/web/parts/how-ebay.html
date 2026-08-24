@@ -1,0 +1,36 @@
+<section class="screen" id="sc-how">
+  <h2 class="sc">使い方</h2>
+  <p class="sc">上のタブは<b>作業の順番</b>で並んでいます。①から④へ進むだけです。</p>
+
+  <div class="panel">
+    <h3>1周の流れ</h3>
+    <div class="scrollx"><table class="mini"><thead><tr>
+      <th>画面</th><th>やること</th><th>終わった状態</th></tr></thead><tbody>
+      <tr><td><b>①探す</b></td><td>条件を決めてコマンドを出し、PCで実行してCSVを読み込む</td><td>②に商品が並んでいる</td></tr>
+      <tr><td><b>②選ぶ</b></td><td>相場と競合数を埋め、判定を見る</td><td>「出せる」が何件か分かっている</td></tr>
+      <tr><td><b>③出す</b></td><td>売価を決める。束ねたほうが得かを見る</td><td>出品価格が決まっている</td></tr>
+      <tr><td><b>④追う</b></td><td>毎週レポートを貼る</td><td>伸ばす／直す／畳む が決まっている</td></tr>
+    </tbody></table></div>
+  </div>
+
+  <div class="panel">
+    <h3>最初の1回だけ必要なこと</h3>
+    <div class="scrollx"><table class="mini"><thead><tr>
+      <th>やること</th><th>どこで</th><th>なぜ</th></tr></thead><tbody>
+      <tr><td>古物商許可を取る</td><td>所轄の警察署</td><td>中古品を仕入れて売るなら必須。着手前に取ること</td></tr>
+      <tr><td>楽天のアプリIDを取る</td><td><a href="https://webservice.rakuten.co.jp/" target="_blank" rel="noopener">楽天ウェブサービス</a></td><td>①探す で国内の仕入れ元を採るため</td></tr>
+      <tr><td>Yahoo!のClient IDを取る</td><td><a href="https://e.developer.yahoo.co.jp/register" target="_blank" rel="noopener">Yahoo!デベロッパーネットワーク</a></td><td>同上。JANが返るので同じ商品を束ねられる</td></tr>
+      <tr><td>Pythonを入れる</td><td>お使いのPC</td><td>ブラウザから他社APIは叩けないため、取得はコマンドで行う</td></tr>
+    </tbody></table></div>
+  </div>
+
+  <div class="panel">
+    <h3>やらないことを決めてあります</h3>
+    <ul style="margin:0;padding-left:1.2em;color:var(--muted)">
+      <li><b>国内ECの巡回（スクレイピング）はしません。</b>公式APIしか叩きません。</li>
+      <li><b>小売サイトからバイヤーへの直送はしません。</b>eBayの Retail Dropshipping 禁止に触れます。必ず自宅で受け取り、検品して、梱包し直してから送ります。</li>
+      <li><b>相場は落札済みを見ます。</b>出品中の価格は「まだ売れていない価格」です。</li>
+      <li><b>推測で埋めた数字は推測だと言います。</b>重量が推定のまま「出せる」判定になることはありません。</li>
+    </ul>
+  </div>
+</section>

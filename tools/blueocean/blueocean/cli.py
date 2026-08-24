@@ -38,6 +38,7 @@ from .extract import (
     validate,
     write_worksheet,
 )
+from . import domestic as dom
 from .history import ChangeKind, history_of, load_snapshots
 from .ingest import merge_observations, read_report, write_observations
 from .jobs import JobError, load_jobs, run_job
@@ -975,6 +976,154 @@ def cmd_history(args) -> int:
     return 0
 
 
+
+_SOURCE_HELP = """\
+  楽天市場          RAKUTEN_APP_ID     https://webservice.rakuten.co.jp/
+  Yahoo!ショッピング YAHOO_CLIENT_ID    https://e.developer.yahoo.co.jp/register
+"""
+
+
+def cmd_domestic(args) -> int:
+    """国内ショップの公式APIから仕入れ候補を採る。**巡回はしない。**"""
+    if args.what == "keys":
+        print("\n=== 鍵の登録状況 ===\n")
+        for src in dom.Source:
+            prov = dom.provider_for(src)
+            try:
+                key = dom.credentials_from_env(src)
+                state = f"設定済み（末尾 …{key[-4:]}）"
+            except dom.ApiError:
+                state = "未設定"
+            print(f"  {_pad(prov.source.label, 20)} {_pad(prov.key_env, 18)} {state}")
+            print(f"    発行： {prov.signup_url}")
+            print(f"    上限： 1クエリ {prov.window:,}件 / 間隔 {prov.min_interval}秒\n")
+        print("  鍵は環境変数からしか読みません。CSVにもコードにも書きません。")
+        print("  例： export RAKUTEN_APP_ID='...'\n")
+        return 0
+
+    sources = [s.strip() for s in args.source.split(",") if s.strip()]
+    for s_ in sources:
+        dom.provider_for(s_)          # 未対応ならここで落とす
+
+    q = dom.Query(
+        keyword=args.keyword or "",
+        ng_keyword=args.ng_keyword or "",
+        genre_id=args.genre_id or "",
+        jan=args.jan or "",
+        shop=args.shop or "",
+        min_price=args.min_price,
+        max_price=args.max_price,
+        condition=dom.Condition(args.condition),
+        in_stock_only=not args.include_out_of_stock,
+        postage_included_only=args.postage_included,
+        sort=args.sort,
+        max_items=args.max_items,
+    )
+
+    if args.dry_run:
+        print("\n=== 送るリクエスト（実際には叩きません） ===\n")
+        for s_ in sources:
+            prov = dom.provider_for(s_)
+            params = prov.params(q, "＜鍵＞", 1, prov.page_size)
+            print(f"  {prov.source.label}  {prov.endpoint}")
+            for k, v in sorted(params.items()):
+                print(f"      {_pad(k, 22)} {v}")
+            print()
+        return 0
+
+    keys: dict[str, str] = {}
+    for s_ in sources:
+        prov = dom.provider_for(s_)
+        try:
+            keys[prov.source.value] = dom.credentials_from_env(prov.source)
+        except dom.ApiError as e:
+            print(f"\n{e}\n", file=sys.stderr)
+    if not keys:
+        print("使える鍵がありません。`domestic keys` で登録先を確認してください。",
+              file=sys.stderr)
+        return 1
+
+    print(f"\n条件： {q.describe()}")
+    if args.split_price > 1:
+        print(f"価格帯を {args.split_price} 分割して窓の上限を跨ぎます。")
+    print()
+
+    result = dom.search_all(
+        sources, q, keys, split_price=args.split_price,
+        on_progress=lambda t: print(f"  取得中… {t}", flush=True),
+    )
+
+    print(f"\n=== 取得 {len(result.items):,}件"
+          f"（該当 {result.total_available:,}件 / {result.pages_fetched} ページ）===\n")
+
+    if result.warnings:
+        print("--- 注意 ---")
+        for w in result.warnings:
+            print(f"  ! {w}")
+        print()
+
+    if not result.items:
+        return 1
+
+    head = result.items[:args.show]
+    print(f"{_pad('価格', 9, right=True)} {_pad('推定重量', 9, right=True)} "
+          f"{_pad('元', 5)} {_pad('店', 14, trunc=True)} 商品名")
+    for it in head:
+        hint = dom.weight_hint(it.title, it.genre_name)
+        mark = "" if hint.basis is dom.WeightBasis.TITLE else "?"
+        wt = f"{hint.grams:,}g{mark}" if hint.grams else "不明"
+        tax = "" if it.tax_included else "＋税"
+        post = "" if it.postage_included is not False else "＋送"
+        print(f"{_pad(f'{it.cost_incl_tax_jpy:,}円{tax}{post}', 9, right=True)} "
+              f"{_pad(wt, 9, right=True)} "
+              f"{_pad(it.source.value[:4], 5)} "
+              f"{_pad(it.shop_name, 14, trunc=True)} "
+              f"{_pad(it.title, 46, trunc=True)}")
+    if len(result.items) > len(head):
+        print(f"  … 他 {len(result.items) - len(head):,}件")
+    print()
+
+    if args.out:
+        n = dom.write_items(args.out, result.items)
+        print(f"  抽出結果 {n:,}件 を {args.out} に書き出しました。")
+
+    if args.candidates_out:
+        cands, warns = dom.to_candidates(
+            result.items, domestic_shipping_jpy=args.domestic_shipping)
+        usable = [c for c in cands if c.weight_g > 0]
+        import csv as _csv
+        path = Path(args.candidates_out)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8-sig", newline="") as f:
+            w = _csv.writer(f)
+            w.writerow(["sku", "title_ja", "source_url", "cost_incl_tax_jpy",
+                        "weight_g", "length_cm", "width_cm", "height_cm",
+                        "category", "market_price_usd", "competitor_count",
+                        "has_demand_signal", "demand_note",
+                        "is_restricted", "restricted_reason", "image_url",
+                        "weight_is_estimate", "cost_is_estimate", "estimate_note"])
+            for c in usable:
+                w.writerow([c.sku, c.title_ja, c.source_url,
+                            round(c.cost_incl_tax_jpy), c.weight_g, "", "", "",
+                            c.category, "", "", "no", "", "no", "",
+                            c.image_urls[0] if c.image_urls else "",
+                            "yes" if c.weight_is_estimate else "no",
+                            "yes" if c.cost_is_estimate else "no",
+                            c.estimate_note])
+        print(f"  候補CSV {len(usable):,}件 を {args.candidates_out} に書き出しました。")
+        if len(usable) < len(cands):
+            print(f"    （重量が出せなかった {len(cands) - len(usable):,}件は除外。"
+                  f"{args.out or '抽出結果CSV'} には残っています）")
+        for w_ in warns:
+            print(f"    ! {w_}")
+        print(f"\n    次： python -m blueocean.cli axis1 "
+              f"--candidates {args.candidates_out}")
+        print("    ただし market_price_usd と competitor_count は空です。")
+        print("    eBay側の相場を入れないと採算判定は出ません（scan / check を先に）。")
+    print()
+    return 0
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="blueocean", description="軸1＋軸2 統合ツール")
     p.add_argument("--market", default="ebay_us", choices=[m.value for m in Market])
@@ -1104,6 +1253,39 @@ def main(argv=None) -> int:
     sp.add_argument("--all", action="store_true", help="据え置きも含めて全件出す")
     sp.add_argument("--out", default=None, help="改定リストの書き出し先")
     sp.set_defaults(func=cmd_shopee)
+
+    dm = sub.add_parser("domestic",
+                        help="国内ショップの公式APIから仕入れ候補を採る（巡回はしない）")
+    dm.add_argument("what", choices=["search", "keys"])
+    dm.add_argument("--source", default="rakuten,yahoo",
+                    help="取得元をカンマ区切りで（rakuten / yahoo）")
+    dm.add_argument("--keyword", default="")
+    dm.add_argument("--ng-keyword", default="", help="除外語（楽天のみ有効）")
+    dm.add_argument("--genre-id", default="", help="ジャンルID／カテゴリID")
+    dm.add_argument("--jan", default="", help="JANコード（Yahoo!は完全一致で引ける）")
+    dm.add_argument("--shop", default="", help="店舗コード／セラーID")
+    dm.add_argument("--min-price", type=int, default=None)
+    dm.add_argument("--max-price", type=int, default=None)
+    dm.add_argument("--condition", default="any", choices=["any", "new", "used"],
+                    help="新品／中古（Yahoo!のみ。楽天は絞れない）")
+    dm.add_argument("--include-out-of-stock", action="store_true",
+                    help="在庫切れも含める（既定は在庫ありのみ）")
+    dm.add_argument("--postage-included", action="store_true",
+                    help="送料込みの商品だけに絞る（原価が確定する。楽天のみ）")
+    dm.add_argument("--sort", default="price_asc",
+                    choices=["price_asc", "price_desc", "review_desc", "standard"])
+    dm.add_argument("--max-items", type=int, default=300)
+    dm.add_argument("--split-price", type=int, default=0,
+                    help="価格帯をN分割して窓の上限を跨ぐ（数千件を採るときに使う）")
+    dm.add_argument("--domestic-shipping", type=int, default=0,
+                    help="送料別の商品に乗せる国内送料（円）")
+    dm.add_argument("--show", type=int, default=20, help="画面に出す件数")
+    dm.add_argument("--out", default=None, help="抽出結果CSVの書き出し先")
+    dm.add_argument("--candidates-out", default=None,
+                    help="判定用の候補CSVの書き出し先")
+    dm.add_argument("--dry-run", action="store_true",
+                    help="実際には叩かず、送るパラメータだけ出す")
+    dm.set_defaults(func=cmd_domestic)
 
     ig = sub.add_parser("ingest", help="eBayのレポートを軸2の観測CSVに取り込む")
     ig.add_argument("--report", required=True,

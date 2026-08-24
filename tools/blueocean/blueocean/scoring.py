@@ -224,6 +224,20 @@ def score_one(
     # 仕入値が未確定なら BLUE と言い切らない。最良でも PROBE に留める。
     if cost_unknown and verdict is Verdict.BLUE:
         verdict = Verdict.PROBE
+
+    # 推定で埋めた値がある候補も同じ扱い。国内APIは重量を返さないので、
+    # カテゴリ既定値や商品名からの推測で埋まっていることがある。
+    # 推定重量のまま BLUE を出すと、実物が届いて送料が倍になった時点で崩れる。
+    if c.weight_is_estimate or c.cost_is_estimate:
+        what = "重量" if c.weight_is_estimate else ""
+        if c.cost_is_estimate:
+            what = (what + "・" if what else "") + "仕入値"
+        detail = f"（{c.estimate_note}）" if c.estimate_note else ""
+        reasons.append(
+            f"{what}が推定値{detail}。実測に置き換えるまで BLUE には上げない"
+        )
+        if verdict is Verdict.BLUE:
+            verdict = Verdict.PROBE
     if weight_unknown:
         reasons.append("重量が未入力。送料は最小重量帯の概算なので、実物が届いたら引き直すこと")
 

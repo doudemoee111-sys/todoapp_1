@@ -1,0 +1,38 @@
+<section class="screen" id="sc-how">
+  <h2 class="sc">使い方</h2>
+  <p class="sc">上のタブは<b>作業の順番</b>で並んでいます。①から④へ進むだけです。eBay用ツールとは、送料・関税・単価の前提が違います。</p>
+
+  <div class="panel">
+    <h3>1周の流れ</h3>
+    <div class="scrollx"><table class="mini"><thead><tr>
+      <th>画面</th><th>やること</th><th>終わった状態</th></tr></thead><tbody>
+      <tr><td><b>①探す</b></td><td>条件を決めてコマンドを出し、PCで実行してCSVを読み込む</td><td>②に商品が並んでいる</td></tr>
+      <tr><td><b>②選ぶ</b></td><td>相場と競合数を埋め、判定を見る</td><td>「出せる」が何件か分かっている</td></tr>
+      <tr><td><b>③出す</b></td><td>枠を見て、入れる数を決め、一括出品CSVを作る</td><td>枠に収まる形で出品CSVができている</td></tr>
+      <tr><td><b>④追う</b></td><td>毎週の数字を貼り、価格差を確認する</td><td>止める／値上げ／値下げ が決まっている</td></tr>
+    </tbody></table></div>
+  </div>
+
+  <div class="panel">
+    <h3>eBay用ツールとの違い</h3>
+    <div class="scrollx"><table class="mini"><thead><tr>
+      <th></th><th>eBay用</th><th>Shopee用（このツール）</th></tr></thead><tbody>
+      <tr><td>国際送料</td><td>セラー負担（原価に乗る）</td><td><b>SLSが処理。セラーは国内送料のみ</b></td></tr>
+      <tr><td>関税</td><td>DDPでセラー負担</td><td><b>原則 購入者負担（0%）</b></td></tr>
+      <tr><td>売価の下限</td><td>$30</td><td><b>$8</b>（プチプラの新品が主戦場）</td></tr>
+      <tr><td>出品数</td><td>実質的な上限なし</td><td><b>500〜1,000点（台湾は500）</b>／無在庫は約100点</td></tr>
+      <tr><td>③出す の中身</td><td>値決め・セット販売</td><td>枠の管理・一括出品・価格差の確認</td></tr>
+    </tbody></table></div>
+    <p class="hint">この違いを無視して eBay の感覚のまま計算すると、Shopee のプチプラ帯が全部「赤字」に見えます。実際には国際送料が原価に乗らないので、そこが利益になります。</p>
+  </div>
+
+  <div class="panel">
+    <h3>やらないことを決めてあります</h3>
+    <ul style="margin:0;padding-left:1.2em;color:var(--muted)">
+      <li><b>国内ECの巡回（スクレイピング）はしません。</b>公式APIしか叩きません。</li>
+      <li><b>「数千品を一括出品」は、枠の上限があるのでそのままはできません。</b>新規開店は500〜1,000点、無在庫は約100点です。このツールは枠に収まる形で選び直すところまでをやります。</li>
+      <li><b>無在庫を薄く広げるほどペナルティの危険が増えます。</b>キャンセルと発送遅延がポイントの主因で、3点超で検索順位が下がります。</li>
+      <li><b>推測で埋めた数字は推測だと言います。</b>重量が推定のまま「出せる」判定になることはありません。</li>
+    </ul>
+  </div>
+</section>

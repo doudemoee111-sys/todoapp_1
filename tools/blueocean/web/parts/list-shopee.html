@@ -1,0 +1,67 @@
+<!-- ③出す（Shopee）。枠の管理と一括出品、価格差の確認。 -->
+<section class="screen" id="sc-list">
+  <h2 class="sc"><span class="n">STEP 03</span>出す</h2>
+  <p class="sc">Shopee は<b>出品枠に上限があります。</b>「全部出す」ができないので、何を入れて何を落とすかを決めることが仕事になります。ここはそのための画面です。</p>
+
+  <div class="panel">
+    <h3>出品枠<span class="sub">入れる前に、落とすものを決める</span></h3>
+    <div class="row">
+      <div class="f"><label for="sl-tier">ショップの段階</label>
+        <select id="sl-tier">
+          <option value="new">新規開店</option>
+          <option value="preferred">Preferred Seller</option>
+          <option value="max">実績上限</option></select></div>
+      <div class="f"><label for="sl-listed">いま出している点数</label>
+        <input type="number" id="sl-listed" value="380"></div>
+      <div class="f"><label for="sl-pre">うちプレオーダー（無在庫）</label>
+        <input type="number" id="sl-pre" value="90"></div>
+      <div class="f"><label for="sl-want">これから入れたい点数</label>
+        <input type="number" id="sl-want" value="0"
+               title="空欄なら②選ぶ で「出せる」「小さく試す」になった件数を使います"></div>
+    </div>
+    <div class="btns"><button class="btn" id="sl-run">枠を見る</button></div>
+    <div id="sl-out"></div>
+  </div>
+
+  <div class="panel">
+    <h3>一括出品用のCSVを作る<span class="sub">②選ぶ で残った行から</span></h3>
+    <p class="hint" style="margin-bottom:8px">判定が「出せる」「小さく試す」になった行だけを、出品用の形に整えて書き出します。<b>売価は目標利益率から逆算した下限</b>が入ります。そのまま出さず、相場と見比べてから使ってください。</p>
+    <div class="row">
+      <div class="f"><label for="mu-only">対象</label>
+        <select id="mu-only">
+          <option value="blue,probe">出せる＋小さく試す</option>
+          <option value="blue">出せる のみ</option></select></div>
+      <div class="f"><label for="mu-limit">最大件数 <span class="why">枠に合わせる</span></label>
+        <input type="number" id="mu-limit" value="500"></div>
+    </div>
+    <div class="btns">
+      <button class="btn" id="mu-run">CSVを作る</button>
+      <button class="btn ghost sm" id="mu-dl" disabled>ダウンロード</button>
+    </div>
+    <div id="mu-out"></div>
+  </div>
+
+  <div class="panel">
+    <h3>価格差の確認<span class="sub">仕入値が動いたら、売価も動かす</span></h3>
+    <p class="hint" style="margin-bottom:8px">いま出している商品の「現在の売価」と「いまの仕入値」を貼ると、赤字になっている行・値上げが要る行・止めるべき行を先頭に集めます。<b>在庫切れは利益率より先に見ます。</b></p>
+    <textarea id="rp-in" rows="6">sku,title,price_usd,cost_incl_tax_jpy,weight_g,available
+SKU-001,ボールペン 10本セット,12.80,900,220,1
+SKU-002,入浴剤 詰め合わせ,9.50,1400,600,1
+SKU-003,限定フィギュア,38.00,4200,900,0</textarea>
+    <div class="btns"><button class="btn" id="rp-run">価格差を出す</button></div>
+    <div id="rp-out"></div>
+  </div>
+
+  <details class="help">
+    <summary>Shopee で気をつけること（eBay と負担の構造が逆です）</summary>
+    <div class="bd">
+      <ul>
+        <li><b>送料</b> — SLS（Shopee物流）を使う場合、セラーが負担するのは<b>国内の集荷場所までの送料だけ</b>です。国際送料とラストマイル配送は SLS が処理します。eBay の DDP（関税も国際送料もセラー負担）とは逆なので、eBay の感覚のまま計算すると原価を大きく見誤ります。</li>
+        <li><b>関税</b> — 原則<b>購入者負担</b>です。だからこのツールでも Shopee の関税は 0% を既定にしています。</li>
+        <li><b>単価</b> — 主戦場は日本のドラッグストア価格帯の新品消耗品です。eBay の「$30未満は手数料に食われる」を持ち込むと売れ筋がほぼ全部落ちるので、下限を $8 にしてあります。</li>
+        <li><b>プレオーダー（無在庫）</b> — 上限は約100点で、<b>超えるとShopeeが売上の低い順に自動削除します。</b>自分で落とさなければ、残すものを機械に選ばれることになります。</li>
+        <li><b>ペナルティポイント</b> — 3点を超えると検索順位が下がり、6点で露出制限、15点で出品停止。四半期ごとにリセットされます。キャンセル率と発送遅延が主因なので、無在庫を薄く広げるほど危険が増えます。</li>
+      </ul>
+    </div>
+  </details>
+</section>

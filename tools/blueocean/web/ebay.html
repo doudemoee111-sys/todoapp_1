@@ -1,0 +1,2546 @@
+<title>Blueocean eBay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+/* 2つのツール（eBay用・Shopee用）で共通の外枠。
+   アクセント色だけをツール側で差し替えて、いまどちらに居るかが一目で分かるようにする。 */
+
+:root{
+  --paper:#EDEFEA; --card:#FAFBF8; --card2:#F2F4EF; --card3:#E7EAE4;
+  --ink:#191E1B; --muted:#5C665F; --faint:#8B948D;
+  --rule:#C9D0C8; --rule-soft:#DCE1DA;
+
+  --accent:#1F4B8F; --accent-soft:#DEE6F2; --accent-ink:#FFFFFF;
+
+  --blue:#1B6E4E;  --blue-soft:#DCEBE3;      /* 判定：出せる */
+  --probe:#8A6114; --probe-soft:#F0E7D2;     /* 判定：小さく試す */
+  --thin:#A2591C;  --thin-soft:#F3E4D5;      /* 判定：採算割れ */
+  --red:#A2362B;   --red-soft:#F2DEDA;       /* 判定：見送り */
+  --excl:#6B736D;  --excl-soft:#E4E7E3;      /* 判定：除外 */
+
+  --gothic:"Zen Kaku Gothic New","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --row-h:38px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#111513; --card:#191E1B; --card2:#151A17; --card3:#222926;
+    --ink:#E3E8E2; --muted:#98A29B; --faint:#79837C;
+    --rule:#2C3531; --rule-soft:#232B27;
+    --accent:#7FA9E2; --accent-soft:#1C2836; --accent-ink:#0D1218;
+    --blue:#6FBE93;  --blue-soft:#16261D;
+    --probe:#D3A85C; --probe-soft:#282214;
+    --thin:#DD9558;  --thin-soft:#2A1F16;
+    --red:#E08476;   --red-soft:#2B1B18;
+    --excl:#8D958F;  --excl-soft:#212623;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#111513; --card:#191E1B; --card2:#151A17; --card3:#222926;
+  --ink:#E3E8E2; --muted:#98A29B; --faint:#79837C;
+  --rule:#2C3531; --rule-soft:#232B27;
+  --accent:#7FA9E2; --accent-soft:#1C2836; --accent-ink:#0D1218;
+  --blue:#6FBE93;  --blue-soft:#16261D;
+  --probe:#D3A85C; --probe-soft:#282214;
+  --thin:#DD9558;  --thin-soft:#2A1F16;
+  --red:#E08476;   --red-soft:#2B1B18;
+  --excl:#8D958F;  --excl-soft:#212623;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:var(--gothic); font-size:14px; line-height:1.7;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,select,textarea{font-family:inherit; font-size:inherit; color:inherit}
+:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------------- ヘッダー ---------------- */
+.hd{
+  position:sticky; top:0; z-index:40; background:var(--card);
+  border-bottom:1px solid var(--rule);
+}
+.hd-in{
+  max-width:1600px; margin:0 auto; padding:10px 18px;
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+}
+.brand{display:flex; align-items:baseline; gap:9px; margin-right:4px}
+.brand b{font-size:15px; letter-spacing:.02em}
+.brand .tag{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.1em;
+  background:var(--accent); color:var(--accent-ink);
+  padding:2px 7px; border-radius:2px;
+}
+
+/* 業務の順番でしか並べない。ここが前のツールで一番まずかったところ。 */
+nav.steps{display:flex; gap:2px; flex:1 1 auto; flex-wrap:wrap}
+nav.steps button{
+  background:none; border:1px solid transparent; border-radius:3px;
+  padding:6px 13px 6px 11px; cursor:pointer; color:var(--muted);
+  display:flex; align-items:baseline; gap:7px; white-space:nowrap;
+}
+nav.steps button .n{
+  font-family:var(--mono); font-size:10px; letter-spacing:.08em; color:var(--faint);
+}
+nav.steps button .t{font-weight:500}
+nav.steps button:hover{background:var(--card2); color:var(--ink)}
+nav.steps button[aria-current="true"]{
+  background:var(--accent-soft); border-color:var(--accent); color:var(--ink);
+}
+nav.steps button[aria-current="true"] .n{color:var(--accent)}
+nav.steps .sep{width:1px; background:var(--rule-soft); margin:6px 8px}
+
+.hd .util{display:flex; gap:6px; align-items:center}
+.chip{
+  font-family:var(--mono); font-size:11px; padding:4px 9px; border-radius:2px;
+  background:var(--card2); border:1px solid var(--rule-soft); color:var(--muted);
+  cursor:pointer; white-space:nowrap;
+}
+.chip:hover{border-color:var(--rule); color:var(--ink)}
+.chip b{color:var(--ink); font-weight:600}
+
+/* 設定は1か所。全画面がここを参照する。 */
+.setbar{
+  background:var(--card2); border-bottom:1px solid var(--rule-soft);
+  font-size:12.5px; color:var(--muted);
+}
+.setbar-in{
+  max-width:1600px; margin:0 auto; padding:7px 18px;
+  display:flex; gap:6px 20px; flex-wrap:wrap; align-items:center;
+}
+.setbar b{color:var(--ink); font-weight:600; font-family:var(--mono)}
+
+/* ---------------- 本体 ---------------- */
+main{max-width:1600px; margin:0 auto; padding:20px 18px 80px}
+.screen{display:none}
+.screen[data-on="1"]{display:block}
+
+h2.sc{
+  font-size:17px; font-weight:700; margin:0 0 4px;
+  display:flex; align-items:baseline; gap:10px;
+}
+h2.sc .n{font-family:var(--mono); font-size:11px; color:var(--accent); letter-spacing:.1em}
+p.sc{color:var(--muted); margin:0 0 18px; max-width:70ch; font-size:13px}
+
+.panel{
+  background:var(--card); border:1px solid var(--rule-soft);
+  border-radius:4px; padding:16px 18px; margin-bottom:16px;
+}
+.panel > h3{
+  font-size:13px; font-weight:700; margin:0 0 12px;
+  padding-bottom:8px; border-bottom:1px solid var(--rule-soft);
+}
+.panel > h3 .sub{font-weight:400; color:var(--faint); font-size:12px; margin-left:8px}
+.cols{display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+
+/* 説明は畳んでおく。読まないと操作できない画面にはしない。 */
+details.help{
+  border:1px solid var(--rule-soft); border-radius:3px; background:var(--card2);
+  margin:12px 0; font-size:13px;
+}
+details.help > summary{
+  cursor:pointer; padding:8px 13px; color:var(--accent); font-weight:500;
+  list-style:none; user-select:none;
+}
+details.help > summary::-webkit-details-marker{display:none}
+details.help > summary::before{content:"▸ "; font-family:var(--mono)}
+details.help[open] > summary::before{content:"▾ "}
+details.help .bd{padding:2px 15px 14px; color:var(--muted); line-height:1.85}
+details.help .bd b{color:var(--ink)}
+details.help .bd ol,details.help .bd ul{margin:8px 0; padding-left:1.3em}
+details.help .bd li{margin-bottom:6px}
+
+/* ---------------- 入力 ---------------- */
+.f{display:flex; flex-direction:column; gap:4px; margin-bottom:11px}
+.f > label{font-size:12px; color:var(--muted)}
+.f > label .why{color:var(--faint); font-size:11px}
+input[type=text],input[type=number],input[type=date],select,textarea{
+  background:var(--card2); border:1px solid var(--rule); border-radius:3px;
+  padding:6px 9px; width:100%;
+}
+input[type=number]{font-family:var(--mono); text-align:right}
+textarea{font-family:var(--mono); font-size:12px; line-height:1.6; resize:vertical}
+.row{display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end}
+.row > .f{flex:1 1 130px; margin-bottom:0}
+.ck{display:flex; align-items:center; gap:7px; font-size:13px; color:var(--muted)}
+.ck input{width:auto}
+
+.btn{
+  background:var(--accent); color:var(--accent-ink); border:1px solid var(--accent);
+  border-radius:3px; padding:7px 16px; cursor:pointer; font-weight:500;
+}
+.btn:hover{filter:brightness(1.08)}
+.btn.ghost{background:none; color:var(--accent)}
+.btn.ghost:hover{background:var(--accent-soft)}
+.btn.sm{padding:4px 11px; font-size:12.5px}
+.btn:disabled{opacity:.45; cursor:not-allowed}
+.btns{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:12px}
+
+/* ---------------- 一覧（この画面の主役） ---------------- */
+.grid-wrap{
+  border:1px solid var(--rule); border-radius:4px; background:var(--card);
+  overflow:hidden;
+}
+.grid-bar{
+  display:flex; gap:8px 14px; align-items:center; flex-wrap:wrap;
+  padding:8px 12px; border-bottom:1px solid var(--rule-soft); background:var(--card2);
+  font-size:12.5px;
+}
+.grid-bar input[type=text]{width:190px; padding:4px 8px}
+.grid-bar select{width:auto; padding:4px 8px}
+.grid-bar .count{font-family:var(--mono); color:var(--muted); margin-left:auto}
+.grid-bar .count b{color:var(--ink)}
+
+.tally{display:flex; gap:4px; flex-wrap:wrap}
+.tally button{
+  border:1px solid var(--rule-soft); background:var(--card); border-radius:2px;
+  padding:2px 9px; cursor:pointer; font-size:11.5px; font-family:var(--mono);
+  color:var(--muted); display:flex; gap:6px; align-items:baseline;
+}
+.tally button[aria-pressed="true"]{border-color:currentColor}
+.tally button b{font-weight:600}
+
+.gscroll{overflow:auto; position:relative; max-height:min(66vh,720px)}
+.grow.sel{background:var(--accent-soft)}
+.gtable{position:relative; min-width:100%; font-size:12.5px}
+.ghead{
+  position:sticky; top:0; z-index:5; display:flex; background:var(--card3);
+  border-bottom:1px solid var(--rule); font-size:11.5px; color:var(--muted);
+}
+.ghead .c{
+  padding:7px 8px; font-weight:700; white-space:nowrap; cursor:pointer;
+  border-right:1px solid var(--rule-soft); flex:none; user-select:none;
+}
+.ghead .c:hover{color:var(--ink)}
+.ghead .c .ar{font-family:var(--mono); color:var(--accent)}
+.gbody{position:relative}
+.grow{
+  position:absolute; left:0; right:0; display:flex; height:var(--row-h);
+  border-bottom:1px solid var(--rule-soft); align-items:stretch;
+}
+.grow:hover{background:var(--card2)}
+.grow .c{
+  padding:0 8px; flex:none; display:flex; align-items:center;
+  overflow:hidden; border-right:1px solid transparent;
+}
+.grow .c.num{font-family:var(--mono); justify-content:flex-end; font-variant-numeric:tabular-nums}
+.grow .c.txt{white-space:nowrap; text-overflow:ellipsis; display:block; line-height:var(--row-h)}
+.grow .c input{
+  background:none; border:1px solid transparent; border-radius:2px;
+  padding:2px 5px; text-align:right; font-family:var(--mono); width:100%;
+}
+.grow .c input:hover{border-color:var(--rule-soft)}
+.grow .c input:focus{background:var(--card); border-color:var(--accent)}
+.grow .c img{width:26px; height:26px; object-fit:cover; border-radius:2px; background:var(--card3)}
+.grow .c a{color:var(--accent); text-decoration:none}
+.grow .c a:hover{text-decoration:underline}
+.gempty{padding:34px 18px; text-align:center; color:var(--faint)}
+
+.v{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.04em;
+  padding:1px 7px; border-radius:2px; white-space:nowrap;
+}
+.v-blue{background:var(--blue-soft); color:var(--blue)}
+.v-probe{background:var(--probe-soft); color:var(--probe)}
+.v-thin{background:var(--thin-soft); color:var(--thin)}
+.v-red{background:var(--red-soft); color:var(--red)}
+.v-excl{background:var(--excl-soft); color:var(--excl)}
+.est{color:var(--probe); font-family:var(--mono)}   /* 推定値の印 */
+
+/* 選択した1行の詳細 */
+.detail{
+  border-top:1px solid var(--rule); background:var(--card2);
+  padding:14px 16px; font-size:12.5px; max-height:260px; overflow:auto;
+}
+.detail h4{margin:0 0 8px; font-size:13px}
+.detail ul{margin:0; padding-left:1.2em; color:var(--muted)}
+.detail li{margin-bottom:5px}
+.detail .flip{
+  margin-top:9px; padding:7px 11px; border-left:3px solid var(--accent);
+  background:var(--accent-soft); color:var(--ink); border-radius:0 3px 3px 0;
+}
+
+/* ---------------- 注意・結果表示 ---------------- */
+.warn{
+  border-left:3px solid var(--probe); background:var(--probe-soft);
+  padding:10px 14px; margin:12px 0; border-radius:0 3px 3px 0; font-size:12.5px;
+}
+.warn b{color:var(--probe)}
+.warn ul{margin:6px 0 0; padding-left:1.2em}
+.stop{border-left-color:var(--red); background:var(--red-soft)}
+.stop b{color:var(--red)}
+.ok{border-left-color:var(--blue); background:var(--blue-soft)}
+.ok b{color:var(--blue)}
+.hint{color:var(--faint); font-size:12.5px; margin:8px 0 0}
+
+pre.out{
+  background:var(--card2); border:1px solid var(--rule-soft); border-radius:3px;
+  padding:12px 14px; overflow-x:auto; font-family:var(--mono); font-size:12px;
+  line-height:1.65; margin:10px 0 0; white-space:pre; color:var(--ink);
+}
+table.mini{border-collapse:collapse; width:100%; font-size:12.5px; margin-top:8px}
+table.mini th,table.mini td{
+  padding:6px 9px; text-align:left; border-bottom:1px solid var(--rule-soft);
+}
+table.mini th{color:var(--muted); font-weight:600; font-size:11.5px; white-space:nowrap}
+table.mini td.num{font-family:var(--mono); text-align:right; font-variant-numeric:tabular-nums}
+.scrollx{overflow-x:auto}
+
+.toast{
+  position:fixed; left:50%; bottom:26px; transform:translateX(-50%);
+  background:var(--ink); color:var(--paper); padding:9px 20px; border-radius:3px;
+  font-size:13px; z-index:90; opacity:0; pointer-events:none; transition:opacity .18s;
+}
+.toast[data-on="1"]{opacity:1}
+
+kbd,code{font-family:var(--mono); font-size:.9em; background:var(--card3);
+  border-radius:2px; padding:1px 5px}
+a{color:var(--accent)}
+.foot{margin-top:40px; padding-top:16px; border-top:1px solid var(--rule);
+  color:var(--faint); font-size:11.5px; font-family:var(--mono)}
+
+/* ---- このツールのアクセント ---- */
+:root{--accent:#1F4B8F;--accent-soft:#DEE6F2;--accent-ink:#FFFFFF}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#8FB4E4;--accent-soft:#1C2836;--accent-ink:#0D1218}}
+:root[data-theme="dark"]{--accent:#8FB4E4;--accent-soft:#1C2836;--accent-ink:#0D1218}
+</style>
+
+<header class="hd">
+  <div class="hd-in">
+    <div class="brand"><b>Blueocean</b><span class="tag">EBAY</span></div>
+    <nav class="steps">
+    <button data-sc="find" aria-current="false"><span class="n">01</span><span class="t">探す</span></button>
+    <button data-sc="pick" aria-current="false"><span class="n">02</span><span class="t">選ぶ</span></button>
+    <button data-sc="list" aria-current="false"><span class="n">03</span><span class="t">出す</span></button>
+    <button data-sc="track" aria-current="false"><span class="n">04</span><span class="t">追う</span></button>
+    <span class="sep"></span>
+    <button data-sc="set" aria-current="false"><span class="t">設定</span></button>
+    <button data-sc="how" aria-current="false"><span class="t">使い方</span></button>
+    </nav>
+    <div class="util">
+      <a class="chip" href="https://claude.ai/code/artifact/7df6808d-adcd-435f-80e2-f018c1d2bfde">Shopee用に切り替える</a>
+    </div>
+  </div>
+  <div class="setbar"><div class="setbar-in" id="setbar"></div></div>
+</header>
+
+<main>
+<!-- ①探す。両ツール共通。国内ショップの公式APIで候補を採るところ。 -->
+<section class="screen" id="sc-find">
+  <h2 class="sc"><span class="n">STEP 01</span>探す</h2>
+  <p class="sc">国内の仕入れ元を、条件を決めて採ってきます。巡回（スクレイピング）はしません。楽天とYahoo!が公式に出している検索APIを、あなた自身が発行した鍵で叩きます。</p>
+
+  <details class="help">
+    <summary>先に鍵を取ってください（1回だけ・無料）</summary>
+    <div class="bd">
+      <ol>
+        <li><b>楽天市場</b> — <a href="https://webservice.rakuten.co.jp/" target="_blank" rel="noopener">楽天ウェブサービス</a> に楽天会員でログインし、アプリIDを発行。環境変数 <code>RAKUTEN_APP_ID</code> に入れます。<b>1秒に1回まで</b>という制限があるので、数千件を採るときは時間がかかります。</li>
+        <li><b>Yahoo!ショッピング</b> — <a href="https://e.developer.yahoo.co.jp/register" target="_blank" rel="noopener">Yahoo!デベロッパーネットワーク</a> でアプリケーションを登録し、Client ID を発行。環境変数 <code>YAHOO_CLIENT_ID</code> に入れます。<b>JANコードが返る</b>ので、同じ商品を店をまたいで束ねられます。</li>
+      </ol>
+      <p><b>鍵はこの画面には入れません。</b>ブラウザから他社のAPIは叩けない（CORSで弾かれる）ので、実際の取得はお使いのPCのコマンドで行います。ここは条件を組み立てて、そのコマンドを出すところです。</p>
+      <p>商用利用の可否や規約は各社の条件に従ってください。楽天のAPIはアフィリエイト用途を前提に無償提供されているもので、Yahoo!は商用利用について問い合わせ窓口が用意されています。<b>自分の仕入れ判断のための価格照会</b>として使う範囲を超える場合は、各社に確認してから使ってください。</p>
+    </div>
+  </details>
+
+  <div class="panel">
+    <h3>抽出条件<span class="sub">ここで決めた条件が、そのままコマンドになります</span></h3>
+    <div class="row">
+      <div class="f"><label for="q-keyword">キーワード</label>
+        <input type="text" id="q-keyword" placeholder="ねんどろいど"></div>
+      <div class="f"><label for="q-ng">除外語 <span class="why">楽天のみ</span></label>
+        <input type="text" id="q-ng" placeholder="ジャンク 訳あり"></div>
+      <div class="f"><label for="q-genre">ジャンルID <span class="why">任意</span></label>
+        <input type="text" id="q-genre" placeholder="101240"></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <div class="f"><label for="q-min">下限価格（円）</label>
+        <input type="number" id="q-min" value="500"></div>
+      <div class="f"><label for="q-max">上限価格（円）</label>
+        <input type="number" id="q-max" value="20000"></div>
+      <div class="f"><label for="q-split">価格帯の分割数 <span class="why">窓の上限を跨ぐ</span></label>
+        <input type="number" id="q-split" value="1" min="1" max="20"></div>
+      <div class="f"><label for="q-max-items">最大取得件数</label>
+        <input type="number" id="q-max-items" value="300"></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <div class="f"><label for="q-cond">状態 <span class="why">Yahoo!のみ</span></label>
+        <select id="q-cond"><option value="any">指定なし</option>
+          <option value="new">新品</option><option value="used">中古</option></select></div>
+      <div class="f"><label for="q-sort">並び</label>
+        <select id="q-sort"><option value="price_asc">安い順</option>
+          <option value="price_desc">高い順</option>
+          <option value="review_desc">レビュー数順</option>
+          <option value="standard">標準</option></select></div>
+      <div class="f"><label for="q-ship">送料別のときに乗せる国内送料（円）</label>
+        <input type="number" id="q-ship" value="0"></div>
+    </div>
+    <div style="display:flex; gap:18px; flex-wrap:wrap; margin-top:14px">
+      <label class="ck"><input type="checkbox" id="q-rakuten" checked>楽天市場</label>
+      <label class="ck"><input type="checkbox" id="q-yahoo" checked>Yahoo!ショッピング</label>
+      <label class="ck"><input type="checkbox" id="q-stock" checked>在庫ありのみ</label>
+      <label class="ck"><input type="checkbox" id="q-postage">送料込みのみ <span class="why">原価が確定する・楽天のみ</span></label>
+    </div>
+
+    <div id="q-plan"></div>
+
+    <h3 style="margin-top:20px">このコマンドをPCで実行してください</h3>
+    <pre class="out" id="q-cmd"></pre>
+    <div class="btns">
+      <button class="btn sm" id="q-copy">コマンドをコピー</button>
+      <span class="hint" id="q-note"></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>採れたCSVを読み込む<span class="sub">貼り付けでもファイルでも</span></h3>
+    <p class="hint" style="margin-bottom:8px">上のコマンドが書き出した <code>candidates.csv</code>（または <code>items.csv</code>）の中身を貼るか、ファイルを選んでください。列名は自動で合わせます。</p>
+    <textarea id="imp-text" rows="6" placeholder="sku,title_ja,cost_incl_tax_jpy,weight_g,..."></textarea>
+    <div class="btns">
+      <button class="btn" id="imp-run">一覧に読み込む</button>
+      <label class="btn ghost sm" style="cursor:pointer">ファイルを選ぶ
+        <input type="file" id="imp-file" accept=".csv,text/csv" hidden></label>
+      <button class="btn ghost sm" id="imp-add">追加で読み込む（既存を残す）</button>
+      <button class="btn ghost sm" id="imp-sample">サンプルを入れて試す</button>
+    </div>
+    <div id="imp-out"></div>
+  </div>
+</section>
+
+<!-- ②選ぶ。一覧が主役。計算は列。 -->
+<section class="screen" id="sc-pick">
+  <h2 class="sc"><span class="n">STEP 02</span>選ぶ</h2>
+  <p class="sc">仕入値を入れると、送料・課金重量・仕入上限・利益率・判定が<b>同じ行に</b>出ます。行をクリックすると、その判定になった理由と、あと何を動かせば判定が変わるかが下に出ます。</p>
+
+  <details class="help">
+    <summary>判定の読み方（4つしかありません）</summary>
+    <div class="bd">
+      <ul>
+        <li><b style="color:var(--blue)">出せる</b> — 目標利益率を満たし、競合が少なく、需要の裏付けがある。仕入れてよい。</li>
+        <li><b style="color:var(--probe)">小さく試す</b> — 条件のどれかが未確定。1〜2点だけ出して反応を見る段階。<b>仕入値・重量が推定のままだとここで止まります。</b></li>
+        <li><b style="color:var(--thin)">採算割れ</b> — 仕入値が上限を超えている。いくら下げれば届くかを右端に出します。</li>
+        <li><b style="color:var(--red)">見送り</b> — 競合が多すぎる。値下げ競争に入るので取らない。</li>
+        <li><b style="color:var(--excl)">除外</b> — 規制品、重量・寸法オーバー、相場が未入力など、判定以前で止まっているもの。</li>
+      </ul>
+      <p><b>競合0件は「出せる」になりません。</b>誰も出していないのは、需要が無いだけかもしれないからです。落札実績を実際に見て「需要の裏付け」に yes を入れたときだけ上がります。</p>
+    </div>
+  </details>
+
+  <div id="pick-warn"></div>
+
+  <div class="grid-bar" style="border:1px solid var(--rule); border-bottom:none; border-radius:4px 4px 0 0">
+    <button class="btn sm" id="pk-recalc">いまの設定で計算し直す</button>
+    <button class="btn ghost sm" id="pk-add">行を足す</button>
+    <button class="btn ghost sm" id="pk-csv">CSVで書き出す</button>
+    <button class="btn ghost sm" id="pk-clear">全部消す</button>
+    <span class="hint" style="margin-left:auto">入力はこの端末に自動保存されます</span>
+  </div>
+  <div class="grid-wrap" id="pick-grid" style="border-radius:0 0 4px 4px"></div>
+
+  <details class="help">
+    <summary>相場と競合数はどこから入れるのか</summary>
+    <div class="bd">
+      <p>この2つだけは国内APIからは取れません。<b>販売先を見に行く必要があります。</b></p>
+      <ol>
+        <li>一覧の行をクリックして、下に出る商品名をコピーします。</li>
+        <li><span id="pk-market-link"></span></li>
+        <li>実際に売れている価格帯の中央値を「相場」に、同じ検索の件数を「競合数」に入れます。<b>まだ売れていない出品の希望価格を相場にしないでください。</b>高く見積もりすぎて、仕入上限が実際より甘くなります。</li>
+        <li>売れている実績が確かめられたら「需要の裏付け」に印を付けます。ここを付けない限り、判定は「小さく試す」で止まります。</li>
+      </ol>
+    </div>
+  </details>
+</section>
+
+<!-- ③出す（eBay）。値決めと、束ねて出すかの判断。 -->
+<section class="screen" id="sc-list">
+  <h2 class="sc"><span class="n">STEP 03</span>出す</h2>
+  <p class="sc">仕入れが決まった品の出品価格を決めます。②選ぶ で行を選んでいれば、その数字が入った状態で開きます。</p>
+
+  <div class="panel">
+    <h3>値決め<span class="sub" id="lp-who"></span></h3>
+    <div class="row">
+      <div class="f"><label for="lp-cost">仕入値（税込・円）</label>
+        <input type="number" id="lp-cost" value="9800"></div>
+      <div class="f"><label for="lp-g">重量（g）</label><input type="number" id="lp-g" value="320"></div>
+      <div class="f"><label for="lp-l">縦(cm)</label><input type="number" id="lp-l" value="18"></div>
+      <div class="f"><label for="lp-w">横(cm)</label><input type="number" id="lp-w" value="14"></div>
+      <div class="f"><label for="lp-h">高(cm)</label><input type="number" id="lp-h" value="12"></div>
+      <div class="f"><label for="lp-price">実際に付ける売価（$）<span class="why">空欄なら目標から逆算</span></label>
+        <input type="number" id="lp-price" step="any"></div>
+    </div>
+    <div class="btns"><button class="btn" id="lp-run">値決めを出す</button></div>
+    <div id="lp-out"></div>
+  </div>
+
+  <div class="panel">
+    <h3>束ねて出すか、1点ずつ出すか<span class="sub">送料が1回で済むぶん、低単価ほど効きます</span></h3>
+    <p class="hint" style="margin-bottom:8px">1行1点で入れてください。単品では売れない見込みの品は、単価を <code>0</code> にすると「死に筋をセットに混ぜる効果」として計算します。</p>
+    <textarea id="bd-in" rows="5">name,cost_incl_tax_jpy,solo_price_usd,weight_g,length_cm,width_cm,height_cm
+Konica AR 40mm F1.8,9800,185,180,16,12,10
+Konica AR 135mm F3.2,4200,0,300,18,10,10
+純正フード 2種,1500,25,80,10,8,4</textarea>
+    <div class="row" style="margin-top:10px">
+      <div class="f"><label for="bd-price">セットの売価（$）</label>
+        <input type="number" id="bd-price" value="240"></div>
+      <div class="f"><label for="bd-g">梱包後の重量（g）</label><input type="number" id="bd-g" value="700"></div>
+      <div class="f"><label for="bd-l">縦(cm)</label><input type="number" id="bd-l" value="24"></div>
+      <div class="f"><label for="bd-w">横(cm)</label><input type="number" id="bd-w" value="18"></div>
+      <div class="f"><label for="bd-h">高(cm)</label><input type="number" id="bd-h" value="12"></div>
+    </div>
+    <div class="btns"><button class="btn" id="bd-run">並べて比べる</button></div>
+    <div id="bd-out"></div>
+  </div>
+</section>
+
+<!-- ④追う。出したあとの反応から、次の一手を決める。 -->
+<section class="screen" id="sc-track">
+  <h2 class="sc"><span class="n">STEP 04</span>追う</h2>
+  <p class="sc">出品したあとの閲覧数・ウォッチ・販売数から、伸ばす／値を下げる／タイトルを直す／畳む を決めます。<b>毎週貼るだけで前回比が出ます。</b>貼ったデータはこの端末に貯まるので、上書きされません。</p>
+
+  <div class="panel">
+    <h3>観測データ<span class="sub" id="tr-src"></span></h3>
+    <div class="row" style="margin-bottom:10px">
+      <div class="f" style="flex:0 0 180px"><label for="tr-date">この観測をいつ取ったか</label>
+        <input type="date" id="tr-date"></div>
+      <div class="f" style="flex:0 0 auto; justify-content:flex-end">
+        <button class="btn sm" id="tr-ingest">貼った内容を取り込む</button></div>
+      <div class="f" style="flex:0 0 auto; justify-content:flex-end">
+        <button class="btn ghost sm" id="tr-run">いまのデータで判定する</button></div>
+      <div class="f" style="flex:0 0 auto; justify-content:flex-end">
+        <button class="btn ghost sm" id="tr-clear">貯めたデータを消す</button></div>
+    </div>
+    <textarea id="tr-in" rows="8" placeholder="sku,title,listed_on,observed_on,views,watchers,sold"></textarea>
+    <p class="hint" id="tr-hint"></p>
+  </div>
+
+  <details class="help">
+    <summary>データの採り方</summary>
+    <div class="bd" id="tr-guide"></div>
+  </details>
+
+  <div id="tr-out"></div>
+</section>
+
+<!-- 設定。1か所だけ。4画面すべてがここを見る。 -->
+<section class="screen" id="sc-set">
+  <h2 class="sc">設定</h2>
+  <p class="sc">ここで決めた条件を、4つの画面すべてが使います。同じ数字をどこかでもう一度入れる必要はありません。変えたら「計算し直す」を押してください。</p>
+
+  <div class="panel">
+    <h3>販売の前提<span class="sub">空欄にすると販売先ごとの既定値に戻ります</span></h3>
+    <div id="set-form"></div>
+  </div>
+
+  <details class="help">
+    <summary>それぞれの数字が何に効くのか</summary>
+    <div class="bd">
+      <ul>
+        <li><b>為替</b> — 仕入も送料も円、売上はドル。1円動くと利益がそのまま動きます。③出す では「何円まで下がると赤字か」も出しています。</li>
+        <li><b>目標利益率</b> — 仕入上限の逆算に使います。ここを上げると仕入上限が下がり、判定が厳しくなります。</li>
+        <li><b>販売手数料</b> — 落札手数料・決済手数料・為替手数料を合わせた実効値です。eBayは18%前後、Shopeeは各国5.3〜7.0%に為替と送金を足して8%を既定にしています。</li>
+        <li><b>関税</b> — セラーが負担するぶん。eBay の DDP では売り手負担、Shopee は原則<b>購入者負担</b>なので0です。</li>
+        <li><b>セラーレベル</b> — eBayのみ。Top Rated で −2pt、Below Standard で +6pt 手数料が動きます。</li>
+        <li><b>課税事業者</b> — 輸出は消費税が免税なので、税込で仕入れた分の 10/110 が還付されます。免税事業者だとこれが無く、同じ商品でも利益が1割近く変わります。</li>
+      </ul>
+    </div>
+  </details>
+
+  <div class="panel">
+    <h3>この端末に保存されているもの</h3>
+    <p class="hint">商品の一覧・観測データ・設定は、この端末のブラウザにだけ保存されます。どこにも送信されません。ブラウザのデータを消すと一緒に消えるので、大事なものは②選ぶ の「CSVで書き出す」で手元に残してください。</p>
+    <div class="btns">
+      <button class="btn ghost sm" id="st-wipe">この端末の保存を全部消す</button>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="sc-how">
+  <h2 class="sc">使い方</h2>
+  <p class="sc">上のタブは<b>作業の順番</b>で並んでいます。①から④へ進むだけです。</p>
+
+  <div class="panel">
+    <h3>1周の流れ</h3>
+    <div class="scrollx"><table class="mini"><thead><tr>
+      <th>画面</th><th>やること</th><th>終わった状態</th></tr></thead><tbody>
+      <tr><td><b>①探す</b></td><td>条件を決めてコマンドを出し、PCで実行してCSVを読み込む</td><td>②に商品が並んでいる</td></tr>
+      <tr><td><b>②選ぶ</b></td><td>相場と競合数を埋め、判定を見る</td><td>「出せる」が何件か分かっている</td></tr>
+      <tr><td><b>③出す</b></td><td>売価を決める。束ねたほうが得かを見る</td><td>出品価格が決まっている</td></tr>
+      <tr><td><b>④追う</b></td><td>毎週レポートを貼る</td><td>伸ばす／直す／畳む が決まっている</td></tr>
+    </tbody></table></div>
+  </div>
+
+  <div class="panel">
+    <h3>最初の1回だけ必要なこと</h3>
+    <div class="scrollx"><table class="mini"><thead><tr>
+      <th>やること</th><th>どこで</th><th>なぜ</th></tr></thead><tbody>
+      <tr><td>古物商許可を取る</td><td>所轄の警察署</td><td>中古品を仕入れて売るなら必須。着手前に取ること</td></tr>
+      <tr><td>楽天のアプリIDを取る</td><td><a href="https://webservice.rakuten.co.jp/" target="_blank" rel="noopener">楽天ウェブサービス</a></td><td>①探す で国内の仕入れ元を採るため</td></tr>
+      <tr><td>Yahoo!のClient IDを取る</td><td><a href="https://e.developer.yahoo.co.jp/register" target="_blank" rel="noopener">Yahoo!デベロッパーネットワーク</a></td><td>同上。JANが返るので同じ商品を束ねられる</td></tr>
+      <tr><td>Pythonを入れる</td><td>お使いのPC</td><td>ブラウザから他社APIは叩けないため、取得はコマンドで行う</td></tr>
+    </tbody></table></div>
+  </div>
+
+  <div class="panel">
+    <h3>やらないことを決めてあります</h3>
+    <ul style="margin:0;padding-left:1.2em;color:var(--muted)">
+      <li><b>国内ECの巡回（スクレイピング）はしません。</b>公式APIしか叩きません。</li>
+      <li><b>小売サイトからバイヤーへの直送はしません。</b>eBayの Retail Dropshipping 禁止に触れます。必ず自宅で受け取り、検品して、梱包し直してから送ります。</li>
+      <li><b>相場は落札済みを見ます。</b>出品中の価格は「まだ売れていない価格」です。</li>
+      <li><b>推測で埋めた数字は推測だと言います。</b>重量が推定のまま「出せる」判定になることはありません。</li>
+    </ul>
+  </div>
+</section>
+
+  <p class="foot">Blueocean EBAY ／ 計算は Python 版と同一（tests/test_parity.py で照合）／
+  保存はこの端末のみ・外部送信なし</p>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ===== boot-ebay.js ===== */
+/* eBay用ツールの立ち上げ。ツールごとに違うのはここだけ。 */
+
+const TOOL_ID = "blueocean.ebay";
+const DEFAULT_MARKET = "ebay_us";
+
+const EBAY_SITE = {ebay_us:"https://www.ebay.com", ebay_eu:"https://www.ebay.de",
+                   ebay_au:"https://www.ebay.com.au"};
+
+function searchUrlFor(q, market){
+  const base = EBAY_SITE[market] || EBAY_SITE.ebay_us;
+  /* LH_Sold=1 & LH_Complete=1 で「売却済み」に絞る。
+     出品中の価格は「まだ売れていない価格」なので相場には使わない。 */
+  return base + "/sch/i.html?_nkw=" + encodeURIComponent(q || "")
+       + "&LH_Sold=1&LH_Complete=1";
+}
+
+const SEARCH_LINK_LABEL = "売却済みを検索";
+
+const MARKET_SEARCH_HINT =
+  'eBay（<a href="https://www.ebay.com/sch/i.html?_nkw=&LH_Sold=1&LH_Complete=1" '
++ 'target="_blank" rel="noopener">売却済み検索</a>）';
+
+const TRACK_SOURCE_LABEL = "eBay の Seller Hub レポートをそのまま貼れます";
+
+const TRACK_GUIDE_HTML =
+    '<ol>'
+  + '<li><a href="https://www.ebay.com/sh/lst/active" target="_blank" rel="noopener">Seller Hub → 出品 → 出品中</a> を開きます。</li>'
+  + '<li>右上の <b>Download</b> から「All active listings」をCSVで落とします。</li>'
+  + '<li>そのCSVの中身を、この画面のテキスト欄に<b>そのまま貼って</b>「取り込む」を押します。列名は自動で合わせます。</li>'
+  + '<li><b>毎週やってください。</b>2回目以降は前回との差が出ます。1回だけでは「動いていない」が分かりません。</li>'
+  + '</ol>'
+  + '<p>手で作る場合は <code>sku,title,listed_on,observed_on,views,watchers,sold</code> の形にしてください。'
+  + '<code>listed_on</code> は出品日、<code>observed_on</code> はその数字を見た日です。</p>'
+  + '<p><b>販売個数・売却率までは Seller Hub のレポートには入りません。</b>'
+  + 'それが要る場合は Terapeak（eBayの出品者向け機能）を別途見てください。ここで扱うのは自分の出品の反応です。</p>';
+
+const SAMPLE_ROWS =
+`sku,title_ja,cost_incl_tax_jpy,weight_g,length_cm,width_cm,height_cm,market_price_usd,competitor_count,has_demand_signal,demand_note,source_url
+LENS-001,Nikon Ai-s 50mm F1.2 manual lens,42000,320,18,14,12,620,4,yes,同型の落札を直近90日で12件確認,
+LENS-002,Konica Hexanon AR 40mm F1.8,9800,180,16,12,10,185,2,yes,近縁モデルの落札あり,
+FIG-001,ねんどろいど 限定版,4200,900,20,15,12,68,7,no,,
+CAM-001,Canon AE-1 Program body,18000,620,20,14,12,145,34,yes,落札多数だが競合も多い,
+WATCH-01,Seiko 5 Sports 自動巻き,16000,180,12,10,8,210,3,no,,`;
+
+const SAMPLE_OBS =
+`sku,title,listed_on,observed_on,views,watchers,sold
+LENS-001,Nikon Ai-s 50mm F1.2,2026-06-20,2026-08-17,148,6,0
+LENS-001,Nikon Ai-s 50mm F1.2,2026-06-20,2026-08-24,171,9,1
+LENS-002,Konica Hexanon AR 40mm,2026-07-10,2026-08-17,62,0,0
+LENS-002,Konica Hexanon AR 40mm,2026-07-10,2026-08-24,64,0,0
+CAM-001,Canon AE-1 Program,2026-05-01,2026-08-24,18,0,0`;
+
+function onScreen(id){
+  /* 隠れている間に描くと高さが 0 なので、表示された時点で描き直す。 */
+  if (id === "pick" && GRID) GRID._paint();
+  if (id === "list" && GRID && GRID.sel >= 0) fillListFromRow(GRID.rows[GRID.sel]);
+}
+
+function applyAll(){
+  saveCfg();
+  renderSetbar();
+  if (GRID){ GRID.cols = pickCols(); GRID.recalcAll(); renderPickWarn(GRID.rows); }
+  renderListPrice(); renderBundle();
+  renderFindPlan();
+}
+
+document.addEventListener("DOMContentLoaded", function(){
+  bootShell();
+  bootPick();
+  bootFind((rows, append) => setRows(rows, append));
+  bootListEbay();
+  bootTrack();
+  GRID.onSelect = r => { $("lp-who").textContent = "選択中：" + (r.title_ja || r.sku || ""); };
+  $("st-wipe").addEventListener("click", () => {
+    if (!confirm("この端末に保存した商品・観測・設定を全部消します。よろしいですか？")) return;
+    [CKEY, RKEY, TOOL_ID + ".obs", TOOL_ID + ".history", TOOL_ID + ".screen"]
+      .forEach(k => { try{ localStorage.removeItem(k); }catch(e){} });
+    location.reload();
+  });
+  renderSetbar();
+});
+
+
+/* ===== core.js ===== */
+/* blueocean 計算コア。
+   **このファイルが唯一の計算の出どころ。** eBay用ツールとShopee用ツールは
+   どちらもここを取り込んでビルドされるので、2つの画面で数字がずれることがない。
+   Python 側（blueocean/*.py）と同じ式で、tests/test_parity.py が突き合わせている。
+   DOM には一切触らない。設定は呼び出し側が平のオブジェクトで渡す。 */
+
+
+/* 数字の表示。core.js 内の判定文でも使うのでここに置く。 */
+const yen = n => Math.round(n).toLocaleString("ja-JP");
+
+/* ===== 市場ごとの手数料・関税・送料の既定値 ===== */
+const PROFILES = {
+  ebay_us:    {fee:.18, per:60, duty:.125, ship:3000, pack:200, label:"eBay 米国"},
+  ebay_eu:    {fee:.18, per:60, duty:0,    ship:3000, pack:200, label:"eBay 欧州"},
+  ebay_au:    {fee:.18, per:60, duty:0,    ship:3000, pack:200, label:"eBay 豪州"},
+  /* Shopee：販売+決済は各国 5.3〜7.0%（VAT込み表示）。為替・送金を足して実効8%。
+     出品ごとの固定費は無い。関税は原則購入者負担なので0。
+     送料は**セラー負担ぶん（国内の集荷場所まで）だけ**。国際送料とラストマイルは
+     SLSが処理するのでセラーの原価には乗らない。 */
+  shopee_sea: {fee:.08, per:0,  duty:0,    ship:800,  pack:200, label:"Shopee 東南ア"},
+  shopee_tw:  {fee:.08, per:0,  duty:0,    ship:800,  pack:200, label:"Shopee 台湾"},
+  shopee_sg:  {fee:.08, per:0,  duty:0,    ship:800,  pack:200, label:"Shopee シンガポール"},
+  shopee_my:  {fee:.08, per:0,  duty:0,    ship:800,  pack:200, label:"Shopee マレーシア"},
+  shopee_ph:  {fee:.08, per:0,  duty:0,    ship:800,  pack:200, label:"Shopee フィリピン"},
+};
+const IS_SHOPEE = m => String(m).startsWith("shopee");
+const LEVEL_ADJ = {top_rated:-.02, above_standard:0, below_standard:.06};
+
+/* ===== CSV ===== */
+function parseCsv(text){
+  const lines = text.trim().split(/\r?\n/).filter(l => l.trim() !== "");
+  if (!lines.length) return [];
+  const head = lines[0].split(",").map(s => s.trim());
+  return lines.slice(1).map(line => {
+    const cells = line.split(",");
+    const o = {};
+    head.forEach((h,i) => o[h] = (cells[i] ?? "").trim());
+    return o;
+  });
+}
+const truthy = v => ["1","true","yes","y"].includes(String(v||"").toLowerCase());
+
+
+
+/* ===== 抽出条件の組み立て =====
+   抽出そのものは eBay のAPIが要るのでこのページではできない。
+   だが**条件を決めるのは人の仕事**で、そこはここでできる。
+   決めた条件を jobs.json とコマンドの形で出し、Python版にそのまま渡す。 */
+
+/* ===== 送料エンジン（shipping.py と同一） ===== */
+const ZONE_OF   = {ebay_us:"zone4", ebay_eu:"zone3", ebay_au:"zone3",
+                   shopee_sea:"zone2", shopee_tw:"zone1", shopee_sg:"zone2",
+                   shopee_my:"zone2", shopee_ph:"zone2"};
+const ZONE_NAME = {zone1:"第1地帯（中国・韓国・台湾）", zone2:"第2地帯（アジア）",
+                   zone3:"第3地帯（欧州・豪州・北米※米国除く）", zone4:"第4地帯（米国）"};
+const VDIV    = {ems:null, parcel:6000, epacket:null, courier:5000, sls:6000};  /* null = 容積重量を採らない */
+const WMAX    = {ems:30000, parcel:30000, epacket:2000, courier:30000, sls:30000};
+const DMAX    = {ems:[150,300,null], parcel:[150,300,null], epacket:[60,null,90],
+                 courier:[274,330,null], sls:[150,300,null]};
+/* SLS は郵便の何割、という話ではない（_DOMESTIC_SIZE を使う）。形を揃えるためだけの値。 */
+const CFACTOR = {ems:1.00, parcel:0.80, epacket:0.55, courier:1.35, sls:1.00};
+/* SLSでセラーが負担するのは「国内送料（集荷場所まで）」だけ。国際送料とラストマイルは
+   SLSが処理し、関税・通関は原則購入者負担。eBay（DDPで関税も国際送料もセラー負担）とは
+   負担の構造が逆で、ここを取り違えるとプチプラ商品がすべて赤字に見える。
+   国内宅配便は重量ではなく三辺計のサイズ区分で決まる。 */
+const DOMESTIC_SIZE = [[60,800],[80,1000],[100,1250],[120,1500],[140,1750],[160,2000]];
+function domesticLegJpy(p){
+  if (p.g > 25000) return null;
+  const total = (p.l>0 && p.w>0 && p.h>0) ? (p.l+p.w+p.h) : 60;
+  for (const [lim, jpy] of DOMESTIC_SIZE) if (total <= lim) return jpy;
+  return null;
+}
+const CLABEL  = {ems:"EMS", parcel:"国際小包", epacket:"eパケット",
+                 courier:"UGX / FedEx / DHL", sls:"SLS（Shopee配送）"};
+const CARRIERS = ["ems","parcel","epacket","courier","sls"];
+const SLS_NOTICE = "SLSでセラーが負担するのは<b>国内送料（集荷場所まで）だけ</b>です。国際送料とラストマイル配送はSLSが処理し、関税・通関手数料は原則購入者負担。<b>eBay（DDPで関税も国際送料もセラー負担）とは負担の構造が逆</b>になります。国内送料は三辺計のサイズ区分で決まる概算で、月100件規模から佐川急便の集荷、800件規模でSPSの国内集荷料が無料になるため、数が出れば<b>この費用自体が消えます</b>。";
+/* SLSはShopeeに出品して初めて使える。一般の比較に混ぜると「選べない手段が最安」になる。 */
+const POSTAL_CARRIERS = ["ems","parcel","epacket","courier"];
+
+/* アンカー＝公表値として確認できた金額。その間は刻み幅から内挿する。
+   内挿値は必ず「推定」と表示し、事実として一人歩きさせない。 */
+function buildSteps(anchors, stepG, uptoG, inc){
+  const known = Object.keys(anchors).map(Number).sort((a,b)=>a-b);
+  const out = [];
+  let lastW = known[0], lastJ = anchors[known[0]];
+  for (let w = known[0]; w <= uptoG; w += stepG){
+    if (anchors[w] !== undefined){ lastW = w; lastJ = anchors[w]; out.push({w, jpy:anchors[w], anchor:true}); }
+    else out.push({w, jpy: Math.round(lastJ + inc*((w-lastW)/stepG)), anchor:false});
+  }
+  return out;
+}
+function emsTable(anchors, inc100, inc250){
+  const fine = buildSteps(anchors, 100, 1000, inc100);
+  const coarse = buildSteps({1000: fine[fine.length-1].jpy}, 250, 5000, inc250).slice(1)
+                 .map(b => ({...b, anchor:false}));
+  return fine.concat(coarse);
+}
+const EMS_TABLE = {
+  /* 第1地帯（中国・韓国・台湾）。第2地帯の刻みから比例で置いた推定値。 */
+  zone1: emsTable({500:1900}, 220, 180),
+  zone2: emsTable({500:2150,600:2400,700:2650,800:2900,900:3150}, 250, 200),
+  zone3: emsTable({500:3400,600:3650,700:3900,800:4150,900:4400}, 250, 310),
+  zone4: emsTable({500:4180,600:4460,700:4740,800:5020},          280, 350),
+};
+
+function volWeight(p, carrier){
+  const d = VDIV[carrier];
+  if (d === null || !(p.l>0 && p.w>0 && p.h>0)) return 0;
+  return Math.ceil(p.l*p.w*p.h/d*1000);
+}
+function chargeable(p, carrier){ return Math.max(p.g, volWeight(p, carrier)); }
+
+function overSize(p, carrier){
+  if (!(p.l>0 && p.w>0 && p.h>0)) return null;   /* 未入力は検査できない */
+  const [longest, girth, total] = DMAX[carrier];
+  const dims = [p.l,p.w,p.h].sort((a,b)=>b-a);
+  const g = dims[0] + 2*(dims[1]+dims[2]);
+  if (longest !== null && dims[0] > longest) return `最長辺 ${dims[0]}cm が上限 ${longest}cm を超過`;
+  if (girth   !== null && g > girth)         return `長さ+胴回り ${Math.round(g)}cm が上限 ${girth}cm を超過`;
+  if (total   !== null && p.l+p.w+p.h > total) return `三辺計 ${Math.round(p.l+p.w+p.h)}cm が上限 ${total}cm を超過`;
+  return null;
+}
+
+const US_NOTICE = "米国宛て：2025年8月のデミニミス（$800免税）撤廃を受け、日本郵便は物品を含む小形包装物・国際小包・EMS(物品)の引受を一時停止しました。2026年4月14日以降、米国税関が認証した事業者のアプリで関税を事前納付すれば指定郵便局で引受再開。その手当てが済むまで、米国宛ては UGX / FedEx / DHL で見積もってください。";
+
+/* 1手段の見積もり。使えない場合は {error} を返す。 */
+function quoteOne(p, zone, carrier){
+  if (carrier === "sls"){
+    const jpy = domesticLegJpy(p);
+    if (jpy === null) return {error:"SLS：三辺計または重量が国内宅配便の範囲外"};
+    const warnings = [SLS_NOTICE];
+    if (!(p.l>0 && p.w>0 && p.h>0))
+      warnings.unshift("寸法が未入力のため60サイズとみなしています。国内送料はサイズ区分で決まるので実寸を入れてください");
+    return {carrier, zone, jpy, actual:p.g, vol:0, chg:p.g,
+            estimated:true, warnings, byVolume:false};
+  }
+  const table = EMS_TABLE[zone];
+  if (!table) return {error:`${zone} の料金表が未登録`};
+  const os = overSize(p, carrier);
+  if (os) return {error:`${CLABEL[carrier]}：${os}`};
+  const chg = chargeable(p, carrier);
+  if (chg > WMAX[carrier]) return {error:`${CLABEL[carrier]}：課金重量 ${chg}g が上限 ${WMAX[carrier]}g を超過`};
+  const step = table.find(b => chg <= b.w);
+  if (!step) return {error:`料金表の上限 ${table[table.length-1].w}g を超過（課金重量 ${chg}g）`};
+
+  const warnings = [];
+  if (!(p.l>0 && p.w>0 && p.h>0) && VDIV[carrier] !== null)
+    warnings.push("寸法が未入力のため容積重量を評価していません。嵩張る商品では実際の送料が上振れします");
+  if (zone === "zone4" && carrier !== "courier") warnings.push(US_NOTICE);
+  const estimated = !step.anchor || CFACTOR[carrier] !== 1;
+  if (estimated) warnings.push("料金は内挿による推定値です。公式料金表で確認してから仕入判断に使ってください");
+
+  return {carrier, zone, jpy: Math.round(step.jpy*CFACTOR[carrier]),
+          actual:p.g, vol:volWeight(p,carrier), chg, estimated, warnings,
+          byVolume: volWeight(p,carrier) > p.g};
+}
+function quoteAll(p, zone, pool){
+  return (pool || POSTAL_CARRIERS).map(c => quoteOne(p, zone, c))
+    .filter(q => !q.error).sort((a,b)=>a.jpy-b.jpy);
+}
+/* Shopeeのときだけ SLS を候補に含める */
+const carrierPool = market => IS_SHOPEE(market) ? POSTAL_CARRIERS.concat("sls") : POSTAL_CARRIERS;
+function cheapestQuote(p, zone, pool){ const q = quoteAll(p, zone, pool); return q.length ? q[0] : null; }
+function parcelOf(g,l,w,h){ return {g:+g||0, l:+l||0, w:+w||0, h:+h||0}; }
+
+/* ===== 利益計算（profit.py と同一） ===== */
+function effFee(c){ return Math.max(0, c.fee + LEVEL_ADJ[c.level]); }
+
+function compute(priceUsd, costJpy, c){
+  const price = priceUsd * c.fx;
+  const fees  = price * effFee(c) + c.per;
+  const duty  = price * c.duty;
+  const refund = c.taxable ? costJpy * 0.10 / 1.10 : 0;
+  const profit = price - fees - duty - c.ship - c.pack - costJpy + refund;
+  return {price, fees, duty, ship:c.ship, pack:c.pack, cost:costJpy, refund, profit,
+          margin: price ? profit/price : 0};
+}
+function maxCost(priceUsd, c, target){
+  const t = target === undefined ? c.target : target;
+  const price = priceUsd * c.fx;
+  const fees  = price * effFee(c) + c.per;
+  const duty  = price * c.duty;
+  const k = c.taxable ? 0.10/1.10 : 0;
+  return Math.max(0, (price*(1-t) - fees - duty - c.ship - c.pack) / (1-k));
+}
+function reqMultiple(priceUsd, c, target){
+  const cap = maxCost(priceUsd, c, target);
+  return cap <= 0 ? Infinity : (priceUsd*c.fx)/cap;
+}
+
+
+/* ===== 荷物から送料を決める ===== */
+/* 荷物が入力されていれば、固定値ではなく実際の課金重量から送料を出す。
+   ここが「固定送料」との分かれ目。返り値は {ship, quote} 。 */
+function shipFor(c, parcel){
+  /* 「固定額」を選んだときは料金表を引かない。Python の --flat-shipping と同じ。
+     SLSの国内集荷料のように、規模で実額が変わる費用を自分で入れるための口。 */
+  if (c.carrier === "flat") return {ship:c.ship, quote:null};
+  if (!c.autoShip || !parcel || parcel.g <= 0) return {ship:c.ship, quote:null};
+  const qs = quoteAll(parcel, c.zone, carrierPool(c.market));
+  if (!qs.length) return {ship:null, quote:null};   /* 使える手段が無い */
+  /* Shopeeの越境では自分で国際発送しない。「最安を自動」でも SLS に寄せる。
+     ここを最安のままにすると、実際には選べない手段で採算を出してしまう。 */
+  const want = c.carrier !== "auto" ? c.carrier : (IS_SHOPEE(c.market) ? "sls" : null);
+  const q = want ? (qs.find(x => x.carrier === want) || null) : qs[0];
+  return q ? {ship:q.jpy, quote:q} : {ship:null, quote:null};
+}
+
+/* ===== 軸1の判定（scoring.py と同一） ===== */
+/* ===== 軸1（scoring.py と同一） ===== */
+/* eBayの主戦場は $200 前後の中古・コレクター品なので「$30未満は手数料と送料に食われる」
+   で正しい。だがShopeeの主戦場はプチプラの新品消耗品なので、$30の下限を当てると
+   売れ筋がほぼ全部落ちる。市場で下限を変える。 */
+const POLICY = {blueMax:5, redMin:30, maxWeight:2000, minPrice:30};
+const minPriceFor = m => IS_SHOPEE(m) ? 8 : 30;
+/* 判定の呼び名（画面に出す言葉）は UI 側（pick.js）が持つ。
+   ここは計算だけを持つ。 */
+
+function flipHint(verdict, n, demand, costRoom, floorPrice){
+  if (verdict === "blue"){
+    const p = [];
+    if (n !== null && n !== undefined) p.push(`競合があと${POLICY.redMin - n}件増えると見送り`);
+    if (floorPrice) p.push(`相場が $${floorPrice.toFixed(0)} まで下がると採算割れ`);
+    return p.join("／") || "余裕あり";
+  }
+  if (verdict === "thin")
+    return `仕入をあと ${yen(Math.abs(costRoom))}円 下げれば採算に乗る`
+         + (floorPrice ? `／相場が $${floorPrice.toFixed(0)} 以上に戻っても同じ` : "");
+  if (verdict === "red")
+    return `競合が ${POLICY.redMin - 1}件以下に減れば再評価。ただし競合数は自分では動かせない`;
+  if (verdict === "probe"){
+    if (!demand) return "需要の裏付けが取れれば BLUE。少量で出して軸2で確かめる";
+    if (n !== null && n !== undefined && n > POLICY.blueMax)
+      return `競合が ${POLICY.blueMax}件以下に減れば BLUE`;
+    return "需要が確定すれば BLUE";
+  }
+  return "";
+}
+
+function scoreOne(r, c){
+  const reasons = [];
+  const out = v => ({verdict:v, score:0, reasons, row:r, profit:null, cap:0,
+                     ship:null, quote:null, chg:0});
+
+  if (truthy(r.is_restricted)) { reasons.push("除外：" + (r.restricted_reason || "輸出規制・禁止品")); return out("excl"); }
+
+  // 重量の判定は「課金重量」で行う。実重量が軽くても嵩張れば送料は容積で決まる。
+  const parcel = parcelOf(r.weight_g, r.length_cm, r.width_cm, r.height_cm);
+  const w = parcel.g;
+  const chg = chargeable(parcel, c.carrier === "auto" ? "parcel" : c.carrier);
+  if (chg > POLICY.maxWeight) {
+    reasons.push(chg > w
+      ? `除外：容積重量 ${chg}g（実重量 ${w}g）が上限 ${POLICY.maxWeight}g を超過。軽いが嵩張るため送料で採算が崩れる`
+      : `除外：重量 ${w}g が上限 ${POLICY.maxWeight}g を超過`);
+    return out("excl");
+  }
+  const price = r.market_price_usd === "" ? null : +r.market_price_usd;
+  if (price === null || !isFinite(price) || price <= 0) { reasons.push("除外：eBay側の相場が未入力"); return out("excl"); }
+  const floorUsd = minPriceFor(c.market);
+  if (price < floorUsd) { reasons.push(`除外：想定売価 $${price} が下限 $${floorUsd} 未満`); return out("excl"); }
+
+  // 送料を先に確定する。送料が決まらないと採算は出せない。
+  const sf = shipFor(c, parcel);
+  if (sf.ship === null) {
+    reasons.push("除外：この重量・寸法で使える配送手段が無い（重量／寸法の上限超過）");
+    return out("excl");
+  }
+  const cc = {...c, ship: sf.ship};
+  if (sf.quote) {
+    reasons.push(`送料 ${yen(sf.quote.jpy)}円（${CLABEL[sf.quote.carrier]} / 課金重量 ${sf.quote.chg}g）`);
+    if (sf.quote.byVolume)
+      reasons.push(`送料は容積重量 ${sf.quote.chg}g で課金される（実重量 ${sf.quote.actual}g）。梱包を薄くすると直接効く`);
+    if (!(parcel.l>0 && parcel.w>0 && parcel.h>0))
+      reasons.push("寸法が未入力のため送料は実重量ベースの下振れ値");
+  }
+
+  const cost = +r.cost_incl_tax_jpy || 0;
+  const cap = maxCost(price, cc);
+  const profit = compute(price, cost, cc);
+
+  /* 走査の雛形は仕入値が空。0を「タダで買える」と解釈すると必ずBLUEになる */
+  const costUnknown = cost <= 0;
+  if (costUnknown) reasons.push("仕入値が未入力。判定は相場と競合だけに基づく暫定値");
+  if (cost > cap && !costUnknown){
+    reasons.push(`採算割れ：仕入 ${yen(cost)}円 が上限 ${yen(cap)}円 を ${yen(cost-cap)}円 超過`
+      + `（実績利益率 ${(profit.margin*100).toFixed(1)}%）`);
+    const fp = listPriceForMargin(cost, c.target, cc, cc.ship);
+    return {verdict:"thin", score:0, reasons, row:r, profit, cap,
+            ship:sf.ship, quote:sf.quote, chg,
+            /* THIN の文言は競合・需要を使わない（採算だけで決まる） */
+            flip: flipHint("thin", null, false, cap - cost, isFinite(fp) ? fp : null)};
+  }
+
+  const nRaw = r.competitor_count;
+  const n = nRaw === "" || nRaw === undefined ? null : +nRaw;
+  const demand = truthy(r.has_demand_signal);
+  let verdict;
+
+  if (n === null){ reasons.push("競合数が未入力のため PROBE に分類"); verdict = "probe"; }
+  else if (n >= POLICY.redMin){
+    reasons.push(`競合 ${n}件。価格競争に巻き込まれるため見送り`);
+    return {verdict:"red", score:0, reasons, row:r, profit, cap,
+            ship:sf.ship, quote:sf.quote, chg,
+            flip: flipHint("red", n, demand, cap - cost, null)};
+  }
+  else if (n === 0 && !demand){
+    reasons.push("競合0件だが需要の裏付けが無い。少量で反応を試す（軸2へ）");
+    verdict = "probe";
+  }
+  else if (n <= POLICY.blueMax){
+    reasons.push(`競合 ${n}件。値下げ圧力を受けにくい`);
+    verdict = demand ? "blue" : "probe";
+    if (!demand) reasons.push("需要の裏付けが無いため PROBE に据え置き");
+  }
+  else { reasons.push(`競合 ${n}件。ブルーではないが致命的でもない`); verdict = "probe"; }
+
+  /* 仕入値が未確定なら BLUE と言い切らない */
+  if (costUnknown && verdict === "blue") verdict = "probe";
+
+  /* 国内APIは重量を返さないので、商品名やカテゴリから当てて埋まっていることがある。
+     推定重量のまま BLUE を出すと、実物が届いて送料が倍になった時点で崩れる。
+     scoring.py の同じ規則と揃えてある。 */
+  if (truthy(r.weight_is_estimate) || truthy(r.cost_is_estimate)){
+    const what = [truthy(r.weight_is_estimate) ? "重量" : "",
+                  truthy(r.cost_is_estimate) ? "仕入値" : ""].filter(Boolean).join("・");
+    reasons.push(what + "が推定値"
+      + (r.estimate_note ? `（${r.estimate_note}）` : "")
+      + "。実測に置き換えるまで BLUE には上げない");
+    if (verdict === "blue") verdict = "probe";
+  }
+  if (w <= 0) reasons.push("重量が未入力。送料は最小重量帯の概算");
+  if (demand && r.demand_note) reasons.push("需要の裏付け：" + r.demand_note);
+
+  /* 何がこの判定を分けているか（scoring.py の _flip_hint と同一）。
+     判定を動かす変数は3つしかない：仕入値・競合数・相場。
+     このうち自分で動かせるのは仕入値だけなので、そこを優先して書く。 */
+  const floorPrice = listPriceForMargin(cost, c.target, cc, cc.ship);
+  const flip = flipHint(verdict, n, demand, cap - cost, isFinite(floorPrice) ? floorPrice : null);
+
+  const score = Math.max(0,
+      Math.min(profit.margin / (c.target || .2), 2) * 50
+    + 50 / (1 + (n || 0))
+    + (demand ? 20 : 0)
+    - (chg / POLICY.maxWeight) * 10);
+
+  return {verdict, score:Math.round(score*10)/10, reasons, row:r, profit, cap, flip,
+          ship:sf.ship, quote:sf.quote, chg};
+}
+
+/* ===== 履歴の差分（history.py と同一） ===== */
+const HKEY = (typeof TOOL_ID !== "undefined" ? TOOL_ID : "blueocean") + ".history";
+const RANK = {blue:4, probe:3, thin:2, red:1, excl:0};
+const DIFF = {compAbs:5, compRatio:.5, priceRatio:.10, staleDays:7};
+const CHANGE = {
+  downgrade:{cls:"red",  label:"判定悪化", act:"出品中なら価格と在庫を見直す。未出品なら見送りに回す"},
+  breach:   {cls:"red",  label:"採算割れ", act:"相場・為替・送料のどれかが動いた。仕入値を下げられないなら見送る"},
+  upgrade:  {cls:"good", label:"判定改善", act:"見送っていた候補が買えるようになった。仕入を再検討する"},
+  room:     {cls:"good", label:"採算回復", act:"採算が戻った。まだ在庫があるうちに動く"},
+  comp:     {cls:"probe",label:"競合変動", act:""},
+  price:    {cls:"probe",label:"相場変動", act:"出品中なら価格を追随させる"},
+  fresh:    {cls:"dim",  label:"新規追加", act:"初回なので、この判定がそのまま出発点になる"},
+  gone:     {cls:"dim",  label:"候補消滅", act:"売れた・取り下げたなら正常。消し忘れなら候補CSVを確認する"},
+};
+const CH_ORDER = ["downgrade","breach","upgrade","room","comp","price","fresh","gone"];
+const ACTIONABLE = new Set(["downgrade","breach","upgrade","room"]);
+
+function todayISO(){ const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+
+function snapshotOf(res){
+  return {takenOn: todayISO(), rows: res.map(r => ({
+    sku: r.row.sku || r.row.title_ja || "", title: r.row.title_ja || r.row.sku || "",
+    verdict: r.verdict, comp: r.row.competitor_count === "" ? null : +r.row.competitor_count,
+    price: r.row.market_price_usd === "" ? null : +r.row.market_price_usd,
+    cost: +r.row.cost_incl_tax_jpy || 0, cap: Math.round(r.cap),
+  }))};
+}
+const pct = (a,b) => a === 0 ? "—" : `${(b-a)/a*100 > 0 ? "+" : ""}${((b-a)/a*100).toFixed(0)}%`;
+
+function diffSnapshots(prev, cur){
+  const before = new Map((prev?.rows || []).map(r => [r.sku, r]));
+  const out = [], seen = new Set();
+  for (const c of cur.rows){
+    seen.add(c.sku);
+    const p = before.get(c.sku);
+    if (!p){ out.push({kind:"fresh", sku:c.sku, title:c.title, detail:`新規候補。判定 ${c.verdict.toUpperCase()}`}); continue; }
+
+    const pr = RANK[p.verdict] ?? 0, cr = RANK[c.verdict] ?? 0;
+    if (cr < pr) out.push({kind:"downgrade", sku:c.sku, title:c.title,
+      detail:`${p.verdict.toUpperCase()} → ${c.verdict.toUpperCase()}（${prev.takenOn} → ${cur.takenOn}）`});
+    else if (cr > pr) out.push({kind:"upgrade", sku:c.sku, title:c.title,
+      detail:`${p.verdict.toUpperCase()} → ${c.verdict.toUpperCase()}`});
+
+    /* 判定が変わらなくても採算は動く。仕入上限との関係を別に見る */
+    const wasOk = p.cost <= p.cap, nowOk = c.cost <= c.cap;
+    if (wasOk && !nowOk) out.push({kind:"breach", sku:c.sku, title:c.title,
+      detail:`仕入上限 ${yen(p.cap)}円 → ${yen(c.cap)}円。仕入 ${yen(c.cost)}円 が上限を超えた`});
+    else if (!wasOk && nowOk) out.push({kind:"room", sku:c.sku, title:c.title,
+      detail:`仕入上限 ${yen(p.cap)}円 → ${yen(c.cap)}円。仕入 ${yen(c.cost)}円 が上限内に戻った`});
+
+    if (p.comp !== null && c.comp !== null && p.comp !== c.comp){
+      const moved = Math.abs(c.comp-p.comp) >= DIFF.compAbs || (p.comp > 0 && Math.abs(c.comp-p.comp)/p.comp >= DIFF.compRatio);
+      if (moved) out.push({kind:"comp", sku:c.sku, title:c.title,
+        detail:`競合 ${p.comp}件 → ${c.comp}件（${pct(p.comp,c.comp)}）`,
+        act: c.comp > p.comp ? "増えているなら早く出す。値下げ競争が始まる前が勝負" : "減っている。出し直す価値がある"});
+    }
+    if (p.price && c.price && Math.abs(c.price-p.price)/p.price >= DIFF.priceRatio)
+      out.push({kind:"price", sku:c.sku, title:c.title,
+        detail:`相場 $${p.price.toFixed(0)} → $${c.price.toFixed(0)}（${pct(p.price,c.price)}）`});
+  }
+  for (const [sku,p] of before)
+    if (!seen.has(sku)) out.push({kind:"gone", sku, title:p.title,
+      detail:`今回の候補リストに無い（前回 ${prev.takenOn} は ${p.verdict.toUpperCase()}）`});
+
+  return out.sort((a,b) => CH_ORDER.indexOf(a.kind)-CH_ORDER.indexOf(b.kind) || a.sku.localeCompare(b.sku));
+}
+
+function daysBetween(aISO, bISO){ return Math.round((new Date(bISO) - new Date(aISO))/86400000); }
+
+/* 販売先の検索URLは市場ごとに違うので、ツール側（boot-*.js）が持つ。 */
+
+/* ===== 値決め（pricing.py と同一） ===== */
+function fixedCosts(cost, c, ship){
+  const k = c.taxable ? 0.10/1.10 : 0;
+  return c.per + ship + c.pack + cost * (1 - k);
+}
+function varRate(c){ return effFee(c) + c.duty; }
+
+/* P(1 − f − d − m) = Fo + S + K + C(1 − k) */
+function listPriceForMargin(cost, margin, c, ship){
+  const denom = 1 - varRate(c) - margin;
+  if (denom <= 0) return Infinity;
+  return fixedCosts(cost, c, ship) / denom / c.fx;
+}
+function breakevenFx(priceUsd, cost, c, ship){
+  const denom = 1 - varRate(c);
+  if (priceUsd <= 0 || denom <= 0) return Infinity;
+  return fixedCosts(cost, c, ship) / denom / priceUsd;
+}
+function breakevenDuty(priceUsd, cost, c, ship){
+  const pj = priceUsd * c.fx;
+  if (pj <= 0) return 0;
+  return Math.max(0, (pj * (1 - effFee(c)) - fixedCosts(cost, c, ship)) / pj);
+}
+/* (1−r)·利益 − r·損失 = 0 → r = 利益 /(利益 + 損失) */
+function returnImpact(priceUsd, cost, c, ship, opt){
+  const b = compute(priceUsd, cost, {...c, ship});
+  let loss = b.ship + c.pack + c.per;
+  if (opt.sellerPays) loss += b.ship;          /* 返送料は往路と同額とみなす */
+  if (!opt.recovered) loss += cost - b.refund;
+  const profit = b.profit;
+  const rate = profit > 0 ? profit / (profit + loss) : 0;
+  return {profit, loss, rate, oneIn: rate > 0 ? 1/rate : Infinity,
+          fragile: profit > 0 && loss > profit * 2, recovered: opt.recovered};
+}
+
+
+/* ===== セット販売（bundle.py と同一） ===== */
+function bundleShip(parcel, c){
+  const qs = quoteAll(parcel, c.zone, carrierPool(c.market));
+  if (!qs.length) return {jpy: c.ship, quotable: false, chg: parcel.g, byVol: false};
+  const q = c.carrier === "auto" ? qs[0] : (qs.find(x => x.carrier === c.carrier) || qs[0]);
+  return {jpy: q.jpy, quotable: true, chg: q.chg, byVol: q.byVolume};
+}
+
+function sellSeparately(items, c){
+  let rev=0, fees=0, duty=0, ship=0, pack=0, refund=0, profit=0, orders=0, dead=0;
+  const unsold = [];
+  for (const it of items){
+    if (!(it.solo > 0)){ unsold.push(it.name); dead += it.cost; continue; }
+    const s = bundleShip(parcelOf(it.g, it.l, it.w, it.h), c);
+    const b = compute(it.solo, it.cost, {...c, ship: s.jpy});
+    orders++; rev+=b.price; fees+=b.fees; duty+=b.duty; ship+=b.ship;
+    pack+=b.pack; refund+=b.refund; profit+=b.profit;
+  }
+  const cost = items.reduce((a,i)=>a+i.cost, 0);
+  /* 売れ残りの原価を引く。ここを引かないとセットとの比較が成立しない */
+  return {label:"個別に売る", orders, rev, fees, duty, ship, pack, cost, refund,
+          profit: profit - dead, unsold,
+          margin: rev ? (profit - dead)/rev : 0};
+}
+
+function sellAsBundle(items, setPrice, packParcel, c){
+  const s = bundleShip(packParcel, c);
+  const cost = items.reduce((a,i)=>a+i.cost, 0);
+  const b = compute(setPrice, cost, {...c, ship: s.jpy});
+  return {label:"セットで売る", orders:1, rev:b.price, fees:b.fees, duty:b.duty,
+          ship:b.ship, pack:b.pack, cost:b.cost, refund:b.refund, profit:b.profit,
+          unsold:[], margin:b.margin, quotable:s.quotable, chg:s.chg, byVol:s.byVol};
+}
+
+/* 個別売却と同じ利益を出すのに必要なセット売価。
+   P = (G + c + S + K + C − C·k) / (1 − f − d) */
+function breakevenSetPrice(items, packParcel, c){
+  const target = sellSeparately(items, c).profit;
+  const s = bundleShip(packParcel, c);
+  const cost = items.reduce((a,i)=>a+i.cost, 0);
+  const k = c.taxable ? 0.10/1.10 : 0;
+  const denom = 1 - effFee(c) - c.duty;
+  if (denom <= 0) return Infinity;
+  return Math.max(0, (target + c.per + s.jpy + c.pack + cost - cost*k) / denom / c.fx);
+}
+
+/* 表を作り直さずに判定セルだけ更新する（入力中のフォーカスを守る） */
+
+/* ===== eBayレポートの取り込み（ingest.py と同一） ===== */
+const ING_ALIAS = {
+  sku:      ["customlabel","customlabelsku","sku"],
+  item_id:  ["itemnumber","itemid","item"],
+  title:    ["title","itemtitle"],
+  listed_on:["startdate","starttime","startdatetime","listeddate"],
+  views:    ["views","viewcount","pageviews"],
+  watchers: ["watchers","watchcount"],
+  sold:     ["soldquantity","quantitysold","sold","totalsold"],
+};
+const MONTHS = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+const ingNorm = s => String(s||"").trim().toLowerCase().replace(/[^a-z0-9]/g,"");
+
+function ingPick(row, key){
+  const normed = {};
+  for (const k in row) if (k) normed[ingNorm(k)] = row[k];
+  for (const a of ING_ALIAS[key]) if (normed[a] !== undefined && String(normed[a]).trim())
+    return String(normed[a]).trim();
+  return "";
+}
+/* Aug-23-2026 10:12:33 PDT / 2026-08-23 / 08/23/2026 を吸収する */
+function ingDate(text){
+  const head = String(text||"").trim().split(/\s+/)[0].replace(/,$/,"");
+  if (!head) return null;
+  let m = head.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (m) return `${m[1]}-${String(m[2]).padStart(2,"0")}-${String(m[3]).padStart(2,"0")}`;
+  m = head.match(/^([A-Za-z]{3})[-\s](\d{1,2})[-,\s]+(\d{4})$/);
+  if (m && MONTHS[m[1].toLowerCase()])
+    return `${m[3]}-${String(MONTHS[m[1].toLowerCase()]).padStart(2,"0")}-${String(m[2]).padStart(2,"0")}`;
+  m = head.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (m) return `${m[3]}-${String(m[1]).padStart(2,"0")}-${String(m[2]).padStart(2,"0")}`;
+  return null;
+}
+const ingInt = t => { const n = parseFloat(String(t||"").replace(/,/g,"")); return isFinite(n) ? Math.trunc(n) : 0; };
+
+/* 貼られたテキストがeBayのレポートかどうかを見分ける */
+function looksLikeEbayReport(text){
+  const head = (text.split(/\r?\n/).slice(0,12).join(",")).toLowerCase();
+  const cells = head.split(",").map(ingNorm);
+  return cells.includes("itemnumber") ||
+    (cells.includes("customlabel") && (cells.includes("watchers") || cells.includes("views")));
+}
+function ingestEbayReport(text, observedOn){
+  const lines = text.split(/\r?\n/);
+  let start = 0;
+  for (let i = 0; i < Math.min(12, lines.length); i++){
+    const cells = lines[i].split(",").map(ingNorm);
+    if (cells.includes("itemnumber") || cells.includes("title")){ start = i; break; }
+  }
+  const rows = parseCsv(lines.slice(start).join("\n"));
+  const header = rows.length ? Object.keys(rows[0]).map(ingNorm) : [];
+  const missing = [["views","Views"],["watchers","Watchers"],["sold","Sold quantity"],
+                   ["listed_on","Start date"]]
+    .filter(([k]) => header.length && !ING_ALIAS[k].some(a => header.includes(a)))
+    .map(([,label]) => label);
+
+  const out = []; let noSku = 0, noDate = 0;
+  for (const r of rows){
+    const sku = ingPick(r,"sku") || ingPick(r,"item_id");
+    if (!sku){ noSku++; continue; }
+    const listed = ingDate(ingPick(r,"listed_on"));
+    if (!listed){ noDate++; continue; }
+    out.push({sku, title: ingPick(r,"title"), listed_on: listed, observed_on: observedOn,
+              views: String(ingInt(ingPick(r,"views"))),
+              watchers: String(ingInt(ingPick(r,"watchers"))),
+              sold: String(ingInt(ingPick(r,"sold")))});
+  }
+  return {rows: out, noSku, noDate, missing};
+}
+/* 同じSKU・同じ観測日は上書きし、それ以外は足す（取り直しても二重にならない） */
+function mergeObsRows(existing, fresh){
+  const key = o => o.sku + "|" + o.observed_on;
+  const map = new Map(existing.map(o => [key(o), o]));
+  fresh.forEach(o => map.set(key(o), o));
+  return [...map.values()].sort((a,b) =>
+    a.observed_on.localeCompare(b.observed_on) || a.sku.localeCompare(b.sku));
+}
+const OBS_COLS = ["sku","title","listed_on","observed_on","views","watchers","sold"];
+/* 観測はこの端末に貯める。毎週レポートを貼るだけで前回比が出るようにするため、
+   貼られたレポートで上書きせず、貯めてある行に足す。 */
+/* 保存先はツールごとに分ける。eBayの観測とShopeeの観測が混ざると
+   「先週から売れていない」の判断が壊れる。 */
+const OBSKEY = (typeof TOOL_ID !== "undefined" ? TOOL_ID : "blueocean") + ".obs";
+function loadObs(){
+  try{ const a = JSON.parse(localStorage.getItem(OBSKEY) || "[]"); return Array.isArray(a) ? a : []; }
+  catch(e){ return []; }
+}
+function saveObs(rows){
+  try{ localStorage.setItem(OBSKEY, JSON.stringify(rows)); return true; }catch(e){ return false; }
+}
+function obsRowsToCsv(rows){
+  const e = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g,'""')}"` : String(v ?? "");
+  return [OBS_COLS.join(",")].concat(rows.map(r => OBS_COLS.map(k => e(r[k])).join(","))).join("\n");
+}
+
+/* ===== 軸2の判定（promotion.py と同一） ===== */
+
+/* ===== 軸2（promotion.py と同一） ===== */
+const ACT = {
+  promote:{cls:"good", label:"PROMOTE", desc:"有在庫化する"},
+  reprice:{cls:"probe",label:"REPRICE", desc:"価格を見直す"},
+  retitle:{cls:"probe",label:"RETITLE", desc:"検索語を直す"},
+  drop:{cls:"red",     label:"DROP",    desc:"出品を畳む"},
+  keep:{cls:"dim",     label:"KEEP",    desc:"観察継続"},
+};
+const P2 = {promoteSold:1, promoteWatch:3, watchWindow:14, repriceViews:50,
+            retitleDays:30, retitleViews:10, dropDays:90};
+
+function decide(o){
+  const d = o.days, mk = (a,r) => ({action:a, reason:r, o});
+  if (o.sold >= P2.promoteSold)
+    return mk("promote", `${o.sold}件 販売済み。需要が確定したので有在庫化し、ハンドリングを1〜2日に短縮する`);
+  if (o.watchers >= P2.promoteWatch && d <= P2.watchWindow)
+    return mk("promote", `${d}日で ウォッチ${o.watchers}件。購入意欲のある層が付いている`);
+  if (o.views >= P2.repriceViews && o.watchers === 0)
+    return mk("reprice", `閲覧${o.views}件に対しウォッチ0。露出はあるので価格が原因`);
+  if (d >= P2.retitleDays && o.views < P2.retitleViews)
+    return mk("retitle", `${d}日で閲覧${o.views}件。露出不足。海外バイヤーが実際に打つ語彙にタイトルを組み直す`);
+  if (d >= P2.dropDays && o.sold === 0 && o.watchers === 0)
+    return mk("drop", `${d}日間 無反応。出品を終了して枠を空ける`);
+  return mk("keep", `観察継続（${d}日目）`);
+}
+
+
+/* ===== HTMLエスケープ ===== */
+function esc(s){ return String(s).replace(/[&<>"]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch])); }
+
+
+/* ===== grid.js ===== */
+/* 商品一覧。**この画面の主役。**
+   数千行を扱うので、見えている範囲だけを描く（仮想スクロール）。
+   全行を DOM に置くと 3,000 行あたりで入力のたびに固まる。
+
+   列の定義は呼び出し側が渡す。編集できる列はその場で書き換えて、
+   その行だけ計算し直す（全行の再計算はしない）。 */
+
+const GRID_BUF = 8;          /* 画面外に余分に描く行数 */
+
+function Grid(opts){
+  this.root      = opts.root;                 /* .grid-wrap */
+  this.cols      = opts.cols;
+  this.rows      = [];                        /* 元データ（編集で書き換わる） */
+  this.view      = [];                        /* 絞り込み・並べ替え後の添字 */
+  this.calc      = opts.calc;                 /* row -> {verdict, ...} */
+  this.onSelect  = opts.onSelect || function(){};
+  this.onChange  = opts.onChange || function(){};
+  this.sortKey   = opts.sortKey || "verdict";
+  this.sortDir   = 1;
+  this.q         = "";
+  this.only      = "";                        /* 判定での絞り込み */
+  this.sel       = -1;
+  this.calcCache = new Map();
+  this._build();
+}
+
+Grid.prototype._build = function(){
+  const self = this;
+  const width = this.cols.reduce((a,c) => a + c.w, 0);
+
+  this.root.innerHTML =
+    '<div class="grid-bar">'
+  +   '<input type="text" class="g-q" placeholder="商品名・型番で絞り込み">'
+  +   '<div class="tally g-tally"></div>'
+  +   '<span class="count g-count"></span>'
+  + '</div>'
+  + '<div class="gscroll g-scroll"><div class="gtable" style="width:' + width + 'px">'
+  +   '<div class="ghead g-head"></div>'
+  +   '<div class="gbody g-body"></div>'
+  + '</div></div>'
+  + '<div class="detail g-detail" hidden></div>';
+
+  this.$scroll = this.root.querySelector(".g-scroll");
+  this.$head   = this.root.querySelector(".g-head");
+  this.$body   = this.root.querySelector(".g-body");
+  this.$count  = this.root.querySelector(".g-count");
+  this.$tally  = this.root.querySelector(".g-tally");
+  this.$detail = this.root.querySelector(".g-detail");
+
+  this.$head.innerHTML = this.cols.map(function(c){
+    return '<div class="c" data-k="' + c.k + '" style="width:' + c.w + 'px"'
+         + (c.title ? ' title="' + esc(c.title) + '"' : '')
+         + '>' + esc(c.label) + '<span class="ar"></span></div>';
+  }).join("");
+
+  this.$head.addEventListener("click", function(e){
+    const c = e.target.closest(".c"); if (!c) return;
+    const k = c.dataset.k;
+    if (self.sortKey === k) self.sortDir *= -1;
+    else { self.sortKey = k; self.sortDir = 1; }
+    self.apply();
+  });
+
+  this.root.querySelector(".g-q").addEventListener("input", function(e){
+    self.q = e.target.value.trim().toLowerCase();
+    self.apply();
+  });
+
+  this.$scroll.addEventListener("scroll", function(){ self._paint(); });
+
+  /* 編集は行を作り直さずに値だけ差し替える。作り直すとフォーカスが飛ぶ。 */
+  this.$body.addEventListener("input", function(e){
+    const inp = e.target.closest("input[data-k]"); if (!inp) return;
+    const i = +inp.closest(".grow").dataset.i;
+    self.rows[i][inp.dataset.k] = inp.value;
+    self.calcCache.delete(i);
+    self._repaintRow(i);
+    self.onChange(self);
+  });
+
+  this.$body.addEventListener("click", function(e){
+    if (e.target.closest("input,a")) return;
+    const r = e.target.closest(".grow"); if (!r) return;
+    self.select(+r.dataset.i);
+  });
+};
+
+Grid.prototype.setRows = function(rows){
+  this.rows = rows;
+  this.calcCache.clear();
+  this.sel = -1;
+  this.$detail.hidden = true;
+  this.apply();
+};
+
+Grid.prototype.at = function(i){
+  if (!this.calcCache.has(i)) this.calcCache.set(i, this.calc(this.rows[i]));
+  return this.calcCache.get(i);
+};
+
+Grid.prototype.recalcAll = function(){
+  this.calcCache.clear();
+  this.apply();
+};
+
+const GRID_VORDER = {blue:0, probe:1, thin:2, red:3, excl:4};
+
+Grid.prototype.apply = function(){
+  const self = this;
+  const q = this.q, only = this.only;
+  this.view = [];
+  for (let i = 0; i < this.rows.length; i++){
+    if (q){
+      const hay = ((this.rows[i].title_ja || "") + " " + (this.rows[i].sku || "")).toLowerCase();
+      if (hay.indexOf(q) < 0) continue;
+    }
+    if (only && this.at(i).verdict !== only) continue;
+    this.view.push(i);
+  }
+
+  const col = this.cols.filter(function(c){ return c.k === self.sortKey; })[0];
+  const dir = this.sortDir;
+  this.view.sort(function(a,b){
+    const va = self._sortVal(a, col), vb = self._sortVal(b, col);
+    if (va === vb) return a - b;
+    if (va === null) return 1;              /* 空欄は常に最後 */
+    if (vb === null) return -1;
+    return (va < vb ? -1 : 1) * dir;
+  });
+
+  this.$head.querySelectorAll(".c").forEach(function(c){
+    c.querySelector(".ar").textContent =
+      c.dataset.k === self.sortKey ? (dir > 0 ? " ▲" : " ▼") : "";
+  });
+
+  this.$body.style.height = (this.view.length * 38) + "px";
+  this._renderTally();
+  this.$count.innerHTML = this.view.length === this.rows.length
+    ? "<b>" + this.rows.length.toLocaleString() + "</b> 件"
+    : "<b>" + this.view.length.toLocaleString() + "</b> / "
+      + this.rows.length.toLocaleString() + " 件";
+  this._paint();
+};
+
+Grid.prototype._sortVal = function(i, col){
+  if (!col) return 0;
+  const r = this.rows[i];
+  if (col.sort) return col.sort(r, this.at(i));
+  if (col.k === "verdict") return GRID_VORDER[this.at(i).verdict];
+  const v = r[col.k];
+  if (v === "" || v === undefined || v === null) return null;
+  return col.num ? +v : String(v);
+};
+
+Grid.prototype._renderTally = function(){
+  const self = this, n = {};
+  for (let i = 0; i < this.rows.length; i++){
+    const v = this.at(i).verdict;
+    n[v] = (n[v] || 0) + 1;
+  }
+  this.$tally.innerHTML = Object.keys(GRID_VORDER)
+    .filter(function(k){ return n[k]; })
+    .map(function(k){
+      const v = VERDICT[k];
+      return '<button data-v="' + k + '" aria-pressed="' + (self.only === k) + '"'
+           + ' style="color:var(--' + v.cls + ')" title="' + esc(v.desc) + '">'
+           + '<b>' + esc(v.label) + '</b>' + n[k] + '</button>';
+    }).join("");
+  this.$tally.querySelectorAll("button").forEach(function(b){
+    b.addEventListener("click", function(){
+      self.only = (self.only === b.dataset.v) ? "" : b.dataset.v;
+      self.apply();
+    });
+  });
+};
+
+Grid.prototype._paint = function(){
+  const top = this.$scroll.scrollTop;
+  const h   = this.$scroll.clientHeight;
+  const a   = Math.max(0, Math.floor(top / 38) - GRID_BUF);
+  const b   = Math.min(this.view.length, Math.ceil((top + h) / 38) + GRID_BUF);
+
+  if (!this.view.length){
+    this.$body.innerHTML = '<div class="gempty">'
+      + (this.rows.length ? "この条件に合う行がありません。" : "まだ商品がありません。①探す で読み込んでください。")
+      + '</div>';
+    return;
+  }
+  let out = "";
+  for (let v = a; v < b; v++) out += this._rowHtml(this.view[v], v);
+  this.$body.innerHTML = out;
+};
+
+Grid.prototype._rowHtml = function(i, v){
+  const r = this.rows[i], res = this.at(i);
+  const cells = this.cols.map(function(c){
+    return '<div class="c ' + (c.num ? "num" : "txt") + '" style="width:' + c.w + 'px">'
+         + c.cell(r, res, i) + '</div>';
+  }).join("");
+  return '<div class="grow' + (this.sel === i ? ' sel' : '') + '" data-i="' + i
+       + '" style="top:' + (v * 38) + 'px">' + cells + '</div>';
+};
+
+Grid.prototype._repaintRow = function(i){
+  const el = this.$body.querySelector('.grow[data-i="' + i + '"]');
+  if (!el) return;
+  const r = this.rows[i], res = this.at(i);
+  const cs = el.querySelectorAll(".c");
+  this.cols.forEach(function(c, k){
+    if (c.edit) return;                       /* 入力欄は触らない */
+    cs[k].innerHTML = c.cell(r, res, i);
+  });
+  if (this.sel === i) this._renderDetail(i);
+  this._renderTally();
+};
+
+Grid.prototype.select = function(i){
+  this.sel = i;
+  this._paint();                 /* 選択行に色を付ける */
+  this._renderDetail(i);
+  this.onSelect(this.rows[i], this.at(i), i);
+};
+
+Grid.prototype._renderDetail = function(i){
+  const r = this.rows[i], res = this.at(i);
+  const v = VERDICT[res.verdict];
+  this.$detail.hidden = false;
+  this.$detail.innerHTML =
+      '<h4><span class="v v-' + v.cls + '">' + esc(v.label) + '</span> '
+    + esc(r.title_ja || r.sku || "(名称なし)") + '</h4>'
+    + '<ul>' + res.reasons.map(function(x){ return "<li>" + esc(x) + "</li>"; }).join("") + '</ul>'
+    + (res.flip ? '<div class="flip">↕ ' + esc(res.flip) + '</div>' : "")
+    + (r.source_url ? '<p class="hint"><a href="' + esc(r.source_url)
+        + '" target="_blank" rel="noopener">仕入元を開く</a></p>' : "");
+};
+
+/* 表示ヘルパ */
+function gNum(v, suffix){
+  if (v === "" || v === null || v === undefined || isNaN(+v)) return '<span class="est">—</span>';
+  return (+v).toLocaleString("ja-JP") + (suffix || "");
+}
+function gEdit(k, v, ph){
+  return '<input data-k="' + k + '" value="' + esc(v == null ? "" : v) + '"'
+       + ' inputmode="decimal" placeholder="' + (ph || "") + '">';
+}
+
+
+/* ===== app.js ===== */
+/* 2つのツールで共通の土台。
+   ・設定は1か所（SETTINGS）。4画面すべてがここを見る。同じ数字を2回入れさせない。
+   ・画面は業務の順番でしか並べない。
+   ・保存は端末ローカル（localStorage）。外へは一切出さない。 */
+
+const $ = id => document.getElementById(id);
+/* yen は core.js が持っている（判定文でも使うため） */
+const CKEY = TOOL_ID + ".cfg";
+const RKEY = TOOL_ID + ".rows";
+
+/* ---------------- 設定 ---------------- */
+
+const SETTINGS = {
+  market: DEFAULT_MARKET,
+  level: "above_standard",
+  fx: 150,
+  target: 20,          /* % */
+  taxable: true,
+  carrier: "auto",
+  fee: null, duty: null, ship: null, pack: null, per: null,   /* null = 市場の既定値 */
+};
+
+function loadCfg(){
+  try{
+    const o = JSON.parse(localStorage.getItem(CKEY) || "{}");
+    Object.keys(SETTINGS).forEach(k => { if (o[k] !== undefined) SETTINGS[k] = o[k]; });
+  }catch(e){ /* 壊れていたら既定値で立ち上げる */ }
+  if (!PROFILES[SETTINGS.market]) SETTINGS.market = DEFAULT_MARKET;
+}
+function saveCfg(){
+  try{ localStorage.setItem(CKEY, JSON.stringify(SETTINGS)); }catch(e){}
+}
+
+/* core.js が期待する形に落とす。ここだけが設定の出口。 */
+function cfg(){
+  const m = SETTINGS.market, p = PROFILES[m];
+  const pick = (v, d) => (v === null || v === "" || v === undefined) ? d : +v;
+  return {
+    market:m, level:SETTINGS.level,
+    fx: +SETTINGS.fx || 150,
+    target: (+SETTINGS.target || 0) / 100,
+    fee: pick(SETTINGS.fee, p.fee * 100) / 100,
+    duty: pick(SETTINGS.duty, p.duty * 100) / 100,
+    ship: pick(SETTINGS.ship, p.ship),
+    pack: pick(SETTINGS.pack, p.pack),
+    per:  pick(SETTINGS.per,  p.per),
+    taxable: !!SETTINGS.taxable,
+    zone: ZONE_OF[m],
+    autoShip: true,
+    carrier: SETTINGS.carrier,
+  };
+}
+
+const LV_LABEL = {top_rated:"Top Rated", above_standard:"Above Standard",
+                  below_standard:"Below Standard"};
+
+function renderSetbar(){
+  const c = cfg();
+  const q = c.carrier === "flat" ? ("固定額 " + yen(c.ship) + "円")
+    : IS_SHOPEE(c.market) ? "SLS（国内送料のみ）"
+    : (c.carrier === "auto" ? "最安を自動" : CLABEL[c.carrier]);
+  $("setbar").innerHTML =
+      '市場 <b>' + esc(PROFILES[c.market].label) + '</b>'
+    + '<span>為替 <b>' + c.fx + '</b> 円/$</span>'
+    + '<span>目標利益率 <b>' + (c.target*100).toFixed(0) + '%</b></span>'
+    + '<span>配送 <b>' + esc(q) + '</b></span>'
+    + '<span>手数料 <b>' + (c.fee*100).toFixed(1) + '%</b></span>'
+    + (c.duty ? '<span>関税 <b>' + (c.duty*100).toFixed(1) + '%</b></span>' : "")
+    + '<span>' + (c.taxable ? "課税事業者（消費税還付あり）" : "免税事業者（還付なし）") + '</span>'
+    + (IS_SHOPEE(c.market) ? "" : '<span>' + esc(LV_LABEL[c.level]) + '</span>');
+}
+
+function buildSettingsForm(){
+  const wrap = $("set-form");
+  wrap.innerHTML =
+    '<div class="row">'
+  +  fSel("s-market", "販売先", Object.keys(PROFILES).map(k => [k, PROFILES[k].label]))
+  +  fSel("s-level", "eBayのセラーレベル", Object.keys(LV_LABEL).map(k => [k, LV_LABEL[k]]),
+          "手数料が上下します。Shopeeでは使いません")
+  +  fNum("s-fx", "為替（円/$）", "仕入も送料も円、売上はドル。ここが1円動くと利益が動きます")
+  +  fNum("s-target", "目標利益率（%）", "仕入上限の逆算に使う数字")
+  + '</div>'
+  + '<div class="row" style="margin-top:12px">'
+  +  fSel("s-carrier", "配送手段",
+          [["auto","最安を自動で選ぶ"]].concat(CARRIERS.map(c => [c, CLABEL[c]]))
+            .concat([["flat","固定額を使う（下の送料欄の値）"]]))
+  +  fNum("s-ship", "送料の固定額（円）",
+          "「固定額を使う」を選んだときだけ使います")
+  +  fNum("s-fee", "販売手数料（%）", "空欄なら市場の既定値")
+  +  fNum("s-duty", "関税（%）", "セラー負担ぶん。DDPでない市場は0")
+  +  fNum("s-pack", "梱包資材（円）", "1件あたり")
+  +  fNum("s-per", "注文ごとの固定費（円）", "eBayの $0.40 相当など")
+  + '</div>'
+  + '<label class="ck" style="margin-top:14px"><input type="checkbox" id="s-taxable">'
+  + '課税事業者として計算する（税込仕入の 10/110 が還付される前提）</label>'
+  + '<div class="btns"><button class="btn" id="s-apply">この条件で全部を計算し直す</button>'
+  + '<button class="btn ghost sm" id="s-reset">既定値に戻す</button></div>';
+
+  function fNum(id, label, why){
+    return '<div class="f"><label for="' + id + '">' + esc(label)
+         + (why ? ' <span class="why">' + esc(why) + '</span>' : "")
+         + '</label><input type="number" step="any" id="' + id + '"></div>';
+  }
+  function fSel(id, label, opts, why){
+    return '<div class="f"><label for="' + id + '">' + esc(label)
+         + (why ? ' <span class="why">' + esc(why) + '</span>' : "")
+         + '</label><select id="' + id + '">'
+         + opts.map(o => '<option value="' + o[0] + '">' + esc(o[1]) + '</option>').join("")
+         + '</select></div>';
+  }
+
+  fillSettingsForm();
+
+  $("s-market").addEventListener("change", () => {
+    SETTINGS.market = $("s-market").value;
+    /* 市場を変えたら料金の上書きは捨てる。前の市場の手数料が残ると事故になる。 */
+    SETTINGS.fee = SETTINGS.duty = SETTINGS.ship = SETTINGS.pack = SETTINGS.per = null;
+    SETTINGS.carrier = IS_SHOPEE(SETTINGS.market) ? "sls" : "auto";
+    fillSettingsForm(); applyAll();
+  });
+  $("s-apply").addEventListener("click", () => { readSettingsForm(); applyAll(); toast("計算し直しました"); });
+  $("s-reset").addEventListener("click", () => {
+    SETTINGS.fee = SETTINGS.duty = SETTINGS.ship = SETTINGS.pack = SETTINGS.per = null;
+    fillSettingsForm(); applyAll(); toast("既定値に戻しました");
+  });
+}
+
+function fillSettingsForm(){
+  const p = PROFILES[SETTINGS.market];
+  $("s-market").value = SETTINGS.market;
+  $("s-level").value = SETTINGS.level;
+  $("s-carrier").value = SETTINGS.carrier;
+  $("s-fx").value = SETTINGS.fx;
+  $("s-target").value = SETTINGS.target;
+  $("s-taxable").checked = !!SETTINGS.taxable;
+  $("s-fee").value  = SETTINGS.fee  === null ? (p.fee*100).toFixed(1) : SETTINGS.fee;
+  $("s-duty").value = SETTINGS.duty === null ? (p.duty*100).toFixed(1) : SETTINGS.duty;
+  $("s-ship").value = SETTINGS.ship === null ? p.ship : SETTINGS.ship;
+  $("s-pack").value = SETTINGS.pack === null ? p.pack : SETTINGS.pack;
+  $("s-per").value  = SETTINGS.per  === null ? p.per  : SETTINGS.per;
+  $("s-level").closest(".f").style.display = IS_SHOPEE(SETTINGS.market) ? "none" : "";
+}
+function readSettingsForm(){
+  SETTINGS.level   = $("s-level").value;
+  SETTINGS.carrier = $("s-carrier").value;
+  SETTINGS.fx      = +$("s-fx").value || 150;
+  SETTINGS.target  = +$("s-target").value || 0;
+  SETTINGS.taxable = $("s-taxable").checked;
+  SETTINGS.fee  = $("s-fee").value  === "" ? null : +$("s-fee").value;
+  SETTINGS.duty = $("s-duty").value === "" ? null : +$("s-duty").value;
+  SETTINGS.ship = $("s-ship").value === "" ? null : +$("s-ship").value;
+  SETTINGS.pack = $("s-pack").value === "" ? null : +$("s-pack").value;
+  SETTINGS.per  = $("s-per").value  === "" ? null : +$("s-per").value;
+}
+
+/* ---------------- 画面の切り替え ---------------- */
+
+function showScreen(id){
+  document.querySelectorAll(".screen").forEach(s =>
+    s.dataset.on = (s.id === "sc-" + id) ? "1" : "0");
+  document.querySelectorAll("nav.steps button").forEach(b =>
+    b.setAttribute("aria-current", String(b.dataset.sc === id)));
+  try{ localStorage.setItem(TOOL_ID + ".screen", id); }catch(e){}
+  window.scrollTo(0, 0);
+  if (typeof onScreen === "function") onScreen(id);
+}
+
+function toast(msg){
+  const t = $("toast");
+  t.textContent = msg; t.dataset.on = "1";
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.dataset.on = "0", 2200);
+}
+
+/* ---------------- 商品行 ---------------- */
+
+/* 一覧が持つ列。抽出CSVの列名をそのまま受ける。 */
+const ROW_KEYS = ["sku","title_ja","source_url","cost_incl_tax_jpy","weight_g",
+                  "length_cm","width_cm","height_cm","category","market_price_usd",
+                  "competitor_count","has_demand_signal","demand_note",
+                  "is_restricted","restricted_reason","image_url",
+                  "weight_is_estimate","cost_is_estimate","estimate_note","note"];
+
+function blankRow(){
+  const r = {}; ROW_KEYS.forEach(k => r[k] = ""); return r;
+}
+
+function saveRows(rows){
+  try{ localStorage.setItem(RKEY, JSON.stringify(rows)); return true; }
+  catch(e){ return false; }
+}
+function loadRows(){
+  try{
+    const a = JSON.parse(localStorage.getItem(RKEY) || "[]");
+    return Array.isArray(a) ? a : [];
+  }catch(e){ return []; }
+}
+
+/* 抽出CSV（domestic の書き出し）も候補CSVも、同じ一覧に流し込めるようにする。
+   列名が違うだけで中身は同じものなので、ここで名寄せする。 */
+const IMPORT_ALIAS = {
+  title: "title_ja", name: "title_ja", 商品名: "title_ja",
+  url: "source_url", item_url: "source_url",
+  price_jpy: "cost_incl_tax_jpy", cost: "cost_incl_tax_jpy", 仕入値: "cost_incl_tax_jpy",
+  weight_est_g: "weight_g", weight: "weight_g",
+  jan: "sku", item_code: "sku",
+  genre_name: "category",
+  image_urls: "image_url",
+};
+
+function importRows(text){
+  const raw = parseCsv(text);
+  if (!raw.length) return {rows:[], warnings:["読み取れる行がありませんでした。"]};
+
+  const warnings = [];
+  const rows = raw.map(o => {
+    const r = blankRow();
+    Object.keys(o).forEach(k0 => {
+      const k = IMPORT_ALIAS[k0] || k0;
+      if (ROW_KEYS.indexOf(k) >= 0 && (r[k] === "" || o[k0] !== "")) r[k] = o[k0];
+    });
+    if (!r.sku) r.sku = r.title_ja.slice(0, 40);
+    /* 推定重量の印は文字でも真偽でも来る */
+    r.weight_is_estimate = /^(yes|true|1|genre|unknown)$/i.test(String(r.weight_is_estimate)) ? "yes" : "";
+    r.cost_is_estimate   = /^(yes|true|1)$/i.test(String(r.cost_is_estimate)) ? "yes" : "";
+    return r;
+  }).filter(r => r.title_ja || r.sku);
+
+  /* 黙って落とさない。何が足りないかを数えて言う。 */
+  const noPrice  = rows.filter(r => !(+r.cost_incl_tax_jpy > 0)).length;
+  const noWeight = rows.filter(r => !(+r.weight_g > 0)).length;
+  const noMarket = rows.filter(r => !(+r.market_price_usd > 0)).length;
+  if (noPrice)  warnings.push(noPrice + "件は仕入値が空です。判定は暫定値のままになります。");
+  if (noWeight) warnings.push(noWeight + "件は重量が空です。送料が出せないので採算判定が出ません。");
+  if (noMarket) warnings.push(noMarket + "件は販売先の相場が空です。<b>相場を入れるまで採算は出ません。</b>③出す の手順で入れてください。");
+  const est = rows.filter(r => r.weight_is_estimate).length;
+  if (est) warnings.push(est + "件は重量が推定値（商品名やカテゴリからの当たり）です。実測に置き換えるまで最良でも「小さく試す」止まりになります。");
+  return {rows, warnings};
+}
+
+function rowsToCsv(rows){
+  const e = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g,'""') + '"' : String(v ?? "");
+  return [ROW_KEYS.join(",")]
+    .concat(rows.map(r => ROW_KEYS.map(k => e(r[k])).join(","))).join("\n");
+}
+
+/* ファイルの渡し方は置かれている場所で変わる。
+   ・claude.ai の閲覧画面：ページからの直接ダウンロードは塞がれているので、
+     downloads 機能を通して保存の確認を出す。
+   ・手元でHTMLを開いている場合：ふつうのブラウザ保存で足りる。
+   どちらも使えないときは、黙って何も起きないのではなく中身を出して拾わせる。 */
+async function download(name, text){
+  const hosted = typeof window.claude !== "undefined" && window.claude
+                 && typeof window.claude.use === "function";
+  if (hosted){
+    let dl = null;
+    try{ dl = await window.claude.use("downloads"); }catch(e){ dl = null; }
+    if (dl){
+      try{
+        await dl.save({filename:name, data:text});
+        toast("保存しました");
+        return;
+      }catch(e){
+        const code = e && e.code;
+        if (code === "declined"){ toast("保存を取りやめました"); return; }
+        if (code === "extension_not_enabled"){
+          /* .csv が許可されていない環境では .txt で渡す。中身は同じCSV。 */
+          try{
+            await dl.save({filename:name.replace(/\.csv$/i, ".txt"), data:text});
+            toast("保存しました（拡張子は .txt ですが中身はCSVです）");
+            return;
+          }catch(e2){ /* 下の手に落とす */ }
+        }
+      }
+    }
+    showCopyFallback(name, text);
+    return;
+  }
+  try{
+    const b = new Blob([text], {type:"text/csv;charset=utf-8"});
+    const u = URL.createObjectURL(b), a = document.createElement("a");
+    a.href = u; a.download = name; document.body.appendChild(a); a.click();
+    a.remove(); setTimeout(() => URL.revokeObjectURL(u), 1000);
+  }catch(e){
+    showCopyFallback(name, text);
+  }
+}
+
+/* 保存できない環境で「押したのに何も起きない」を作らないための逃げ道。 */
+function showCopyFallback(name, text){
+  let box = $("dl-fallback");
+  if (!box){
+    box = document.createElement("div");
+    box.id = "dl-fallback";
+    box.className = "panel";
+    box.style.cssText = "position:fixed;inset:auto 18px 18px 18px;max-width:900px;"
+      + "margin:0 auto;z-index:80;box-shadow:0 8px 40px rgba(0,0,0,.28);max-height:60vh;overflow:auto";
+    document.body.appendChild(box);
+  }
+  box.innerHTML = '<h3>' + esc(name) + ' <span class="sub">この環境ではファイル保存ができないので、'
+    + '中身をそのまま出しています</span></h3>'
+    + '<pre class="out" id="dl-text" style="max-height:34vh">' + esc(text) + '</pre>'
+    + '<div class="btns"><button class="btn sm" id="dl-copy">全部コピー</button>'
+    + '<button class="btn ghost sm" id="dl-close">閉じる</button></div>';
+  $("dl-copy").addEventListener("click", () => copyText($("dl-text"), "コピーしました"));
+  $("dl-close").addEventListener("click", () => box.remove());
+}
+
+/* 埋め込み表示ではクリップボードAPIが塞がれていることがある。
+   その場合は選択状態にして Ctrl+C で拾えるようにする。 */
+function copyText(el, msg){
+  const t = el.textContent;
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(() => toast(msg || "コピーしました"),
+                                          () => selectNode(el));
+  } else selectNode(el);
+}
+function selectNode(el){
+  const r = document.createRange(); r.selectNodeContents(el);
+  const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+  toast("選択しました。Ctrl+C（⌘C）でコピーしてください");
+}
+
+/* ---------------- 起動 ---------------- */
+
+function bootShell(){
+  loadCfg();
+  buildSettingsForm();
+  document.querySelectorAll("nav.steps button").forEach(b =>
+    b.addEventListener("click", () => showScreen(b.dataset.sc)));
+  let start = "find";
+  try{ start = localStorage.getItem(TOOL_ID + ".screen") || "find"; }catch(e){}
+  if (!$("sc-" + start)) start = "find";
+  showScreen(start);
+  renderSetbar();
+}
+
+
+/* ===== find.js ===== */
+/* ①探す の中身。両ツール共通。
+   ブラウザから他社APIは叩けない（CORS）ので、ここは条件を組み立てて
+   コマンドを出す係。実際の取得は PC 側の python -m blueocean.cli domestic。 */
+
+const PROV = {
+  rakuten: {label:"楽天市場", page:30, pages:100, env:"RAKUTEN_APP_ID", gap:1.05},
+  yahoo:   {label:"Yahoo!ショッピング", page:50, pages:20, env:"YAHOO_CLIENT_ID", gap:0.25},
+};
+
+function qSources(){
+  const s = [];
+  if ($("q-rakuten").checked) s.push("rakuten");
+  if ($("q-yahoo").checked) s.push("yahoo");
+  return s;
+}
+
+function qBands(low, high, n){
+  if (n < 2) return [[low, high]];
+  const lo = Math.max(low, 100);
+  if (lo >= high) return [[low, high]];
+  const ratio = Math.pow(high / lo, 1 / n);
+  const edges = [lo];
+  for (let i = 1; i < n; i++) edges.push(Math.floor(lo * Math.pow(ratio, i)));
+  edges.push(high);
+  const out = [];
+  for (let i = 0; i < edges.length - 1; i++){
+    const a = out.length ? out[out.length-1][1] + 1 : edges[i];
+    if (edges[i+1] > a) out.push([a, edges[i+1]]);
+  }
+  if (out.length) out[0][0] = low;
+  return out;
+}
+
+function renderFindPlan(){
+  const srcs = qSources();
+  const min = +$("q-min").value || 0, max = +$("q-max").value || 0;
+  const split = Math.max(1, +$("q-split").value || 1);
+  const want = Math.max(1, +$("q-max-items").value || 1);
+  const bands = qBands(min, max, split);
+  const out = [];
+
+  if (!srcs.length){
+    $("q-plan").innerHTML = '<div class="warn stop"><b>取得元が選ばれていません。</b>楽天かYahoo!のどちらかにチェックを入れてください。</div>';
+    $("q-cmd").textContent = "";
+    return;
+  }
+  if (!$("q-keyword").value.trim() && !$("q-genre").value.trim()){
+    out.push('<div class="warn stop"><b>キーワードかジャンルIDのどちらかは必要です。</b>どちらのAPIも「条件なしで全件」は返してくれません。</div>');
+  }
+
+  /* 窓の上限。ここを黙っていると「採れたつもり」で取りこぼす。 */
+  let rows = "";
+  let total = 0;
+  srcs.forEach(s => {
+    const p = PROV[s], win = p.page * p.pages;
+    const per = Math.min(want, win);
+    const calls = Math.ceil(per / p.page) * bands.length;
+    const secs = Math.round(calls * p.gap);
+    total += per * bands.length;
+    rows += '<tr><td>' + esc(p.label) + '</td>'
+      + '<td class="num">' + win.toLocaleString() + '</td>'
+      + '<td class="num">' + (per * bands.length).toLocaleString() + '</td>'
+      + '<td class="num">' + calls.toLocaleString() + '</td>'
+      + '<td class="num">' + (secs >= 60 ? Math.floor(secs/60) + "分" + (secs%60) + "秒" : secs + "秒") + '</td></tr>';
+    if (want > win)
+      out.push('<div class="warn"><b>' + esc(p.label) + 'は1クエリ ' + win.toLocaleString()
+        + '件までしか辿れません。</b>' + want.toLocaleString() + '件を指定しても '
+        + win.toLocaleString() + '件で打ち切られます。価格帯の分割数を増やすと、'
+        + '帯ごとに別の窓になるので先まで採れます。</div>');
+  });
+
+  out.push('<div class="scrollx"><table class="mini"><thead><tr>'
+    + '<th>取得元</th><th>1クエリの上限</th><th>この条件で採れる上限</th>'
+    + '<th>リクエスト数</th><th>おおよその所要</th></tr></thead><tbody>'
+    + rows + '</tbody></table></div>');
+
+  if (split > 1){
+    out.push('<p class="hint">価格帯の分割：'
+      + bands.map(b => b[0].toLocaleString() + "〜" + b[1].toLocaleString() + "円").join(" / ")
+      + '<br>安い側ほど商品が密なので、等分ではなく等比で割っています。</p>');
+  }
+  if ($("q-postage").checked)
+    out.push('<p class="hint">送料込みのみに絞ると原価が確定しますが、母数はかなり減ります。Yahoo!側にはこの絞り込みが無いので、楽天だけに効きます。</p>');
+
+  $("q-plan").innerHTML = out.join("");
+  renderFindCmd();
+}
+
+function renderFindCmd(){
+  const g = id => $(id).value.trim();
+  const a = ["python -m blueocean.cli domestic search"];
+  a.push("--source " + qSources().join(","));
+  if (g("q-keyword")) a.push('--keyword "' + g("q-keyword").replace(/"/g,'\\"') + '"');
+  if (g("q-ng"))      a.push('--ng-keyword "' + g("q-ng").replace(/"/g,'\\"') + '"');
+  if (g("q-genre"))   a.push("--genre-id " + g("q-genre"));
+  if (g("q-min"))     a.push("--min-price " + g("q-min"));
+  if (g("q-max"))     a.push("--max-price " + g("q-max"));
+  if ($("q-cond").value !== "any") a.push("--condition " + $("q-cond").value);
+  a.push("--sort " + $("q-sort").value);
+  a.push("--max-items " + (g("q-max-items") || 300));
+  if (+g("q-split") > 1) a.push("--split-price " + g("q-split"));
+  if (+g("q-ship") > 0)  a.push("--domestic-shipping " + g("q-ship"));
+  if (!$("q-stock").checked) a.push("--include-out-of-stock");
+  if ($("q-postage").checked) a.push("--postage-included");
+  a.push("--out items.csv");
+  a.push("--candidates-out candidates.csv");
+  $("q-cmd").textContent = a.join(" \\\n  ");
+  $("q-note").textContent = "実行前に " + qSources().map(s => PROV[s].env).join(" と ")
+    + " を設定してください。--dry-run を足すと、叩かずに送るパラメータだけ確認できます。";
+}
+
+function bootFind(applyRows){
+  ["q-keyword","q-ng","q-genre","q-min","q-max","q-split","q-max-items",
+   "q-cond","q-sort","q-ship"].forEach(id =>
+    $(id).addEventListener("input", renderFindPlan));
+  ["q-rakuten","q-yahoo","q-stock","q-postage","q-cond","q-sort"].forEach(id =>
+    $(id).addEventListener("change", renderFindPlan));
+  $("q-copy").addEventListener("click", () => copyText($("q-cmd"), "コマンドをコピーしました"));
+
+  function doImport(append){
+    const text = $("imp-text").value.trim();
+    if (!text){ $("imp-out").innerHTML = '<div class="warn stop"><b>読み込む中身がありません。</b>CSVを貼るか、ファイルを選んでください。</div>'; return; }
+    const r = importRows(text);
+    if (!r.rows.length){
+      $("imp-out").innerHTML = '<div class="warn stop"><b>1行も読み取れませんでした。</b>1行目が列名になっているか確かめてください。</div>';
+      return;
+    }
+    applyRows(r.rows, append);
+    $("imp-out").innerHTML =
+        '<div class="warn ok"><b>' + r.rows.length.toLocaleString() + '件を読み込みました。</b>'
+      + '②選ぶ に移ると一覧で見られます。</div>'
+      + (r.warnings.length
+          ? '<div class="warn"><b>読み込みで足りなかったもの</b><ul>'
+            + r.warnings.map(w => "<li>" + w + "</li>").join("") + '</ul></div>'
+          : "");
+    toast(r.rows.length.toLocaleString() + "件を読み込みました");
+  }
+  $("imp-run").addEventListener("click", () => doImport(false));
+  $("imp-add").addEventListener("click", () => doImport(true));
+  $("imp-file").addEventListener("change", e => {
+    const f = e.target.files[0]; if (!f) return;
+    const fr = new FileReader();
+    fr.onload = () => { $("imp-text").value = fr.result; doImport(false); };
+    fr.readAsText(f, "utf-8");
+  });
+  $("imp-sample").addEventListener("click", () => {
+    $("imp-text").value = SAMPLE_ROWS; doImport(false);
+  });
+  renderFindPlan();
+}
+
+
+/* ===== pick.js ===== */
+/* ②選ぶ の中身。列の定義と一覧の組み立て。
+   「すべての列を出す」指定なので全部出すが、横に並べたときに読めるよう
+   幅と揃えは列ごとに決めている。数字は等幅・右揃え。 */
+
+let GRID = null;
+
+/* 判定の呼び名は業務の言葉にする。「PROBE」は画面に出さない。 */
+const VERDICT = {
+  blue:  {cls:"blue",  label:"出せる",     desc:"目標利益率・競合・需要のすべてが揃っている"},
+  probe: {cls:"probe", label:"小さく試す", desc:"どれかが未確定。1〜2点で反応を見る"},
+  thin:  {cls:"thin",  label:"採算割れ",   desc:"仕入値が上限を超えている"},
+  red:   {cls:"red",   label:"見送り",     desc:"競合が多く値下げ競争になる"},
+  excl:  {cls:"excl",  label:"除外",       desc:"規制品・重量超過・相場未入力など"},
+};
+
+function pickCols(){
+  const c = cfg();
+  const cols = [
+    {k:"image_url", label:"写真", w:44, title:"仕入元の画像。型番違いを掴まないための現物照合用",
+     cell:r => r.image_url
+       ? '<img src="' + esc(r.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">'
+       : '<span class="est">—</span>'},
+
+    {k:"title_ja", label:"商品名", w:250,
+     cell:r => '<span title="' + esc(r.title_ja) + '">' + esc(r.title_ja || r.sku || "(名称なし)") + '</span>'},
+
+    {k:"cost_incl_tax_jpy", label:"仕入値(円)", w:92, num:true, edit:true,
+     title:"税込。ここを動かすと判定が変わります",
+     cell:r => gEdit("cost_incl_tax_jpy", r.cost_incl_tax_jpy)},
+
+    {k:"weight_g", label:"重量(g)", w:80, num:true, edit:true, title:"梱包後の実重量",
+     cell:r => gEdit("weight_g", r.weight_g)},
+
+    {k:"length_cm", label:"縦", w:52, num:true, edit:true, cell:r => gEdit("length_cm", r.length_cm)},
+    {k:"width_cm",  label:"横", w:52, num:true, edit:true, cell:r => gEdit("width_cm", r.width_cm)},
+    {k:"height_cm", label:"高", w:52, num:true, edit:true, cell:r => gEdit("height_cm", r.height_cm)},
+
+    {k:"chg", label:"課金重量", w:86, num:true,
+     title:"実重量と容積重量の大きいほう。送料はこれで決まります",
+     sort:(r,res) => res.chg || null,
+     cell:(r,res) => {
+       if (!res.chg) return '<span class="est">—</span>';
+       const vol = res.quote && res.quote.byVolume;
+       return (vol ? '<span class="est" title="容積で課金されています">▲</span> ' : "")
+            + res.chg.toLocaleString() + "g";
+     }},
+
+    {k:"ship", label:"送料(円)", w:86, num:true,
+     title:"課金重量から出した実額。使える手段が無ければ空欄になります",
+     sort:(r,res) => res.ship === null || res.ship === undefined ? null : res.ship,
+     cell:(r,res) => res.ship == null ? '<span class="est">—</span>'
+       : '<span title="' + esc(res.quote ? CLABEL[res.quote.carrier] : "") + '">'
+         + yen(res.ship) + '</span>'},
+
+    {k:"market_price_usd", label:"相場($)", w:82, num:true, edit:true,
+     title:"売却済みの中央値。出品中の価格ではありません",
+     cell:r => gEdit("market_price_usd", r.market_price_usd)},
+
+    {k:"competitor_count", label:"競合数", w:70, num:true, edit:true,
+     title:"出品中の件数", cell:r => gEdit("competitor_count", r.competitor_count)},
+
+    {k:"has_demand_signal", label:"需要", w:58,
+     title:"売却実績を実際に見たときだけ yes。ここが空だと「出せる」に上がりません",
+     sort:r => truthy(r.has_demand_signal) ? 0 : 1,
+     cell:(r,res,i) => '<input type="checkbox" data-ck="' + i + '"'
+        + (truthy(r.has_demand_signal) ? " checked" : "")
+        + ' style="width:auto;margin:0 auto">'},
+
+    {k:"cap", label:"仕入上限(円)", w:100, num:true,
+     title:"目標利益率を満たす税込の仕入上限",
+     sort:(r,res) => res.cap || null,
+     cell:(r,res) => res.cap ? yen(res.cap) : '<span class="est">—</span>'},
+
+    {k:"profit", label:"利益(円)", w:92, num:true,
+     sort:(r,res) => res.profit ? res.profit.profit : null,
+     cell:(r,res) => {
+       if (!res.profit) return '<span class="est">—</span>';
+       const p = res.profit.profit;
+       return '<span style="color:var(--' + (p >= 0 ? "blue" : "red") + ')">' + yen(p) + '</span>';
+     }},
+
+    {k:"margin", label:"利益率", w:74, num:true,
+     sort:(r,res) => res.profit ? res.profit.margin : null,
+     cell:(r,res) => res.profit ? (res.profit.margin*100).toFixed(1) + "%" : '<span class="est">—</span>'},
+
+    {k:"verdict", label:"判定", w:96,
+     cell:(r,res) => {
+       const v = VERDICT[res.verdict];
+       return '<span class="v v-' + v.cls + '">' + esc(v.label) + '</span>';
+     }},
+
+    {k:"flip", label:"あと何を動かせば変わるか", w:290,
+     sort:(r,res) => res.flip || null,
+     cell:(r,res) => res.flip
+       ? '<span title="' + esc(res.flip) + '">' + esc(res.flip) + '</span>'
+       : '<span class="est">—</span>'},
+
+    {k:"estimate_note", label:"推定の根拠", w:190,
+     title:"重量や原価を推測で埋めた場合、その根拠",
+     cell:r => r.estimate_note
+       ? '<span class="est" title="' + esc(r.estimate_note) + '">' + esc(r.estimate_note) + '</span>'
+       : '<span class="est">—</span>'},
+
+    {k:"source_url", label:"仕入元", w:58,
+     cell:r => r.source_url
+       ? '<a href="' + esc(r.source_url) + '" target="_blank" rel="noopener">開く</a>'
+       : '<span class="est">—</span>'},
+
+    {k:"search", label:"販売先で見る", w:100,
+     sort:() => 0,
+     /* リンクの文言はツールごとに違う。Shopee には「売却済みだけ」の検索が無い
+        ので、そこで「売却済みを検索」と書くと嘘になる。 */
+     cell:r => '<a href="' + esc(searchUrlFor(r.title_ja || r.sku, cfg().market))
+       + '" target="_blank" rel="noopener">' + SEARCH_LINK_LABEL + '</a>'},
+  ];
+  return cols;
+}
+
+function bootPick(){
+  GRID = new Grid({
+    root: $("pick-grid"),
+    cols: pickCols(),
+    calc: r => scoreOne(r, cfg()),
+    onChange: g => { saveRows(g.rows); scheduleRecount(g); },
+  });
+
+  /* チェックボックスは Grid の共通処理に乗らないのでここで拾う。 */
+  $("pick-grid").addEventListener("change", e => {
+    const ck = e.target.closest("input[data-ck]"); if (!ck) return;
+    const i = +ck.dataset.ck;
+    GRID.rows[i].has_demand_signal = ck.checked ? "yes" : "";
+    GRID.calcCache.delete(i);
+    GRID._repaintRow(i);
+    saveRows(GRID.rows);
+  });
+
+  $("pk-recalc").addEventListener("click", () => { GRID.recalcAll(); toast("計算し直しました"); });
+  $("pk-add").addEventListener("click", () => {
+    GRID.rows.push(blankRow()); GRID.calcCache.clear(); GRID.apply(); saveRows(GRID.rows);
+  });
+  $("pk-csv").addEventListener("click", () => {
+    if (!GRID.rows.length){ toast("書き出す行がありません"); return; }
+    download(TOOL_ID + "-candidates.csv", rowsToCsv(GRID.rows));
+  });
+  $("pk-clear").addEventListener("click", () => {
+    if (!GRID.rows.length) return;
+    if (!confirm(GRID.rows.length + "件を全部消します。よろしいですか？")) return;
+    setRows([]); toast("消しました");
+  });
+
+  $("pk-market-link").innerHTML = MARKET_SEARCH_HINT;
+  setRows(loadRows());
+}
+
+/* 判定の内訳が変わったら集計だけ引き直す。入力のたびに全行を回すと重い。 */
+let _recountT = null;
+function scheduleRecount(g){
+  clearTimeout(_recountT);
+  _recountT = setTimeout(() => g._renderTally(), 250);
+}
+
+function setRows(rows, append){
+  const all = append ? GRID.rows.concat(rows) : rows;
+  GRID.setRows(all);
+  saveRows(all);
+  renderPickWarn(all);
+}
+
+function renderPickWarn(rows){
+  const out = [];
+  const noMarket = rows.filter(r => !(+r.market_price_usd > 0)).length;
+  const est = rows.filter(r => truthy(r.weight_is_estimate)).length;
+  if (noMarket)
+    out.push('<div class="warn"><b>' + noMarket.toLocaleString()
+      + '件は相場が空です。</b>相場が無いと採算は出せないので、これらは「除外」に並びます。'
+      + '一覧の右端「' + SEARCH_LINK_LABEL + '」から埋めてください。</div>');
+  if (est)
+    out.push('<div class="warn"><b>' + est.toLocaleString()
+      + '件は重量が推定値です。</b>国内ショップのAPIは重量も寸法も返さないので、'
+      + '商品名やカテゴリから当てています。実測に置き換えるまで、最良でも「小さく試す」までしか上がりません。</div>');
+  if (typeof extraPickWarn === "function") out.push(extraPickWarn(rows) || "");
+  $("pick-warn").innerHTML = out.join("");
+}
+
+
+/* ===== list-ebay.js ===== */
+/* ③出す（eBay）。値決めとセット販売。 */
+
+function bootListEbay(){
+  $("lp-run").addEventListener("click", renderListPrice);
+  $("bd-run").addEventListener("click", renderBundle);
+  renderListPrice(); renderBundle();
+}
+
+/* ②選ぶ で行を選んだら、その数字を持ってくる。同じ数字を2回入れさせない。 */
+function fillListFromRow(r){
+  if (!r) return;
+  $("lp-cost").value  = r.cost_incl_tax_jpy || "";
+  $("lp-g").value     = r.weight_g || "";
+  $("lp-l").value     = r.length_cm || "";
+  $("lp-w").value     = r.width_cm || "";
+  $("lp-h").value     = r.height_cm || "";
+  $("lp-price").value = r.market_price_usd || "";
+  $("lp-who").textContent = "選択中：" + (r.title_ja || r.sku || "");
+  renderListPrice();
+}
+
+function renderListPrice(){
+  const c = cfg();
+  const cost = +$("lp-cost").value || 0;
+  const parcel = parcelOf($("lp-g").value, $("lp-l").value, $("lp-w").value, $("lp-h").value);
+  const sf = shipFor(c, parcel);
+
+  if (sf.ship === null){
+    $("lp-out").innerHTML = '<div class="warn stop"><b>この重量・寸法で使える配送手段がありません。</b>重量か寸法が上限を超えています。梱包を見直すか、別の手段を設定で選んでください。</div>';
+    return;
+  }
+  const cc = {...c, ship: sf.ship};
+  const floor = listPriceForMargin(cost, c.target, cc, sf.ship);
+  const asked = +$("lp-price").value || 0;
+  const use = asked > 0 ? asked : floor;
+
+  if (!isFinite(floor)){
+    $("lp-out").innerHTML = '<div class="warn stop"><b>この条件では目標利益率に届く売価が存在しません。</b>手数料と関税の合計が目標利益率を食い切っています。目標を下げるか、市場を変えてください。</div>';
+    return;
+  }
+
+  const b = compute(use, cost, cc);
+  const ri = returnImpact(use, cost, c, sf.ship, {sellerPays:true, recovered:true});
+  const riLost = returnImpact(use, cost, c, sf.ship, {sellerPays:true, recovered:false});
+  const fx = breakevenFx(use, cost, c, sf.ship);
+  const duty = breakevenDuty(use, cost, c, sf.ship);
+
+  const rows = [
+    ["売価", yen(b.price) + "円", "$" + use.toFixed(2)],
+    ["販売手数料", "−" + yen(b.fees) + "円", (effFee(cc)*100).toFixed(1) + "%＋固定 " + yen(c.per) + "円"],
+    ["関税（セラー負担）", "−" + yen(b.duty) + "円", (c.duty*100).toFixed(1) + "%"],
+    ["送料", "−" + yen(b.ship) + "円",
+      sf.quote ? CLABEL[sf.quote.carrier] + " / 課金重量 " + sf.quote.chg + "g"
+        + (sf.quote.byVolume ? "（容積で課金）" : "") : "固定値"],
+    ["梱包", "−" + yen(b.pack) + "円", ""],
+    ["仕入", "−" + yen(b.cost) + "円", ""],
+    ["消費税還付", "＋" + yen(b.refund) + "円", c.taxable ? "税込仕入の 10/110" : "免税事業者なので0"],
+    ["<b>手残り</b>", "<b>" + yen(b.profit) + "円</b>", "<b>利益率 " + (b.margin*100).toFixed(1) + "%</b>"],
+  ];
+
+  const ladder = [0, .05, .10, .15, .20].map(d => {
+    const p = use * (1-d);
+    const x = compute(p, cost, cc);
+    return {d, p, m: x.margin, ok: x.margin >= c.target};
+  });
+
+  $("lp-out").innerHTML =
+      '<div class="warn ' + (b.margin >= c.target ? "ok" : (b.profit > 0 ? "" : "stop")) + '">'
+    + (asked > 0
+        ? '<b>$' + use.toFixed(2) + ' で出すと、手残りは ' + yen(b.profit) + '円（利益率 '
+          + (b.margin*100).toFixed(1) + '%）。</b>'
+          + (b.margin >= c.target ? "目標を満たしています。"
+             : "目標 " + (c.target*100).toFixed(0) + "% には届きません。下限は $"
+               + floor.toFixed(2) + " です。")
+        : '<b>目標利益率 ' + (c.target*100).toFixed(0) + '% を満たす下限は $'
+          + floor.toFixed(2) + '（' + yen(floor*c.fx) + '円）。</b>'
+          + 'これより下げると目標を割ります。')
+    + '</div>'
+
+    + '<div class="cols">'
+    + '<div><h3 style="font-size:13px;margin:14px 0 6px">内訳</h3>'
+    + '<div class="scrollx"><table class="mini"><tbody>'
+    + rows.map(r => '<tr><td>' + r[0] + '</td><td class="num">' + r[1] + '</td>'
+        + '<td class="hint">' + r[2] + '</td></tr>').join("")
+    + '</tbody></table></div></div>'
+
+    + '<div><h3 style="font-size:13px;margin:14px 0 6px">値下げの余地</h3>'
+    + '<div class="scrollx"><table class="mini"><thead><tr><th>値引き</th>'
+    + '<th class="num">売価</th><th class="num">利益率</th><th></th></tr></thead><tbody>'
+    + ladder.map(l => '<tr><td>' + (l.d*100).toFixed(0) + '%</td>'
+        + '<td class="num">$' + l.p.toFixed(2) + '</td>'
+        + '<td class="num">' + (l.m*100).toFixed(1) + '%</td>'
+        + '<td><span class="v v-' + (l.ok ? "blue" : (l.m > 0 ? "probe" : "red")) + '">'
+        + (l.ok ? "目標内" : (l.m > 0 ? "目標割れ" : "赤字")) + '</span></td></tr>').join("")
+    + '</tbody></table></div>'
+    + '<p class="hint">オファーが来たときに、どこまで受けてよいかの線です。</p></div>'
+    + '</div>'
+
+    + '<h3 style="font-size:13px;margin:16px 0 6px">この値決めが壊れる条件</h3>'
+    + '<div class="scrollx"><table class="mini"><tbody>'
+    + '<tr><td>為替</td><td class="num">' + (isFinite(fx) ? fx.toFixed(1) + " 円/$" : "—")
+      + '</td><td class="hint">これを下回ると赤字。いまは ' + c.fx + ' 円/$</td></tr>'
+    + '<tr><td>関税率</td><td class="num">' + (duty*100).toFixed(1) + '%</td>'
+      + '<td class="hint">これを超えると赤字。いまの想定は ' + (c.duty*100).toFixed(1) + '%</td></tr>'
+    + '<tr><td>返品（商品が戻る）</td><td class="num">'
+      + (ri.rate > 0 ? (ri.rate*100).toFixed(1) + "%" : "—") + '</td>'
+      + '<td class="hint">1件あたり ' + yen(ri.loss) + '円の損失。'
+      + (isFinite(ri.oneIn) ? Math.floor(ri.oneIn) + '件に1件までなら期待値は黒字' : "") + '</td></tr>'
+    + '<tr><td>返品（商品が戻らない）</td><td class="num">'
+      + (riLost.rate > 0 ? (riLost.rate*100).toFixed(1) + "%" : "—") + '</td>'
+      + '<td class="hint">1件あたり ' + yen(riLost.loss) + '円の損失</td></tr>'
+    + '</tbody></table></div>'
+    + (ri.fragile ? '<div class="warn"><b>返品1件で、売上数件ぶんの利益が消えます。</b>'
+        + '説明文と写真で状態を過剰なほど正確に書いてください。ここが薄利の一番の穴です。</div>' : "")
+    + (sf.quote && sf.quote.warnings && sf.quote.warnings.length
+        ? '<div class="warn"><b>送料の注意</b><ul>'
+          + sf.quote.warnings.map(w => "<li>" + w + "</li>").join("") + '</ul></div>' : "");
+}
+
+function renderBundle(){
+  const c = cfg();
+  const rows = parseCsv($("bd-in").value);
+  if (!rows.length){
+    $("bd-out").innerHTML = '<p class="hint">構成品を入れてください。</p>';
+    return;
+  }
+  const items = rows.map(r => ({
+    name: r.name || "(名称なし)",
+    cost: +r.cost_incl_tax_jpy || 0,
+    solo: +r.solo_price_usd || 0,
+    g: +r.weight_g || 0, l: +r.length_cm || 0, w: +r.width_cm || 0, h: +r.height_cm || 0,
+  }));
+  const pack = parcelOf($("bd-g").value, $("bd-l").value, $("bd-w").value, $("bd-h").value);
+  const setPrice = +$("bd-price").value || 0;
+
+  const sep = sellSeparately(items, c);
+  const set = sellAsBundle(items, setPrice, pack, c);
+  const be  = breakevenSetPrice(items, pack, c);
+  const s   = bundleShip(pack, c);
+
+  const win = set.profit > sep.profit;
+  const line = (a, b) => '<tr><td>' + a[0] + '</td><td class="num">' + a[1]
+    + '</td><td class="num">' + b + '</td></tr>';
+
+  $("bd-out").innerHTML =
+      '<div class="warn ' + (win ? "ok" : "") + '"><b>'
+    + (win
+        ? "束ねたほうが " + yen(set.profit - sep.profit) + "円 多く残ります。"
+        : "1点ずつ売ったほうが " + yen(sep.profit - set.profit) + "円 多く残ります。")
+    + '</b> セットの損益分岐は $' + (isFinite(be) ? be.toFixed(2) : "—")
+    + '（これを下回るとセットで売る意味がなくなります）。</div>'
+    + (!s.quotable ? '<div class="warn"><b>この梱包サイズでは送料が出せませんでした。</b>'
+        + '市場の固定値 ' + yen(c.ship) + '円 で計算しています。重量・寸法を見直してください。</div>' : "")
+    + (sep.unsold.length ? '<div class="warn"><b>単品では売れない見込みの品：</b>'
+        + sep.unsold.map(esc).join("、") + '。'
+        + '1点ずつ売る場合、これらの仕入は回収できないものとして計算しています。</div>' : "")
+    + '<div class="scrollx"><table class="mini"><thead><tr><th></th>'
+    + '<th class="num">1点ずつ売る</th><th class="num">束ねて売る</th></tr></thead><tbody>'
+    + line(["注文件数", sep.orders + "件"], set.orders + "件")
+    + line(["売上", yen(sep.rev) + "円"], yen(set.rev) + "円")
+    + line(["手数料", "−" + yen(sep.fees) + "円"], "−" + yen(set.fees) + "円")
+    + line(["関税", "−" + yen(sep.duty) + "円"], "−" + yen(set.duty) + "円")
+    + line(["送料", "−" + yen(sep.ship) + "円"], "−" + yen(set.ship) + "円")
+    + line(["梱包", "−" + yen(sep.pack) + "円"], "−" + yen(set.pack) + "円")
+    + line(["仕入", "−" + yen(sep.cost) + "円"], "−" + yen(set.cost) + "円")
+    + line(["消費税還付", "＋" + yen(sep.refund) + "円"], "＋" + yen(set.refund) + "円")
+    + line(["<b>手残り</b>", "<b>" + yen(sep.profit) + "円</b>"], "<b>" + yen(set.profit) + "円</b>")
+    + '</tbody></table></div>'
+    + '<p class="hint">送料は' + (s.quotable
+        ? "課金重量 " + s.chg + "g" + (s.byVol ? "（容積で課金）" : "") + " で計算"
+        : "固定値") + '。束ねると注文が1件になるので、注文ごとの固定費と送料が1回で済みます。</p>';
+}
+
+
+/* ===== track.js ===== */
+/* ④追う の中身。観測を貯めて、前回比つきで次の一手を出す。
+
+   貼られたレポートで textarea を置き換えると、先週ぶんが消えて
+   「前回比」が永久に出ない。貯めてある行に足す。 */
+
+function bootTrack(){
+  $("tr-date").value = todayISO();
+  $("tr-src").textContent = TRACK_SOURCE_LABEL;
+  $("tr-guide").innerHTML = TRACK_GUIDE_HTML;
+
+  const stored = loadObs();
+  if (stored.length){
+    $("tr-in").value = obsRowsToCsv(stored);
+    $("tr-hint").textContent = "この端末に " + stored.length + "件 貯まっています。";
+  } else {
+    $("tr-in").value = SAMPLE_OBS;
+    $("tr-hint").textContent = "まだ何も貯まっていません。いまはサンプルが入っています。";
+  }
+
+  $("tr-ingest").addEventListener("click", () => {
+    const text = $("tr-in").value.trim();
+    if (!text){ toast("取り込む中身がありません"); return; }
+    let fresh;
+    if (looksLikeEbayReport(text)){
+      fresh = ingestEbayReport(text, $("tr-date").value || todayISO());
+      if (!fresh.length){
+        $("tr-out").innerHTML = '<div class="warn stop"><b>レポートとしては読めましたが、1行も取り込めませんでした。</b>SKU（カスタムラベル）の列が空になっていないか確かめてください。</div>';
+        return;
+      }
+    } else {
+      fresh = parseCsv(text).map(r => ({
+        sku:r.sku||"", title:r.title||"", listed_on:r.listed_on||"",
+        observed_on:r.observed_on || $("tr-date").value || todayISO(),
+        views:+r.views||0, watchers:+r.watchers||0, sold:+r.sold||0,
+      })).filter(r => r.sku);
+    }
+    const merged = mergeObsRows(loadObs(), fresh);
+    saveObs(merged);
+    $("tr-in").value = obsRowsToCsv(merged);
+    $("tr-hint").textContent = fresh.length + "件を取り込み、合計 " + merged.length + "件になりました。";
+    toast(fresh.length + "件を取り込みました");
+    runTrack();
+  });
+
+  $("tr-run").addEventListener("click", runTrack);
+  $("tr-clear").addEventListener("click", () => {
+    if (!confirm("この端末に貯めた観測データを全部消します。よろしいですか？")) return;
+    saveObs([]); $("tr-in").value = ""; $("tr-hint").textContent = "消しました。";
+    $("tr-out").innerHTML = "";
+  });
+
+  runTrack();
+}
+
+function runTrack(){
+  const rows = parseCsv($("tr-in").value);
+  if (!rows.length){
+    $("tr-out").innerHTML = '<p class="hint">観測データを貼って「取り込む」を押してください。</p>';
+    return;
+  }
+  /* 同じSKUの最新2件を拾って前回比を出す */
+  const bySku = {};
+  rows.forEach(r => {
+    const k = r.sku || r.title;
+    (bySku[k] = bySku[k] || []).push(r);
+  });
+
+  const ORDER = {promote:0, reprice:1, retitle:2, drop:3, keep:4};
+  const items = Object.keys(bySku).map(k => {
+    const hist = bySku[k].slice().sort((a,b) =>
+      String(a.observed_on).localeCompare(String(b.observed_on)));
+    const cur = hist[hist.length-1], prev = hist.length > 1 ? hist[hist.length-2] : null;
+    const a = new Date(cur.listed_on), b = new Date(cur.observed_on);
+    const days = (isFinite(a) && isFinite(b))
+      ? Math.max(0, Math.round((b-a)/86400000)) : 0;
+    const o = {sku:cur.sku, title:cur.title || cur.sku, days:days,
+               views:+cur.views||0, watchers:+cur.watchers||0, sold:+cur.sold||0};
+    const d = decide(o);
+    let delta = "";
+    if (prev){
+      const dv = o.views - (+prev.views||0), dw = o.watchers - (+prev.watchers||0),
+            ds = o.sold - (+prev.sold||0);
+      const bits = [];
+      if (dv) bits.push("閲覧 " + (dv>0?"+":"") + dv);
+      if (dw) bits.push("ウォッチ " + (dw>0?"+":"") + dw);
+      if (ds) bits.push("販売 " + (ds>0?"+":"") + ds);
+      delta = bits.length
+        ? "前回（" + prev.observed_on + "）から " + bits.join(" / ")
+        : "前回（" + prev.observed_on + "）から動きなし";
+      if (!bits.length && days >= 14)
+        delta += "。<b>2週間以上動いていないなら、放置ではなく手を入れる番です。</b>";
+    } else {
+      delta = "前回の観測がありません。来週もう一度貼ると前回比が出ます。";
+    }
+    return {d, o, delta};
+  }).sort((x,y) => ORDER[x.d.action] - ORDER[y.d.action] || y.o.views - x.o.views);
+
+  const tally = {};
+  items.forEach(x => tally[x.d.action] = (tally[x.d.action]||0)+1);
+
+  $("tr-out").innerHTML =
+      '<div class="grid-bar" style="border:1px solid var(--rule); border-radius:4px 4px 0 0">'
+    + '<div class="tally">' + Object.keys(ORDER).filter(k => tally[k]).map(k =>
+        '<button style="color:var(--' + ACT[k].cls + ')" aria-pressed="false"><b>'
+        + esc(ACT[k].desc) + '</b>' + tally[k] + '</button>').join("") + '</div>'
+    + '<span class="count"><b>' + items.length + '</b> 件</span></div>'
+    + '<div class="grid-wrap" style="border-radius:0 0 4px 4px"><div style="max-height:60vh;overflow:auto">'
+    + '<table class="mini"><thead><tr><th>次の一手</th><th>商品</th>'
+    + '<th class="num">経過</th><th class="num">閲覧</th><th class="num">ウォッチ</th>'
+    + '<th class="num">販売</th><th>理由</th></tr></thead><tbody>'
+    + items.map(x => {
+        const a = ACT[x.d.action];
+        return '<tr><td><span class="v v-' + (a.cls === "good" ? "blue" : a.cls === "dim" ? "excl" : a.cls)
+          + '">' + esc(a.desc) + '</span></td>'
+          + '<td>' + esc(x.o.title) + '</td>'
+          + '<td class="num">' + x.o.days + '日</td>'
+          + '<td class="num">' + x.o.views + '</td>'
+          + '<td class="num">' + x.o.watchers + '</td>'
+          + '<td class="num">' + x.o.sold + '</td>'
+          + '<td>' + esc(x.d.reason) + '<br><span class="hint">' + x.delta + '</span></td></tr>';
+      }).join("")
+    + '</tbody></table></div></div>';
+}
+
+</script>

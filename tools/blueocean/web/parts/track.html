@@ -1,0 +1,28 @@
+<!-- ④追う。出したあとの反応から、次の一手を決める。 -->
+<section class="screen" id="sc-track">
+  <h2 class="sc"><span class="n">STEP 04</span>追う</h2>
+  <p class="sc">出品したあとの閲覧数・ウォッチ・販売数から、伸ばす／値を下げる／タイトルを直す／畳む を決めます。<b>毎週貼るだけで前回比が出ます。</b>貼ったデータはこの端末に貯まるので、上書きされません。</p>
+
+  <div class="panel">
+    <h3>観測データ<span class="sub" id="tr-src"></span></h3>
+    <div class="row" style="margin-bottom:10px">
+      <div class="f" style="flex:0 0 180px"><label for="tr-date">この観測をいつ取ったか</label>
+        <input type="date" id="tr-date"></div>
+      <div class="f" style="flex:0 0 auto; justify-content:flex-end">
+        <button class="btn sm" id="tr-ingest">貼った内容を取り込む</button></div>
+      <div class="f" style="flex:0 0 auto; justify-content:flex-end">
+        <button class="btn ghost sm" id="tr-run">いまのデータで判定する</button></div>
+      <div class="f" style="flex:0 0 auto; justify-content:flex-end">
+        <button class="btn ghost sm" id="tr-clear">貯めたデータを消す</button></div>
+    </div>
+    <textarea id="tr-in" rows="8" placeholder="sku,title,listed_on,observed_on,views,watchers,sold"></textarea>
+    <p class="hint" id="tr-hint"></p>
+  </div>
+
+  <details class="help">
+    <summary>データの採り方</summary>
+    <div class="bd" id="tr-guide"></div>
+  </details>
+
+  <div id="tr-out"></div>
+</section>

@@ -107,6 +107,13 @@ class Candidate:
     # --- 除外フラグ ---
     is_restricted: bool = False       # 輸出規制・プラットフォーム禁止品
     restricted_reason: str = ""
+    # --- 値の確からしさ ---
+    # 国内ショップのAPIは重量も寸法も返さない。返らない値を0のまま流すと
+    # 「軽い＝送料が安い」と読まれて判定が甘く出る。推定で埋めた場合はここを
+    # 立てて、判定を BLUE まで上げないための材料にする。
+    weight_is_estimate: bool = False
+    cost_is_estimate: bool = False
+    estimate_note: str = ""
 
 
 @dataclass

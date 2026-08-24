@@ -1,0 +1,43 @@
+<!-- ②選ぶ。一覧が主役。計算は列。 -->
+<section class="screen" id="sc-pick">
+  <h2 class="sc"><span class="n">STEP 02</span>選ぶ</h2>
+  <p class="sc">仕入値を入れると、送料・課金重量・仕入上限・利益率・判定が<b>同じ行に</b>出ます。行をクリックすると、その判定になった理由と、あと何を動かせば判定が変わるかが下に出ます。</p>
+
+  <details class="help">
+    <summary>判定の読み方（4つしかありません）</summary>
+    <div class="bd">
+      <ul>
+        <li><b style="color:var(--blue)">出せる</b> — 目標利益率を満たし、競合が少なく、需要の裏付けがある。仕入れてよい。</li>
+        <li><b style="color:var(--probe)">小さく試す</b> — 条件のどれかが未確定。1〜2点だけ出して反応を見る段階。<b>仕入値・重量が推定のままだとここで止まります。</b></li>
+        <li><b style="color:var(--thin)">採算割れ</b> — 仕入値が上限を超えている。いくら下げれば届くかを右端に出します。</li>
+        <li><b style="color:var(--red)">見送り</b> — 競合が多すぎる。値下げ競争に入るので取らない。</li>
+        <li><b style="color:var(--excl)">除外</b> — 規制品、重量・寸法オーバー、相場が未入力など、判定以前で止まっているもの。</li>
+      </ul>
+      <p><b>競合0件は「出せる」になりません。</b>誰も出していないのは、需要が無いだけかもしれないからです。落札実績を実際に見て「需要の裏付け」に yes を入れたときだけ上がります。</p>
+    </div>
+  </details>
+
+  <div id="pick-warn"></div>
+
+  <div class="grid-bar" style="border:1px solid var(--rule); border-bottom:none; border-radius:4px 4px 0 0">
+    <button class="btn sm" id="pk-recalc">いまの設定で計算し直す</button>
+    <button class="btn ghost sm" id="pk-add">行を足す</button>
+    <button class="btn ghost sm" id="pk-csv">CSVで書き出す</button>
+    <button class="btn ghost sm" id="pk-clear">全部消す</button>
+    <span class="hint" style="margin-left:auto">入力はこの端末に自動保存されます</span>
+  </div>
+  <div class="grid-wrap" id="pick-grid" style="border-radius:0 0 4px 4px"></div>
+
+  <details class="help">
+    <summary>相場と競合数はどこから入れるのか</summary>
+    <div class="bd">
+      <p>この2つだけは国内APIからは取れません。<b>販売先を見に行く必要があります。</b></p>
+      <ol>
+        <li>一覧の行をクリックして、下に出る商品名をコピーします。</li>
+        <li><span id="pk-market-link"></span></li>
+        <li>実際に売れている価格帯の中央値を「相場」に、同じ検索の件数を「競合数」に入れます。<b>まだ売れていない出品の希望価格を相場にしないでください。</b>高く見積もりすぎて、仕入上限が実際より甘くなります。</li>
+        <li>売れている実績が確かめられたら「需要の裏付け」に印を付けます。ここを付けない限り、判定は「小さく試す」で止まります。</li>
+      </ol>
+    </div>
+  </details>
+</section>
