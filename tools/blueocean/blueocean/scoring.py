@@ -18,6 +18,7 @@ from .models import (
     Candidate,
     FeeProfile,
     Headroom,
+    Market,
     ProfitBreakdown,
     ScoredCandidate,
     SellerLevel,
@@ -54,6 +55,26 @@ class ScoringPolicy:
     dynamic_shipping: bool = True
     carrier: Carrier | None = None    # None なら最安の手段を自動で選ぶ
     rate_tables: dict[Zone, RateTable] | None = None
+
+    @classmethod
+    def for_market(cls, market: Market, **kw) -> "ScoringPolicy":
+        """市場ごとの既定値。**下限価格をeBayの感覚のまま持ち込まないため**にある。
+
+        eBayの主戦場は $200 前後の中古・コレクター品なので「$30未満は手数料と送料に
+        食われる」で正しい。だがShopeeの主戦場は**プチプラの新品消耗品**（日本の
+        ドラッグストア価格帯）で、そこに $30 の下限を当てると売れ筋がほぼ全部落ちる。
+        送料もSLSで安く、注文ごとの固定費も無いので、下限はもっと低くてよい。
+        """
+        base: dict = {}
+        if market.is_shopee:
+            base = dict(
+                min_price_usd=8.0,          # プチプラ帯を落とさない
+                carrier=Carrier.SLS,        # 自分で国際発送しない
+                blue_max_competitors=5,
+                red_min_competitors=30,
+            )
+        base.update(kw)
+        return cls(**base)
 
 
 def _quote_shipping(parcel: Parcel, profile: FeeProfile, policy: ScoringPolicy):

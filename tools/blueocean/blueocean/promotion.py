@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 from datetime import date
 
-from .models import Action, Observation
+from .models import Action, Market, Observation
 
 
 @dataclass(frozen=True)
@@ -173,13 +173,29 @@ def stockout_rate(total_orders: int, seller_cancellations: int) -> float:
     return seller_cancellations / total_orders
 
 
-def stockout_alert(rate: float, threshold: float = 0.02) -> str | None:
-    """在庫切れ率が閾値を超えたら警告を返す。"""
-    if rate > threshold:
+def stockout_alert(
+    rate: float, threshold: float = 0.02, *, market: "Market | None" = None
+) -> str | None:
+    """在庫切れ率が閾値を超えたら警告を返す。
+
+    **罰の効き方が市場でまるで違う。** eBayは手数料に効くので採算が悪化するだけだが、
+    Shopeeはペナルティポイントが露出とキャンペーン参加資格に効く。
+    3点を超えると検索順位が落ち、6点を超えると露出そのものが絞られ、
+    15点で停止。**採算が悪くなるのではなく、売上が立たなくなる。**
+    """
+    if rate <= threshold:
+        return None
+    head = f"在庫切れ率 {rate*100:.1f}% が閾値 {threshold*100:.0f}% を超過。"
+    if market is not None and market.is_shopee:
         return (
-            f"在庫切れ率 {rate*100:.1f}% が閾値 {threshold*100:.0f}% を超過。"
-            f"Below Standard に落ちると手数料が6ポイント上がり、必要な仕入倍率が "
-            f"2.35倍→2.79倍に悪化する（米国・売価$200・送料3,000円の前提。"
-            f"実際の倍率は荷姿と市場で変わる）。出品数を減らし、在庫連動の頻度を上げること"
+            head
+            + "Shopeeは出荷遅延・キャンセルにペナルティポイントが付き、3点超で検索順位が落ち、"
+            "6点超で露出が絞られ、15点で停止する。メガセール（9.9 / 11.11 など）の参加資格も失う。"
+            "**手数料の話ではなく、売上がゼロになる話**なので、eBayより早く手を打つこと"
         )
-    return None
+    return (
+        head
+        + "Below Standard に落ちると手数料が6ポイント上がり、必要な仕入倍率が "
+        "2.35倍→2.79倍に悪化する（米国・売価$200・送料3,000円の前提。"
+        "実際の倍率は荷姿と市場で変わる）。出品数を減らし、在庫連動の頻度を上げること"
+    )

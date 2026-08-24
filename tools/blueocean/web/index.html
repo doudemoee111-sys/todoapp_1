@@ -256,7 +256,11 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
         <option value="ebay_us">eBay 米国（DDP・関税セラー負担）</option>
         <option value="ebay_eu">eBay 欧州</option>
         <option value="ebay_au">eBay 豪州</option>
-        <option value="shopee_sea">Shopee 東南アジア・台湾</option>
+        <option value="shopee_tw">Shopee 台湾</option>
+        <option value="shopee_sg">Shopee シンガポール</option>
+        <option value="shopee_my">Shopee マレーシア</option>
+        <option value="shopee_ph">Shopee フィリピン</option>
+        <option value="shopee_sea">Shopee 東南アジア（国を決める前の概算）</option>
       </select>
     </label>
     <label>セラーレベル
@@ -424,6 +428,88 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
   どの手順でも使う補助画面です。<b>配送手段を横並びで比較</b>できます。
   軽くて嵩張るもの（衣類・外箱付きフィギュア）は容積重量で課金されるため、
   <b>EMSが逆にいちばん安くなる</b>ことがあります。固定送料では見えない逆転です。
+</p>
+
+<h2>eBay と Shopee ── 同じ戦略でいいのか</h2>
+<p>
+  <b>市場を分けるのは正しいが、戦略まで同じにすると外します。</b>
+  買い手が買う価格帯、商品が見つかる仕組み、失敗したときの罰 ── この3つが構造的に違います。
+</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>　</th><th>eBay</th><th>Shopee</th></tr></thead>
+  <tbody>
+    <tr><td>主戦場の価格帯</td><td>$200前後。中古・絶版・コレクター品</td>
+        <td><b>プチプラ帯。</b>新品の消耗品・美容品（日本のドラッグストア価格）</td></tr>
+    <tr><td>売れるもの</td><td>一点物。同じ物が二度と入らない</td>
+        <td><b>リピート品。</b>同じ物を繰り返し仕入れる</td></tr>
+    <tr><td>見つかる仕組み</td><td><b>検索。</b>だから競合出品数が意味を持つ</td>
+        <td><b>キャンペーンとメガセール。</b>検索順位は評価で上下する</td></tr>
+    <tr><td>競合データ</td><td>Browse API で公開・個人が使える</td>
+        <td><b>公開の競合検索APIが無い。</b>自店舗用のAPIしかない</td></tr>
+    <tr><td>配送</td><td>自分で国際発送する</td>
+        <td><b>SLS。</b>国内の集荷場所へ送れば以降はShopeeが担う</td></tr>
+    <tr><td>失敗の罰</td><td>Below Standard で<b>手数料+6ポイント</b></td>
+        <td>ペナルティポイントで<b>露出とメガセール参加資格</b>を失う</td></tr>
+  </tbody>
+</table></div>
+
+<h3>3つの軸のうち、そのまま移せるのは2つ</h3>
+<div class="termlist">
+  <div><span class="t">軸1　移せない</span><span class="d">
+    <b>「競合が少ない型番を探す」はShopeeでは成立しません。</b>理由は2つ。
+    ① 公開の競合検索APIが無いので数字が取れない。
+    ② もっと本質的に、Shopeeの流入はキャンペーン駆動なので
+    <b>「誰も出していない」は「誰にも見つけられない」を意味します。</b>
+    eBayなら検索から拾われますが、Shopeeでは流入そのものが起きません。</span></div>
+
+  <div><span class="t">軸2　移せる</span><span class="d">
+    <b>反応を見て当たりだけ有在庫化する考え方は、むしろ相性が良い</b>です。
+    リピート品なので、当たった商品は繰り返し仕入れられます。
+    <b>ただし在庫切れの罰がeBayより重い。</b>eBayは手数料が上がるだけですが、
+    Shopeeは露出が絞られて売上が立たなくなります。無在庫のまま引っ張るのは危険です。</span></div>
+
+  <div><span class="t">セット販売　移せる</span><span class="d">
+    <b>低単価市場なので、送料が1回で済む効果が最大化されます。</b>
+    このツールで計算すると、同じ5点の構成で
+    米国 −1.8%→20.6%、Shopee 40.5%→51.0%。<b>元から効率が良い市場でさらに効きます。</b></span></div>
+</div>
+
+<h3>Shopeeで代わりに効く軸</h3>
+<ul>
+  <li><b>ペナルティポイントを0に保つ。</b>これが最優先です。3点超で検索順位が落ち、
+    6点超で露出が絞られ、15点で停止。メガセールの参加資格も失います</li>
+  <li><b>メガセール（9.9 / 10.10 / 11.11 / 12.12）に合わせて在庫を積む。</b>
+    eBayに「セール当日」という概念はありませんが、Shopeeはここに売上が集中します</li>
+  <li><b>チャットの応答速度。</b>返信の遅れがペナルティに繋がります</li>
+  <li><b>1か国ずつ広げる。</b>台湾 → シンガポール → マレーシア の順が定石です。
+    最初から増やすと運用工数が分散します</li>
+</ul>
+
+<h3>ツール側で変えていること</h3>
+<p>
+  上の違いは、このツールの計算にも反映してあります。市場をShopeeに切り替えると自動で変わります。
+</p>
+<div class="termlist">
+  <div><span class="t">下限価格</span><span class="d">
+    eBay $30 → <b>Shopee $8。</b>eBayの下限をそのまま当てると、Shopeeの売れ筋がほぼ全部
+    「低単価」で除外されます</span></div>
+  <div><span class="t">配送手段</span><span class="d">
+    <b>SLSを既定にします。</b>「最安を自動」でもSLSに寄せます。
+    Shopeeの越境では自分で国際発送しないので、選べない手段で採算を出すのを防ぐためです</span></div>
+  <div><span class="t">地帯</span><span class="d">
+    <b>台湾は第1地帯</b>（中国・韓国・台湾）で、東南アジア（第2地帯）より送料が安い。
+    国を分けたのはこの差が効くからです</span></div>
+  <div><span class="t">注文ごと固定費</span><span class="d">
+    eBayの出品手数料に相当するものが無いので0。低単価が成立する理由のひとつです</span></div>
+  <div><span class="t">在庫切れの警告</span><span class="d">
+    文言を市場ごとに変えます。eBayは「手数料が上がる」、Shopeeは
+    <b>「露出が絞られて売上がゼロになる」</b></span></div>
+</div>
+<p>
+  <b>ただしSLSの料率表は公開されていません。</b>ここでは郵便の表に0.70を掛けた概算を出しています。
+  <b>国内の集荷場所まで送る宅配便代が別途かかる</b>ことも織り込んでいません。
+  実額はセラーセンターで確認して、料金表を差し替えてください。
 </p>
 
 <h2>データの取り方 ── 軸1（候補）</h2>
@@ -766,6 +852,7 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
             <option value="parcel">国際小包</option>
             <option value="epacket">eパケット</option>
             <option value="courier">UGX / FedEx / DHL</option>
+            <option value="sls">SLS（Shopee配送）</option>
           </select></label>
         </div>
         <div class="sgrid" style="grid-template-columns:1fr 1fr 1fr;">
@@ -1153,7 +1240,7 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
 
 <footer>
   <p>
-    Python版と同じ計算式を実装しています（テスト213件）。
+    Python版と同じ計算式を実装しています（テスト230件）。
     コード：<a href="https://github.com/doudemoee111-sys/todoapp_1/tree/claude/side-business-proposal-su9ie3/tools/blueocean">tools/blueocean</a>
   </p>
   <p>
@@ -1172,8 +1259,15 @@ const PROFILES = {
   ebay_us:    {fee:.18, per:60, duty:.125, ship:3000, pack:200, label:"eBay 米国"},
   ebay_eu:    {fee:.18, per:60, duty:0,    ship:3000, pack:200, label:"eBay 欧州"},
   ebay_au:    {fee:.18, per:60, duty:0,    ship:3000, pack:200, label:"eBay 豪州"},
-  shopee_sea: {fee:.08, per:40, duty:0,    ship:2000, pack:200, label:"Shopee 東南ア"},
+  /* Shopee：販売+決済は各国 5.3〜7.0%（VAT込み表示）。為替・送金を足して実効8%。
+     eBayのような出品ごとの固定費は無い。送料は SLS に載せる前提。 */
+  shopee_sea: {fee:.08, per:0,  duty:0,    ship:2000, pack:200, label:"Shopee 東南ア"},
+  shopee_tw:  {fee:.08, per:0,  duty:0,    ship:1500, pack:200, label:"Shopee 台湾"},
+  shopee_sg:  {fee:.08, per:0,  duty:0,    ship:1800, pack:200, label:"Shopee シンガポール"},
+  shopee_my:  {fee:.08, per:0,  duty:0,    ship:1900, pack:200, label:"Shopee マレーシア"},
+  shopee_ph:  {fee:.08, per:0,  duty:0,    ship:2000, pack:200, label:"Shopee フィリピン"},
 };
+const IS_SHOPEE = m => String(m).startsWith("shopee");
 const LEVEL_ADJ = {top_rated:-.02, above_standard:0, below_standard:.06};
 
 const $ = id => document.getElementById(id);
@@ -1203,7 +1297,10 @@ function shipFor(c, parcel){
   if (!c.autoShip || !parcel || parcel.g <= 0) return {ship:c.ship, quote:null};
   const qs = quoteAll(parcel, c.zone);
   if (!qs.length) return {ship:null, quote:null};   /* 使える手段が無い */
-  const q = c.carrier === "auto" ? qs[0] : (qs.find(x => x.carrier === c.carrier) || null);
+  /* Shopeeの越境では自分で国際発送しない。「最安を自動」でも SLS に寄せる。
+     ここを最安のままにすると、実際には選べない手段で採算を出してしまう。 */
+  const want = c.carrier !== "auto" ? c.carrier : (IS_SHOPEE(c.market) ? "sls" : null);
+  const q = want ? (qs.find(x => x.carrier === want) || null) : qs[0];
   return q ? {ship:q.jpy, quote:q} : {ship:null, quote:null};
 }
 function fillProfileInputs(){
@@ -1224,14 +1321,23 @@ function fillProfileInputs(){
        容積重量(g) = 縦×横×高さ(cm) ÷ 除数 × 1000
    そして EMS は容積重量を採らない。だから嵩張る荷物ではEMSが逆転して最安になる。
    この逆転は固定送料では絶対に見えない。                                   */
-const ZONE_OF   = {ebay_us:"zone4", ebay_eu:"zone3", ebay_au:"zone3", shopee_sea:"zone2"};
-const ZONE_NAME = {zone2:"第2地帯（アジア）", zone3:"第3地帯（欧州・豪州・北米※米国除く）", zone4:"第4地帯（米国）"};
-const VDIV    = {ems:null, parcel:6000, epacket:null, courier:5000};   /* null = 容積重量を採らない */
-const WMAX    = {ems:30000, parcel:30000, epacket:2000, courier:30000};
-const DMAX    = {ems:[150,300,null], parcel:[150,300,null], epacket:[60,null,90], courier:[274,330,null]};
-const CFACTOR = {ems:1.00, parcel:0.80, epacket:0.55, courier:1.35};
-const CLABEL  = {ems:"EMS", parcel:"国際小包", epacket:"eパケット", courier:"UGX / FedEx / DHL"};
-const CARRIERS = ["ems","parcel","epacket","courier"];
+const ZONE_OF   = {ebay_us:"zone4", ebay_eu:"zone3", ebay_au:"zone3",
+                   shopee_sea:"zone2", shopee_tw:"zone1", shopee_sg:"zone2",
+                   shopee_my:"zone2", shopee_ph:"zone2"};
+const ZONE_NAME = {zone1:"第1地帯（中国・韓国・台湾）", zone2:"第2地帯（アジア）",
+                   zone3:"第3地帯（欧州・豪州・北米※米国除く）", zone4:"第4地帯（米国）"};
+const VDIV    = {ems:null, parcel:6000, epacket:null, courier:5000, sls:6000};  /* null = 容積重量を採らない */
+const WMAX    = {ems:30000, parcel:30000, epacket:2000, courier:30000, sls:30000};
+const DMAX    = {ems:[150,300,null], parcel:[150,300,null], epacket:[60,null,90],
+                 courier:[274,330,null], sls:[150,300,null]};
+/* SLS は「国内の集荷場所まで送れば以降はShopeeが担う」別物。市場料金より最大3割安いと
+   されるが料率表は非公開なので、郵便の表に0.70を掛けた概算を置く。
+   国内の集荷場所まで送る宅配便代が別途かかる。 */
+const CFACTOR = {ems:1.00, parcel:0.80, epacket:0.55, courier:1.35, sls:0.70};
+const CLABEL  = {ems:"EMS", parcel:"国際小包", epacket:"eパケット",
+                 courier:"UGX / FedEx / DHL", sls:"SLS（Shopee配送）"};
+const CARRIERS = ["ems","parcel","epacket","courier","sls"];
+const SLS_NOTICE = "SLS は国内の集荷場所まで送れば以降の国際輸送・通関・現地配送をShopeeが担う仕組みです。重量は<b>Shopeeの倉庫で実測した値</b>で課金されます。料率表は公開されていないため、ここでは郵便の表に0.70を掛けた概算です。<b>国内の集荷場所まで送る宅配便代が別途かかります。</b>";
 
 /* アンカー＝公表値として確認できた金額。その間は刻み幅から内挿する。
    内挿値は必ず「推定」と表示し、事実として一人歩きさせない。 */
@@ -1252,6 +1358,8 @@ function emsTable(anchors, inc100, inc250){
   return fine.concat(coarse);
 }
 const EMS_TABLE = {
+  /* 第1地帯（中国・韓国・台湾）。第2地帯の刻みから比例で置いた推定値。 */
+  zone1: emsTable({500:1900}, 220, 180),
   zone2: emsTable({500:2150,600:2400,700:2650,800:2900,900:3150}, 250, 200),
   zone3: emsTable({500:3400,600:3650,700:3900,800:4150,900:4400}, 250, 310),
   zone4: emsTable({500:4180,600:4460,700:4740,800:5020},          280, 350),
@@ -1392,7 +1500,10 @@ function renderCalc(){
 /* ===== 送料タブ ===== */
 function renderShip(c, parcel, noCarrier){
   const qs = parcel.g > 0 ? quoteAll(parcel, c.zone) : [];
-  const best = qs.length ? qs[0] : null;
+  /* 「最安」ではなく「実際に使う手段」を主役にする。
+     Shopeeでは自分で国際発送しないので、最安を出しても選べない。 */
+  const want = c.carrier !== "auto" ? c.carrier : (IS_SHOPEE(c.market) ? "sls" : null);
+  const best = qs.length ? (want ? (qs.find(x => x.carrier === want) || qs[0]) : qs[0]) : null;
 
   $("s-chg").textContent = best ? best.chg.toLocaleString("ja-JP") + " g" : "—";
   $("s-chg-n").textContent = best
@@ -1401,6 +1512,7 @@ function renderShip(c, parcel, noCarrier){
        : `実重量で課金（容積 ${best.vol||0}g）`)
     : "実重量と容積重量の大きい方";
   $("s-best").textContent = best ? yen(best.jpy) + " 円" : "—";
+  $("s-best").previousElementSibling.textContent = want ? "使う手段の送料" : "最安の送料";
   $("s-best-n").textContent = best ? `${CLABEL[best.carrier]}／${ZONE_NAME[c.zone]||c.zone}` : "";
 
   $("s-tbl").innerHTML = qs.length ? qs.map(q => {
@@ -1417,6 +1529,7 @@ function renderShip(c, parcel, noCarrier){
   const seen = new Set(); const ws = [];
   qs.forEach(q => q.warnings.forEach(w => { if(!seen.has(w)){ seen.add(w); ws.push(w); }}));
   const dropped = CARRIERS.map(x => quoteOne(parcel, c.zone, x)).filter(q => q.error);
+  if (IS_SHOPEE(c.market)) ws.unshift(SLS_NOTICE);
   $("s-warn").innerHTML =
     (noCarrier ? `<div class="alert"><b>使える配送手段がありません。</b>この荷物は現状の料金表の範囲外です。送料は固定値のまま計算しています。</div>` : "")
     + (parcel.g > 0 && dropped.length
@@ -1595,7 +1708,11 @@ function rowsToCsv(){
 }
 
 /* ===== 軸1（scoring.py と同一） ===== */
+/* eBayの主戦場は $200 前後の中古・コレクター品なので「$30未満は手数料と送料に食われる」
+   で正しい。だがShopeeの主戦場はプチプラの新品消耗品なので、$30の下限を当てると
+   売れ筋がほぼ全部落ちる。市場で下限を変える。 */
 const POLICY = {blueMax:5, redMin:30, maxWeight:2000, minPrice:30};
+const minPriceFor = m => IS_SHOPEE(m) ? 8 : 30;
 const VERDICT = {
   blue:{cls:"blue", label:"BLUE",  desc:"最優先で出品"},
   probe:{cls:"probe",label:"PROBE", desc:"少量で反応を試す"},
@@ -1643,7 +1760,8 @@ function scoreOne(r, c){
   }
   const price = r.market_price_usd === "" ? null : +r.market_price_usd;
   if (price === null || !isFinite(price) || price <= 0) { reasons.push("除外：eBay側の相場が未入力"); return out("excl"); }
-  if (price < POLICY.minPrice) { reasons.push(`除外：想定売価 $${price} が下限 $${POLICY.minPrice} 未満`); return out("excl"); }
+  const floorUsd = minPriceFor(c.market);
+  if (price < floorUsd) { reasons.push(`除外：想定売価 $${price} が下限 $${floorUsd} 未満`); return out("excl"); }
 
   // 送料を先に確定する。送料が決まらないと採算は出せない。
   const sf = shipFor(c, parcel);
@@ -2430,10 +2548,16 @@ function runAxis2(){
   const c = cfg();
   const norm = reqMultiple(200, {...c, level:"above_standard"});
   const bad  = reqMultiple(200, {...c, level:"below_standard"});
+  /* 罰の効き方が市場でまるで違う。eBayは手数料、Shopeeは露出とキャンペーン資格。 */
   $("a2-alert").innerHTML = rate > 0.02
-    ? `<div class="alert"><b>在庫切れ率 ${(rate*100).toFixed(1)}%</b> が閾値 2% を超過。
-       Below Standard に落ちると落札手数料に6ポイント上乗せされ、必要な仕入倍率が
-       <b>${norm.toFixed(2)}倍 → ${bad.toFixed(2)}倍</b> に悪化します。出品数を減らし、在庫連動の頻度を上げてください。</div>`
+    ? (IS_SHOPEE(c.market)
+      ? `<div class="alert"><b>在庫切れ率 ${(rate*100).toFixed(1)}%</b> が閾値 2% を超過。
+         Shopeeは出荷遅延・キャンセルに<b>ペナルティポイント</b>が付き、3点超で検索順位が落ち、
+         6点超で露出が絞られ、15点で停止します。メガセール（9.9 / 11.11 など）の参加資格も失います。
+         <b>手数料の話ではなく、売上がゼロになる話</b>なので、eBayより早く手を打ってください。</div>`
+      : `<div class="alert"><b>在庫切れ率 ${(rate*100).toFixed(1)}%</b> が閾値 2% を超過。
+         Below Standard に落ちると落札手数料に6ポイント上乗せされ、必要な仕入倍率が
+         <b>${norm.toFixed(2)}倍 → ${bad.toFixed(2)}倍</b> に悪化します。出品数を減らし、在庫連動の頻度を上げてください。</div>`)
     : (orders > 0
        ? `<div class="ok-note">在庫切れ率 ${(rate*100).toFixed(1)}%（閾値2%以内）。セラーレベルは維持できています。</div>`
        : "");
@@ -2599,7 +2723,7 @@ $("a2-reset").addEventListener("click", () => { const STORED_OBS = loadObs();
 $("a2-in").value = STORED_OBS.length ? obsRowsToCsv(STORED_OBS) : SAMPLE2;
 $("a2-date").value = todayISO(); runAxis2(); });
 
-const MKT_LABEL = {ebay_us:"eBay 米国", ebay_eu:"eBay 欧州", ebay_au:"eBay 豪州", shopee_sea:"Shopee 東南ア"};
+const MKT_LABEL = Object.fromEntries(Object.entries(PROFILES).map(([k,v]) => [k, v.label]));
 const LV_LABEL = {top_rated:"Top Rated", above_standard:"Above Standard", below_standard:"Below Standard"};
 function renderCfgSummary(){
   const c = cfg();
@@ -2617,7 +2741,7 @@ function toast(msg){
 }
 function refresh(){
   saveCfg(); renderCfgSummary(); renderExtract();
-  renderCalc(); renderOne(); renderPrice(); runAxis1(); runBundle();
+  renderCalc(); renderOne(); renderPrice(); runAxis1(); runBundle(); runAxis2();
 }
 
 if (!loadCfg()) fillProfileInputs();

@@ -27,7 +27,15 @@ DEFAULT_PROFILES: dict[Market, FeeProfile] = {
     Market.EBAY_EU: FeeProfile(Market.EBAY_EU, 0.18, 60, 0.0, 3000, 200),
     Market.EBAY_AU: FeeProfile(Market.EBAY_AU, 0.18, 60, 0.0, 3000, 200),
     # Shopee は手数料 3〜10%。保守的に 8% を既定とし、SLS 送料を想定
-    Market.SHOPEE_SEA: FeeProfile(Market.SHOPEE_SEA, 0.08, 40, 0.0, 2000, 200),
+    # Shopee：販売手数料＋決済手数料は各国 5.3〜7.0%（VAT込み表示）。
+    # そこに為替・送金の実費が乗るので、実効値として 8% を置く。
+    # 注文ごとの固定費は eBay のような出品手数料が無いため 0。
+    # 送料は SLS（国内の集荷場所へ送るとShopeeが以降を担う）を既定にする。
+    Market.SHOPEE_SEA: FeeProfile(Market.SHOPEE_SEA, 0.08, 0, 0.0, 2000, 200),
+    Market.SHOPEE_TW: FeeProfile(Market.SHOPEE_TW, 0.08, 0, 0.0, 1500, 200),
+    Market.SHOPEE_SG: FeeProfile(Market.SHOPEE_SG, 0.08, 0, 0.0, 1800, 200),
+    Market.SHOPEE_MY: FeeProfile(Market.SHOPEE_MY, 0.08, 0, 0.0, 1900, 200),
+    Market.SHOPEE_PH: FeeProfile(Market.SHOPEE_PH, 0.08, 0, 0.0, 2000, 200),
 }
 
 # セラーレベルによる手数料の増減

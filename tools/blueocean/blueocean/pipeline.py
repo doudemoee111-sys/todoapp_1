@@ -273,8 +273,11 @@ def run_axis2(
     policy: PromotionPolicy | None = None,
     total_orders: int = 0,
     seller_cancellations: int = 0,
+    market: Market | None = None,
 ) -> tuple[list[Decision], str | None]:
     latest, previous = split_latest(observations)
     decisions = decide_all(latest, policy, previous=previous)
-    alert = stockout_alert(stockout_rate(total_orders, seller_cancellations))
+    alert = stockout_alert(
+        stockout_rate(total_orders, seller_cancellations), market=market
+    )
     return decisions, alert

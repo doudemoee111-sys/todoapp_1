@@ -15,11 +15,33 @@ class SellerLevel(str, Enum):
 
 
 class Market(str, Enum):
-    """販売先。関税と手数料の体系が丸ごと変わるため、市場は第一級の概念として扱う。"""
+    """販売先。関税と手数料の体系が丸ごと変わるため、市場は第一級の概念として扱う。
+
+    Shopeeは国ごとに手数料もVATも配送も違うので、一括りにすると採算がずれる。
+    日本からの越境セラーが最初に出せるのは 台湾・シンガポール・マレーシア・フィリピン
+    の4つ（その後タイへ申請できる）。
+    """
     EBAY_US = "ebay_us"    # DDP。対日追加関税がセラー負担
     EBAY_EU = "ebay_eu"    # VATはバイヤー負担が基本
     EBAY_AU = "ebay_au"
-    SHOPEE_SEA = "shopee_sea"  # 手数料が低く、米国関税の影響を受けない
+    SHOPEE_SEA = "shopee_sea"  # 東南アジア総称（国を決める前の概算用）
+    SHOPEE_TW = "shopee_tw"    # 台湾。日本製の主戦場。単価は低いが数が出る
+    SHOPEE_SG = "shopee_sg"    # シンガポール。SEAの中では単価が高め
+    SHOPEE_MY = "shopee_my"    # マレーシア
+    SHOPEE_PH = "shopee_ph"    # フィリピン
+
+    @property
+    def is_shopee(self) -> bool:
+        return self.value.startswith("shopee")
+
+    @property
+    def label(self) -> str:
+        return {
+            "ebay_us": "eBay 米国", "ebay_eu": "eBay 欧州", "ebay_au": "eBay 豪州",
+            "shopee_sea": "Shopee 東南アジア", "shopee_tw": "Shopee 台湾",
+            "shopee_sg": "Shopee シンガポール", "shopee_my": "Shopee マレーシア",
+            "shopee_ph": "Shopee フィリピン",
+        }[self.value]
 
 
 class Verdict(str, Enum):

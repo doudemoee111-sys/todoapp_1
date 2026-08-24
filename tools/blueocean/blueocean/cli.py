@@ -49,10 +49,13 @@ from .profit import DEFAULT_PROFILES, compute, max_cost_for_margin, required_mul
 from .models import Candidate
 from .scoring import ScoringPolicy, score_one
 from .shipping import (
+    DEFAULT_CARRIER,
     MARKET_ZONE,
+    SLS_NOTICE,
     Carrier,
     Parcel,
     cheapest,
+    estimate,
     load_rate_table_csv,
     quote_all,
     shipping_jpy_for,
@@ -98,16 +101,22 @@ def _rate_tables(args):
     return load_rate_table_csv(args.rates) if args.rates else None
 
 
+def _carrier(args) -> Carrier | None:
+    """使う配送手段。Shopeeは自分で国際発送しないので SLS に固定する。
+
+    ここを「最安を自動」のままにすると、実際には選べない手段（eパケット等）で
+    採算を出してしまう。
+    """
+    if args.carrier:
+        return Carrier(args.carrier)
+    return DEFAULT_CARRIER.get(Market(args.market))
+
+
 def cmd_axis1(args) -> int:
     candidates = load_candidates(args.candidates)
     kw = dict(
         market=Market(args.market),
-        policy=ScoringPolicy(
-            target_margin=args.target_margin,
-            dynamic_shipping=not args.flat_shipping,
-            carrier=Carrier(args.carrier) if args.carrier else None,
-            rate_tables=_rate_tables(args),
-        ),
+        policy=_policy(args),
         level=SellerLevel(args.level),
         tax=TaxProfile(is_taxable_entity=not args.no_tax_refund),
         refresh=args.refresh,
@@ -188,6 +197,7 @@ def cmd_axis2(args) -> int:
     decisions, alert = run_axis2(
         obs, total_orders=args.total_orders,
         seller_cancellations=args.seller_cancellations,
+        market=Market(args.market),
     )
 
     print("\n=== 軸2：出品後の判定 ===")
@@ -230,9 +240,8 @@ def cmd_margin(args) -> int:
         if not quotes:
             print("この重量・寸法で使える配送手段がありません。", file=sys.stderr)
             return 1
-        chosen = next(
-            (q for q in quotes if args.carrier and q.carrier.value == args.carrier), quotes[0]
-        )
+        want = _carrier(args)
+        chosen = next((q for q in quotes if want and q.carrier is want), quotes[0])
         ship = chosen.jpy
         note = f"{chosen.carrier.value} / 課金重量 {chosen.chargeable_weight_g}g"
         print(f"\n--- 送料の比較（{zone.value}／実重量 {parcel.weight_g}g） ---")
@@ -243,6 +252,8 @@ def cmd_margin(args) -> int:
                   f"課金{q.chargeable_weight_g:>6}g{vol}")
         for w in chosen.warnings:
             print(f"   [注意] {w}")
+        if chosen.carrier is Carrier.SLS:
+            print(f"   [注意] {SLS_NOTICE}")
 
     cap = max_cost_for_margin(
         args.price, args.target_margin, profile, level=level, tax=tax, shipping_jpy=ship
@@ -294,12 +305,15 @@ def cmd_ship(args) -> int:
 
 
 def _policy(args) -> ScoringPolicy:
-    return ScoringPolicy(
+    """市場ごとの既定値から作る。下限価格や配送手段が市場で違うため。"""
+    kw = dict(
         target_margin=args.target_margin,
         dynamic_shipping=not args.flat_shipping,
-        carrier=Carrier(args.carrier) if args.carrier else None,
         rate_tables=_rate_tables(args),
     )
+    if args.carrier:
+        kw["carrier"] = Carrier(args.carrier)
+    return ScoringPolicy.for_market(Market(args.market), **kw)
 
 
 def _genres(args) -> dict:
@@ -480,7 +494,13 @@ def cmd_price(args) -> int:
     ship_note = "プロファイル既定の概算値"
     if args.weight_g:
         parcel = Parcel(args.weight_g, args.length_cm, args.width_cm, args.height_cm)
-        q = cheapest(parcel, MARKET_ZONE[Market(args.market)], tables=_rate_tables(args))
+        want = _carrier(args)
+        zone = MARKET_ZONE[Market(args.market)]
+        try:
+            q = (estimate(parcel, zone, want, tables=_rate_tables(args))
+                 if want else cheapest(parcel, zone, tables=_rate_tables(args)))
+        except (ValueError, LookupError):
+            q = None
         if q is None:
             print("この重量・寸法で使える配送手段がありません。", file=sys.stderr)
             return 1

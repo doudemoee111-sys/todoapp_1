@@ -59,6 +59,7 @@ class Carrier(str, Enum):
     PARCEL = "parcel"          # 国際小包（航空便）。容積重量あり（÷6,000）
     EPACKET = "epacket"        # 国際eパケット。2kgまで・小型限定だが安い
     COURIER = "courier"        # UGX / FedEx / DHL。容積重量あり（÷5,000）
+    SLS = "sls"                # Shopee Logistics Service。仕組みが根本的に違う（下記）
 
 
 # 容積重量の除数。None は「容積重量を採らない」ことを表す。
@@ -67,6 +68,7 @@ _VOLUMETRIC_DIVISOR: dict[Carrier, int | None] = {
     Carrier.PARCEL: 6000,
     Carrier.EPACKET: None,
     Carrier.COURIER: 5000,
+    Carrier.SLS: 6000,
 }
 
 # 手段ごとの重量上限（g）。超えたら見積もり対象から外す。
@@ -75,6 +77,7 @@ _MAX_WEIGHT_G: dict[Carrier, int] = {
     Carrier.PARCEL: 30000,
     Carrier.EPACKET: 2000,
     Carrier.COURIER: 30000,
+    Carrier.SLS: 30000,
 }
 
 # 手段ごとの寸法制限（cm）。(最長辺, 長さ+胴回り, 三辺計) の順。None は制限なし。
@@ -84,6 +87,7 @@ _MAX_DIMS_CM: dict[Carrier, tuple[float | None, float | None, float | None]] = {
     Carrier.PARCEL: (150.0, 300.0, None),
     Carrier.EPACKET: (60.0, None, 90.0),  # 小形包装物の枠。ここが一番きつい
     Carrier.COURIER: (274.0, 330.0, None),
+    Carrier.SLS: (150.0, 300.0, None),
 }
 
 
@@ -216,6 +220,13 @@ def _ems_table(zone: Zone, anchors: dict[int, float], inc_100g: float, inc_250g:
 
 
 DEFAULT_EMS_TABLES: dict[Zone, RateTable] = {
+    # 第1地帯（中国・韓国・台湾）。第2地帯より安いが、確認できたアンカーが無いため
+    # 第2地帯の刻みから比例で置いた**推定値**。台湾向けは必ず公式料金表で確認すること。
+    Zone.ZONE1: _ems_table(
+        Zone.ZONE1,
+        {500: 1900},
+        inc_100g=220, inc_250g=180,
+    ),
     Zone.ZONE2: _ems_table(
         Zone.ZONE2,
         {500: 2150, 600: 2400, 700: 2650, 800: 2900, 900: 3150},
@@ -232,8 +243,8 @@ DEFAULT_EMS_TABLES: dict[Zone, RateTable] = {
         inc_100g=280, inc_250g=350,
     ),
 }
-# 第1地帯は第2地帯より安いが確認できたアンカーが無いため、暫定で第2地帯を流用しない。
-# 未定義の地帯は quote 時に明示的なエラーにする（黙って別地帯の値を使わない）。
+# 未定義の地帯（第5地帯＝中南米・アフリカ）は quote 時に明示的なエラーにする。
+# 黙って別地帯の値を使うと、送料を過小に見積もったまま仕入れることになる。
 
 # 手段ごとの倍率。EMS表を基準に、他手段の水準を相対で置く暫定値。
 # これも運用前に実額で差し替える前提の値。
@@ -242,6 +253,11 @@ _CARRIER_FACTOR: dict[Carrier, float] = {
     Carrier.PARCEL: 0.80,   # 国際小包（航空）はEMSより安いが日数がかかる
     Carrier.EPACKET: 0.55,  # 2kg・小型限定
     Carrier.COURIER: 1.35,  # UGX / FedEx / DHL。米国宛ての実質的な代替手段
+    # SLS は「国内の集荷場所まで送れば、以降の国際輸送・通関・現地配送はShopeeが担う」
+    # という別物。市場料金より最大3割安いとされるが、料率表は公開されていない。
+    # ここでは郵便の表を基準に 0.70 を掛けた**概算**を置く。
+    # **加えて、国内の集荷場所まで送る宅配便代（1回分）が別途かかる。**
+    Carrier.SLS: 0.70,
 }
 
 
@@ -269,7 +285,21 @@ MARKET_ZONE: dict[Market, Zone] = {
     Market.EBAY_EU: Zone.ZONE3,
     Market.EBAY_AU: Zone.ZONE3,
     Market.SHOPEE_SEA: Zone.ZONE2,
+    Market.SHOPEE_TW: Zone.ZONE1,   # 台湾は第1地帯（中国・韓国・台湾）
+    Market.SHOPEE_SG: Zone.ZONE2,
+    Market.SHOPEE_MY: Zone.ZONE2,
+    Market.SHOPEE_PH: Zone.ZONE2,
 }
+
+# Shopeeの既定の配送手段。自分で国際発送するのではなく SLS に載せるのが前提。
+DEFAULT_CARRIER: dict[Market, Carrier] = {m: Carrier.SLS for m in Market if m.is_shopee}
+
+SLS_NOTICE = (
+    "SLS（Shopee Logistics Service）は、国内の集荷場所まで送れば以降の国際輸送・通関・"
+    "現地配送をShopeeが担う仕組み。重量は**Shopeeの倉庫で実測した値**で課金される。"
+    "料率表は公開されていないため、ここでは郵便の表に0.70を掛けた概算を出している。"
+    "**国内の集荷場所まで送る宅配便代（1回分）が別途かかる。**実額はセラーセンターで確認すること"
+)
 
 # 米国宛ての引受停止と再開（2025-08 / 2026-04）。判断に効くので警告として出す。
 US_POSTAL_NOTICE = (
