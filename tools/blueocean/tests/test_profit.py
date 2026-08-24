@@ -30,7 +30,8 @@ def test_market_ordering_of_difficulty():
     sea = required_multiple(200, 0.20, SEA)
     assert us > eu > sea
     assert eu == pytest.approx(1.77, abs=0.03)
-    assert sea == pytest.approx(1.41, abs=0.05)
+    # Shopeeは関税が購入者負担で、セラーが負担する送料も国内ぶんだけなので大きく下がる
+    assert sea == pytest.approx(1.32, abs=0.05)
 
 
 def test_below_standard_raises_required_multiple():

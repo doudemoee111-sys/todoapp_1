@@ -430,6 +430,87 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
   <b>EMSが逆にいちばん安くなる</b>ことがあります。固定送料では見えない逆転です。
 </p>
 
+<h2>Shopeeで「数千点を一括出品」はできない</h2>
+<p>
+  仕入元から数千件を引いて一括出品し、価格差を定期的に見張る ──
+  <b>eBayを前提にすればその設計で正しいのですが、Shopeeでは載りません。</b>
+  出品できる数に上限があるからです。
+</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>枠</th><th class="n">台湾</th><th class="n">他市場</th><th>条件</th></tr></thead>
+  <tbody>
+    <tr><td>新規開店時</td><td class="n"><b>500点</b></td><td class="n">1,000点</td><td>ここから始まります</td></tr>
+    <tr><td>Preferred Seller</td><td class="n">10,000点</td><td class="n">10,000点</td><td>認定が要ります</td></tr>
+    <tr><td>実績上限</td><td class="n">20,000点</td><td class="n">20,000点</td><td>販売実績を積んで初めて届きます</td></tr>
+    <tr class="hl"><td><b>プレオーダー（無在庫）</b></td><td class="n"><b>100点前後</b></td><td class="n"><b>100点前後</b></td>
+        <td><b>超えると売上の低い順に自動削除</b></td></tr>
+  </tbody>
+</table></div>
+
+<p>
+  <b>無在庫で置けるのは100点程度です。</b>数千点どころか、新規開店時は全体でも500〜1,000点。
+  そして<b>枠を超えたときに何を残すかを決めるのはShopeeです</b>（売上の低い順に自動削除）。
+  自分で落とさなければ、機械に選ばれます。
+</p>
+
+<h3>だから作るべきものが変わる</h3>
+<div class="termlist">
+  <div><span class="t">eBay向け</span><span class="d">
+    多く出す → 反応を見る → 当たりを残す。<b>出品数そのものが武器になる</b></span></div>
+  <div><span class="t">Shopee向け</span><span class="d">
+    <b>少ない枠に何を置くかを選び続ける。</b>枠が埋まっているなら、
+    1つ入れるには1つ落とすしかない。<b>「選ぶこと」自体が仕事になります</b></span></div>
+</div>
+<p>
+  そしてこの入れ替え判断は、すでにこのツールが持っているものの組み合わせで出せます。
+  <b>軸2の <code>DROP</code>（落とすもの）と、軸1の <code>BLUE</code>/<code>PROBE</code>（入れるもの）を
+  突き合わせるだけです。</b>
+</p>
+
+<h3>Shopee専用に足したもの</h3>
+<div class="termlist">
+  <div><span class="t">出品枠の管理</span><span class="d">
+    <code>shopee slots</code>。枠の残り、プレオーダーの超過数、
+    <b>自動削除される件数</b>、落とす候補と入れる候補を出します</span></div>
+  <div><span class="t">価格差の定期確認</span><span class="d">
+    <code>shopee reprice</code>。出品中の全点と仕入元の現在価格を突き合わせ、
+    <b>止める／値上げ／下げ余地／据え置き</b>に振り分けます。
+    <b>放置すると損が出るものだけ</b>を先頭に出します</span></div>
+  <div><span class="t">一括出品の下書き</span><span class="d">
+    枠の上限を渡すと、<b>スコアの高い順にその数だけ</b>書き出します。
+    価格は目標利益率から順算した値が入ります</span></div>
+</div>
+
+<h3>無在庫でいちばん高くつくのは、買えないものが売れること</h3>
+<p>
+  価格差の確認では、<b>仕入元の在庫切れを利益率より先に見ます。</b>
+  採算が良くても、買えないなら止めるしかありません。
+  次に高くつくのが<b>仕入元の値上げに気づかず据え置くこと</b>で、赤字のまま売れ続けます。
+  この2つは在庫連動と同じ頻度で回してください。
+</p>
+
+<h2>Shopeeの送料は、eBayと負担が逆</h2>
+<p>
+  ここは最初モデルを取り違えていました。訂正して書き直しています。
+</p>
+<div class="tbl"><table>
+  <thead><tr><th>費目</th><th>eBay（米国・DDP）</th><th>Shopee（SLS）</th></tr></thead>
+  <tbody>
+    <tr><td>国内送料（集荷場所まで）</td><td>—</td><td><b>セラー負担</b></td></tr>
+    <tr><td>国際送料</td><td><b>セラー負担</b></td><td>SLSが処理</td></tr>
+    <tr><td>ラストマイル配送</td><td>（国際送料に含む）</td><td>SLSが処理</td></tr>
+    <tr><td>関税・通関</td><td><b>セラー負担（DDP）</b></td><td><b>原則購入者負担</b></td></tr>
+  </tbody>
+</table></div>
+<p>
+  <b>Shopeeでセラーが負担するのは国内送料だけです。</b>
+  ここを国際送料にしていたため、<b>プチプラ商品がすべて赤字に見えていました。</b>実際は成立します。
+  国内送料は重量ではなく<b>三辺計のサイズ区分</b>で決まり、
+  月100件規模から佐川急便の集荷、<b>800件規模でSPSの国内集荷料が無料</b>になるので、
+  数が出れば<b>この費用自体が消えます</b>。
+</p>
+
 <h2>eBay と Shopee ── 同じ戦略でいいのか</h2>
 <p>
   <b>市場を分けるのは正しいが、戦略まで同じにすると外します。</b>
@@ -1240,7 +1321,7 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
 
 <footer>
   <p>
-    Python版と同じ計算式を実装しています（テスト230件）。
+    Python版と同じ計算式を実装しています（テスト255件）。
     コード：<a href="https://github.com/doudemoee111-sys/todoapp_1/tree/claude/side-business-proposal-su9ie3/tools/blueocean">tools/blueocean</a>
   </p>
   <p>
@@ -1260,12 +1341,14 @@ const PROFILES = {
   ebay_eu:    {fee:.18, per:60, duty:0,    ship:3000, pack:200, label:"eBay 欧州"},
   ebay_au:    {fee:.18, per:60, duty:0,    ship:3000, pack:200, label:"eBay 豪州"},
   /* Shopee：販売+決済は各国 5.3〜7.0%（VAT込み表示）。為替・送金を足して実効8%。
-     eBayのような出品ごとの固定費は無い。送料は SLS に載せる前提。 */
-  shopee_sea: {fee:.08, per:0,  duty:0,    ship:2000, pack:200, label:"Shopee 東南ア"},
-  shopee_tw:  {fee:.08, per:0,  duty:0,    ship:1500, pack:200, label:"Shopee 台湾"},
-  shopee_sg:  {fee:.08, per:0,  duty:0,    ship:1800, pack:200, label:"Shopee シンガポール"},
-  shopee_my:  {fee:.08, per:0,  duty:0,    ship:1900, pack:200, label:"Shopee マレーシア"},
-  shopee_ph:  {fee:.08, per:0,  duty:0,    ship:2000, pack:200, label:"Shopee フィリピン"},
+     出品ごとの固定費は無い。関税は原則購入者負担なので0。
+     送料は**セラー負担ぶん（国内の集荷場所まで）だけ**。国際送料とラストマイルは
+     SLSが処理するのでセラーの原価には乗らない。 */
+  shopee_sea: {fee:.08, per:0,  duty:0,    ship:800,  pack:200, label:"Shopee 東南ア"},
+  shopee_tw:  {fee:.08, per:0,  duty:0,    ship:800,  pack:200, label:"Shopee 台湾"},
+  shopee_sg:  {fee:.08, per:0,  duty:0,    ship:800,  pack:200, label:"Shopee シンガポール"},
+  shopee_my:  {fee:.08, per:0,  duty:0,    ship:800,  pack:200, label:"Shopee マレーシア"},
+  shopee_ph:  {fee:.08, per:0,  duty:0,    ship:800,  pack:200, label:"Shopee フィリピン"},
 };
 const IS_SHOPEE = m => String(m).startsWith("shopee");
 const LEVEL_ADJ = {top_rated:-.02, above_standard:0, below_standard:.06};
@@ -1295,7 +1378,7 @@ function cfg(){
    ここが「固定送料」との分かれ目。返り値は {ship, quote} 。 */
 function shipFor(c, parcel){
   if (!c.autoShip || !parcel || parcel.g <= 0) return {ship:c.ship, quote:null};
-  const qs = quoteAll(parcel, c.zone);
+  const qs = quoteAll(parcel, c.zone, carrierPool(c.market));
   if (!qs.length) return {ship:null, quote:null};   /* 使える手段が無い */
   /* Shopeeの越境では自分で国際発送しない。「最安を自動」でも SLS に寄せる。
      ここを最安のままにすると、実際には選べない手段で採算を出してしまう。 */
@@ -1330,14 +1413,25 @@ const VDIV    = {ems:null, parcel:6000, epacket:null, courier:5000, sls:6000};  
 const WMAX    = {ems:30000, parcel:30000, epacket:2000, courier:30000, sls:30000};
 const DMAX    = {ems:[150,300,null], parcel:[150,300,null], epacket:[60,null,90],
                  courier:[274,330,null], sls:[150,300,null]};
-/* SLS は「国内の集荷場所まで送れば以降はShopeeが担う」別物。市場料金より最大3割安いと
-   されるが料率表は非公開なので、郵便の表に0.70を掛けた概算を置く。
-   国内の集荷場所まで送る宅配便代が別途かかる。 */
-const CFACTOR = {ems:1.00, parcel:0.80, epacket:0.55, courier:1.35, sls:0.70};
+/* SLS は郵便の何割、という話ではない（_DOMESTIC_SIZE を使う）。形を揃えるためだけの値。 */
+const CFACTOR = {ems:1.00, parcel:0.80, epacket:0.55, courier:1.35, sls:1.00};
+/* SLSでセラーが負担するのは「国内送料（集荷場所まで）」だけ。国際送料とラストマイルは
+   SLSが処理し、関税・通関は原則購入者負担。eBay（DDPで関税も国際送料もセラー負担）とは
+   負担の構造が逆で、ここを取り違えるとプチプラ商品がすべて赤字に見える。
+   国内宅配便は重量ではなく三辺計のサイズ区分で決まる。 */
+const DOMESTIC_SIZE = [[60,800],[80,1000],[100,1250],[120,1500],[140,1750],[160,2000]];
+function domesticLegJpy(p){
+  if (p.g > 25000) return null;
+  const total = (p.l>0 && p.w>0 && p.h>0) ? (p.l+p.w+p.h) : 60;
+  for (const [lim, jpy] of DOMESTIC_SIZE) if (total <= lim) return jpy;
+  return null;
+}
 const CLABEL  = {ems:"EMS", parcel:"国際小包", epacket:"eパケット",
                  courier:"UGX / FedEx / DHL", sls:"SLS（Shopee配送）"};
 const CARRIERS = ["ems","parcel","epacket","courier","sls"];
-const SLS_NOTICE = "SLS は国内の集荷場所まで送れば以降の国際輸送・通関・現地配送をShopeeが担う仕組みです。重量は<b>Shopeeの倉庫で実測した値</b>で課金されます。料率表は公開されていないため、ここでは郵便の表に0.70を掛けた概算です。<b>国内の集荷場所まで送る宅配便代が別途かかります。</b>";
+const SLS_NOTICE = "SLSでセラーが負担するのは<b>国内送料（集荷場所まで）だけ</b>です。国際送料とラストマイル配送はSLSが処理し、関税・通関手数料は原則購入者負担。<b>eBay（DDPで関税も国際送料もセラー負担）とは負担の構造が逆</b>になります。国内送料は三辺計のサイズ区分で決まる概算で、月100件規模から佐川急便の集荷、800件規模でSPSの国内集荷料が無料になるため、数が出れば<b>この費用自体が消えます</b>。";
+/* SLSはShopeeに出品して初めて使える。一般の比較に混ぜると「選べない手段が最安」になる。 */
+const POSTAL_CARRIERS = ["ems","parcel","epacket","courier"];
 
 /* アンカー＝公表値として確認できた金額。その間は刻み幅から内挿する。
    内挿値は必ず「推定」と表示し、事実として一人歩きさせない。 */
@@ -1387,6 +1481,15 @@ const US_NOTICE = "米国宛て：2025年8月のデミニミス（$800免税）�
 
 /* 1手段の見積もり。使えない場合は {error} を返す。 */
 function quoteOne(p, zone, carrier){
+  if (carrier === "sls"){
+    const jpy = domesticLegJpy(p);
+    if (jpy === null) return {error:"SLS：三辺計または重量が国内宅配便の範囲外"};
+    const warnings = [SLS_NOTICE];
+    if (!(p.l>0 && p.w>0 && p.h>0))
+      warnings.unshift("寸法が未入力のため60サイズとみなしています。国内送料はサイズ区分で決まるので実寸を入れてください");
+    return {carrier, zone, jpy, actual:p.g, vol:0, chg:p.g,
+            estimated:true, warnings, byVolume:false};
+  }
   const table = EMS_TABLE[zone];
   if (!table) return {error:`${zone} の料金表が未登録`};
   const os = overSize(p, carrier);
@@ -1407,10 +1510,13 @@ function quoteOne(p, zone, carrier){
           actual:p.g, vol:volWeight(p,carrier), chg, estimated, warnings,
           byVolume: volWeight(p,carrier) > p.g};
 }
-function quoteAll(p, zone){
-  return CARRIERS.map(c => quoteOne(p, zone, c)).filter(q => !q.error).sort((a,b)=>a.jpy-b.jpy);
+function quoteAll(p, zone, pool){
+  return (pool || POSTAL_CARRIERS).map(c => quoteOne(p, zone, c))
+    .filter(q => !q.error).sort((a,b)=>a.jpy-b.jpy);
 }
-function cheapestQuote(p, zone){ const q = quoteAll(p, zone); return q.length ? q[0] : null; }
+/* Shopeeのときだけ SLS を候補に含める */
+const carrierPool = market => IS_SHOPEE(market) ? POSTAL_CARRIERS.concat("sls") : POSTAL_CARRIERS;
+function cheapestQuote(p, zone, pool){ const q = quoteAll(p, zone, pool); return q.length ? q[0] : null; }
 function parcelOf(g,l,w,h){ return {g:+g||0, l:+l||0, w:+w||0, h:+h||0}; }
 
 /* ===== 利益計算（profit.py と同一） ===== */
@@ -1499,7 +1605,7 @@ function renderCalc(){
 
 /* ===== 送料タブ ===== */
 function renderShip(c, parcel, noCarrier){
-  const qs = parcel.g > 0 ? quoteAll(parcel, c.zone) : [];
+  const qs = parcel.g > 0 ? quoteAll(parcel, c.zone, carrierPool(c.market)) : [];
   /* 「最安」ではなく「実際に使う手段」を主役にする。
      Shopeeでは自分で国際発送しないので、最安を出しても選べない。 */
   const want = c.carrier !== "auto" ? c.carrier : (IS_SHOPEE(c.market) ? "sls" : null);
@@ -1528,7 +1634,7 @@ function renderShip(c, parcel, noCarrier){
 
   const seen = new Set(); const ws = [];
   qs.forEach(q => q.warnings.forEach(w => { if(!seen.has(w)){ seen.add(w); ws.push(w); }}));
-  const dropped = CARRIERS.map(x => quoteOne(parcel, c.zone, x)).filter(q => q.error);
+  const dropped = carrierPool(c.market).map(x => quoteOne(parcel, c.zone, x)).filter(q => q.error);
   if (IS_SHOPEE(c.market)) ws.unshift(SLS_NOTICE);
   $("s-warn").innerHTML =
     (noCarrier ? `<div class="alert"><b>使える配送手段がありません。</b>この荷物は現状の料金表の範囲外です。送料は固定値のまま計算しています。</div>` : "")
@@ -2260,7 +2366,7 @@ function renderPrice(){
    送料が1回で済むのが最大の効き目で、単価の低い商品ほど効く。
    もう一つは死に筋の処理。単品では売れない在庫を売れ筋に混ぜる。 */
 function bundleShip(parcel, c){
-  const qs = quoteAll(parcel, c.zone);
+  const qs = quoteAll(parcel, c.zone, carrierPool(c.market));
   if (!qs.length) return {jpy: c.ship, quotable: false, chg: parcel.g, byVol: false};
   const q = c.carrier === "auto" ? qs[0] : (qs.find(x => x.carrier === c.carrier) || qs[0]);
   return {jpy: q.jpy, quotable: true, chg: q.chg, byVol: q.byVolume};

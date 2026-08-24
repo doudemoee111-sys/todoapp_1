@@ -48,6 +48,16 @@ from .pipeline import (
 from .profit import DEFAULT_PROFILES, compute, max_cost_for_margin, required_multiple
 from .models import Candidate
 from .scoring import ScoringPolicy, score_one
+from .shopee import (
+    LISTING_LIMITS,
+    RepriceAction,
+    RepricePolicy,
+    load_listings,
+    plan_reprice,
+    plan_slots,
+    write_mass_upload,
+    write_reprice_plan,
+)
 from .shipping import (
     DEFAULT_CARRIER,
     MARKET_ZONE,
@@ -81,9 +91,25 @@ _CHANGE_ICON = {
 }
 
 
-def _pad(text: str, width: int, *, right: bool = False) -> str:
-    """全角を2桁として揃える。日本語の見出しを含む表がずれるのを防ぐ。"""
-    w = sum(2 if unicodedata.east_asian_width(ch) in "WF" else 1 for ch in text)
+def _width(text: str) -> int:
+    return sum(2 if unicodedata.east_asian_width(ch) in "WF" else 1 for ch in text)
+
+
+def _pad(text: str, width: int, *, right: bool = False, trunc: bool = False) -> str:
+    """全角を2桁として揃える。日本語の見出しを含む表がずれるのを防ぐ。
+
+    ``trunc=True`` なら幅を超えた分を切る。商品名のように長さが読めないものは
+    切らないと列が崩れる。
+    """
+    if trunc and _width(text) > width:
+        out, used = "", 0
+        for ch in text:
+            w = 2 if unicodedata.east_asian_width(ch) in "WF" else 1
+            if used + w > width - 1:
+                break
+            out, used = out + ch, used + w
+        text = out + "…"
+    w = _width(text)
     fill = " " * max(0, width - w)
     return fill + text if right else text + fill
 
@@ -593,7 +619,7 @@ def cmd_bundle(args) -> int:
           f"{_pad('重量', 8, right=True)}{_pad('単品相場', 11, right=True)}")
     for it in items:
         solo = f"${it.solo_price_usd:>7.0f}" if it.sells_alone else "  単品不可"
-        print(f"{_pad(it.name, 34)}{it.cost_incl_tax_jpy:>9,.0f}円"
+        print(f"{_pad(it.name, 34, trunc=True)}{it.cost_incl_tax_jpy:>9,.0f}円"
               f"{it.weight_g:>6,}g {solo:>10}")
 
     print()
@@ -618,6 +644,84 @@ def cmd_bundle(args) -> int:
     print()
     for n in c.notes:
         print(f"  - {n}")
+    return 0
+
+
+_REPRICE_ICON = {
+    RepriceAction.STOP: "止める", RepriceAction.RAISE: "値上げ",
+    RepriceAction.LOWER: "下げ余地", RepriceAction.HOLD: "据え置き",
+}
+
+
+def cmd_shopee(args) -> int:
+    """Shopee専用の一括運用。枠の管理と価格差の定期確認。"""
+    market = Market(args.market)
+    if not market.is_shopee:
+        print(f"--market に Shopee の市場を指定してください"
+              f"（{', '.join(m.value for m in LISTING_LIMITS)}）", file=sys.stderr)
+        return 1
+    profile = DEFAULT_PROFILES[market]
+    tax = TaxProfile(is_taxable_entity=not args.no_tax_refund)
+    level = SellerLevel(args.level)
+
+    if args.what == "slots":
+        decisions = []
+        if args.observations:
+            obs = load_observations(args.observations)
+            decisions, _ = run_axis2(obs, market=market)
+        scored = []
+        if args.candidates:
+            scored = run_axis1(load_candidates(args.candidates), _source(args),
+                               market=market, policy=_policy(args),
+                               level=level, tax=tax)
+        plan = plan_slots(
+            market, listed=args.listed, preorder_listed=args.preorder_listed,
+            decisions=decisions, scored=scored, tier=args.tier,
+        )
+        print(f"\n=== 出品枠（{market.label} / {args.tier}）===\n")
+        print(f"  出品枠            {plan.listed:>6,} / {plan.limit:,}点"
+              f"（残り {plan.room:,}点）")
+        print(f"  プレオーダー枠    {plan.preorder_listed:>6,} / {plan.preorder_limit:,}点"
+              f"（残り {plan.preorder_room:,}点）")
+        if plan.forced_removals:
+            print(f"  自動削除される数  {plan.forced_removals:>6,}点  ← 自分で選ばないと機械に選ばれます")
+        print(f"\n  落とす候補（軸2のDROP）  {len(plan.drop):>4}点")
+        for t in plan.drop[:8]:
+            print(f"    - {t}")
+        print(f"  入れる候補（軸1）        {len(plan.add):>4}点 / 入れられるのは {plan.can_add}点まで")
+        for t in plan.add[:8]:
+            print(f"    + {t}")
+        for n in plan.notes:
+            print(f"\n  [注意] {n}")
+        return 0
+
+    # --- reprice ---
+    listings = load_listings(args.listings)
+    rows = plan_reprice(
+        listings, profile,
+        RepricePolicy(target_margin=args.target_margin,
+                      min_margin=args.min_margin, fx_jpy_per_usd=args.fx),
+        level=level, tax=tax, tables=_rate_tables(args),
+        carrier=Carrier(args.carrier) if args.carrier else None,
+    )
+    urgent = [r for r in rows if r.is_urgent]
+    print(f"\n=== 価格差の確認（{market.label} / {len(rows)}点）===\n")
+    print(f"  いま動かすべき  {len(urgent)}点"
+          f"（止める {sum(1 for r in rows if r.action is RepriceAction.STOP)} / "
+          f"値上げ {sum(1 for r in rows if r.action is RepriceAction.RAISE)}）")
+    print(f"  下げ余地あり    {sum(1 for r in rows if r.action is RepriceAction.LOWER)}点")
+    print(f"  据え置き        {sum(1 for r in rows if r.action is RepriceAction.HOLD)}点\n")
+    for r in (rows if args.all else urgent)[:args.top]:
+        li = r.listing
+        newp = (f" → ${r.required_price_usd:,.2f}"
+                if r.action in (RepriceAction.RAISE, RepriceAction.LOWER) else "")
+        print(f"[{_pad(_REPRICE_ICON[r.action], 8)}] "
+              f"{_pad(li.title or li.sku, 30, trunc=True)} "
+              f"利益率{r.margin_now*100:>6.1f}%  ${li.current_price_usd:>7.2f}{newp}")
+        print(f"             {r.reason}")
+    if args.out:
+        n = write_reprice_plan(rows, args.out, urgent_only=not args.all)
+        print(f"\n  改定リスト {n}件 を {args.out} に書き出しました。")
     return 0
 
 
@@ -846,6 +950,24 @@ def main(argv=None) -> int:
     ck.add_argument("--url", default=None)
     ck.add_argument("--category", default=None)
     ck.set_defaults(func=cmd_check)
+
+    sp = sub.add_parser("shopee", help="Shopee専用：出品枠の管理と価格差の定期確認")
+    sp.add_argument("what", choices=["slots", "reprice"],
+                    help="slots=枠の残りと入れ替え候補 / reprice=価格差の確認")
+    sp.add_argument("--listed", type=int, default=0, help="いまの出品数")
+    sp.add_argument("--preorder-listed", type=int, default=0,
+                    help="うちプレオーダー（無在庫）の数")
+    sp.add_argument("--tier", default="new", choices=["new", "preferred", "max"],
+                    help="new=新規開店時 / preferred=Preferred Seller / max=実績上限")
+    sp.add_argument("--observations", default=None, help="軸2の観測CSV（落とす候補を出す）")
+    sp.add_argument("--candidates", default=None, help="軸1の候補CSV（入れる候補を出す）")
+    sp.add_argument("--listings", default=None, help="出品中の一覧CSV（reprice用）")
+    sp.add_argument("--min-margin", type=float, default=0.05, help="値上げに動く下限利益率")
+    sp.add_argument("--fx", type=float, default=150.0)
+    sp.add_argument("--top", type=int, default=25)
+    sp.add_argument("--all", action="store_true", help="据え置きも含めて全件出す")
+    sp.add_argument("--out", default=None, help="改定リストの書き出し先")
+    sp.set_defaults(func=cmd_shopee)
 
     ig = sub.add_parser("ingest", help="eBayのレポートを軸2の観測CSVに取り込む")
     ig.add_argument("--report", required=True,

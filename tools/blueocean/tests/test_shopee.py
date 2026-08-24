@@ -33,11 +33,23 @@ def test_taiwan_is_zone1():
     assert MARKET_ZONE[Market.SHOPEE_SG] is Zone.ZONE2
 
 
-def test_taiwan_ships_cheaper_than_southeast_asia():
+def test_taiwan_ships_cheaper_than_southeast_asia_by_post():
+    """自分で郵便で送る場合は、台湾（第1地帯）のほうが安い。"""
+    p = Parcel(400, 20, 15, 10)
+    tw = estimate(p, MARKET_ZONE[Market.SHOPEE_TW], Carrier.EMS).jpy
+    sg = estimate(p, MARKET_ZONE[Market.SHOPEE_SG], Carrier.EMS).jpy
+    assert tw < sg
+
+
+def test_sls_cost_does_not_depend_on_the_destination():
+    """SLSでセラーが負担するのは国内送料だけなので、宛先で変わらない。
+
+    ここを国際送料にすると、プチプラ商品がすべて赤字に見えてしまう。
+    """
     p = Parcel(400, 20, 15, 10)
     tw = estimate(p, MARKET_ZONE[Market.SHOPEE_TW], Carrier.SLS).jpy
-    sg = estimate(p, MARKET_ZONE[Market.SHOPEE_SG], Carrier.SLS).jpy
-    assert tw < sg
+    ph = estimate(p, MARKET_ZONE[Market.SHOPEE_PH], Carrier.SLS).jpy
+    assert tw == ph
 
 
 def test_shopee_has_no_per_order_fee():
@@ -57,15 +69,41 @@ def test_shopee_defaults_to_sls():
     assert Market.EBAY_US not in DEFAULT_CARRIER
 
 
-def test_sls_uses_volumetric_weight():
-    """SLSは倉庫で実測される。嵩張れば容積で課金される。"""
-    bulky = Parcel(300, 30, 25, 20)
-    q = estimate(bulky, Zone.ZONE2, Carrier.SLS)
-    assert q.billed_by_volume
-    assert q.chargeable_weight_g == 2500
+def test_sls_is_priced_by_domestic_size_tier():
+    """国内宅配便はサイズ区分で決まる。重量でも容積重量でもない。"""
+    small = estimate(Parcel(300, 20, 15, 5), Zone.ZONE2, Carrier.SLS)    # 三辺計 40cm
+    large = estimate(Parcel(300, 40, 35, 30), Zone.ZONE2, Carrier.SLS)   # 三辺計 105cm
+    assert small.jpy < large.jpy
+    assert not small.billed_by_volume     # 容積重量では課金しない
+
+
+def test_sls_says_who_pays_what():
+    """負担の構造がeBayと逆であることを、見積もりに必ず書く。"""
+    q = estimate(Parcel(300, 20, 15, 5), Zone.ZONE2, Carrier.SLS)
+    note = " ".join(q.warnings)
+    assert "国内送料" in note and "購入者負担" in note
+
+
+def test_sls_warns_when_dimensions_are_missing():
+    """国内送料はサイズで決まるので、寸法が無いと当てにならない。"""
+    q = estimate(Parcel(300), Zone.ZONE2, Carrier.SLS)
+    assert any("60サイズ" in w for w in q.warnings)
+
+
+def test_sls_is_excluded_from_the_generic_comparison():
+    """SLSはShopeeに出品して初めて使える。一般の比較に混ぜない。
+
+    混ぜると「選べない手段が最安」という誤った結論になる。
+    """
+    from blueocean.shipping import POSTAL_CARRIERS, quote_all
+
+    assert Carrier.SLS not in POSTAL_CARRIERS
+    assert all(q.carrier is not Carrier.SLS
+               for q in quote_all(Parcel(300, 20, 15, 5), Zone.ZONE2))
 
 
 def test_sls_is_cheaper_than_self_shipping_by_post():
+    """国内ぶんだけの負担なので、自分で国際発送するより安くなる。"""
     p = Parcel(400, 20, 15, 10)
     sls = estimate(p, Zone.ZONE2, Carrier.SLS).jpy
     ems = estimate(p, Zone.ZONE2, Carrier.EMS).jpy

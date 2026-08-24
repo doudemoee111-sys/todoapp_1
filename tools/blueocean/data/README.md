@@ -1,6 +1,7 @@
 # データファイル
 
 - `jobs.sample.json` — `job`（抽出条件の保存と再実行）の設定サンプル
+- `listings.sample.csv` — `shopee reprice`（価格差の確認）の入力サンプル
 - `keywords.sample.txt` — `scan`（キーワード走査）の入力サンプル
 - `bundle.sample.csv` — `bundle`（セット販売の採算）の入力サンプル
 - `candidates.sample.csv` — 軸1の入力サンプル（国内の仕入候補）

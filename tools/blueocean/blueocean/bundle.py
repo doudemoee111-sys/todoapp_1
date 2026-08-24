@@ -109,7 +109,9 @@ def _ship(parcel: Parcel, profile: FeeProfile, tables: dict[Zone, RateTable] | N
         if carrier is not None:
             from .shipping import estimate
             return estimate(parcel, zone, carrier, tables=tables).jpy, True
-        q = cheapest(parcel, zone, tables=tables)
+        from .shipping import POSTAL_CARRIERS
+        pool = (POSTAL_CARRIERS + (Carrier.SLS,)) if profile.market.is_shopee else POSTAL_CARRIERS
+        q = cheapest(parcel, zone, carriers=pool, tables=tables)
         return (q.jpy, True) if q else (profile.shipping_jpy, False)
     except (ValueError, LookupError):
         return profile.shipping_jpy, False
@@ -325,7 +327,9 @@ def compare(
 
     parcel = pack_bundle(items, packing=packing, extra_weight_g=extra_weight_g)
     zone = MARKET_ZONE[profile.market]
-    q = cheapest(parcel, zone, tables=tables)
+    from .shipping import POSTAL_CARRIERS
+    pool = (POSTAL_CARRIERS + (Carrier.SLS,)) if profile.market.is_shopee else POSTAL_CARRIERS
+    q = cheapest(parcel, zone, carriers=pool, tables=tables)
     chargeable = q.chargeable_weight_g if q else parcel.weight_g
     by_volume = bool(q and q.billed_by_volume)
     _, quotable = _ship(parcel, profile, tables, carrier)

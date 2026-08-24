@@ -253,12 +253,52 @@ _CARRIER_FACTOR: dict[Carrier, float] = {
     Carrier.PARCEL: 0.80,   # 国際小包（航空）はEMSより安いが日数がかかる
     Carrier.EPACKET: 0.55,  # 2kg・小型限定
     Carrier.COURIER: 1.35,  # UGX / FedEx / DHL。米国宛ての実質的な代替手段
-    # SLS は「国内の集荷場所まで送れば、以降の国際輸送・通関・現地配送はShopeeが担う」
-    # という別物。市場料金より最大3割安いとされるが、料率表は公開されていない。
-    # ここでは郵便の表を基準に 0.70 を掛けた**概算**を置く。
-    # **加えて、国内の集荷場所まで送る宅配便代（1回分）が別途かかる。**
-    Carrier.SLS: 0.70,
+    # SLS は郵便の何割、という話ではない（下の _DOMESTIC_SIZE_JPY を使う）。
+    # 倍率は使わないが、辞書の形を揃えるために置いておく。
+    Carrier.SLS: 1.00,
 }
+
+# ---------------------------------------------------------------------------
+# SLS：セラーが負担するのは「国内送料」だけ
+#
+# ここは当初モデルを取り違えていた。SLSの配送料金は
+#   国内送料 / 国際送料 / ラストマイル配送 / 関税・通関手数料
+# の4要素で構成され、**セラーが負担するのは国内送料（集荷場所まで）だけ**。
+# 国際送料とラストマイルはSLSが処理し、関税・通関は原則購入者負担になる。
+#
+# eBay（DDPで関税も国際送料もセラー負担）とは負担の構造が逆で、
+# ここを取り違えると**プチプラ商品がすべて赤字に見える**。実際は成立する。
+#
+# 国内宅配便は重量ではなく**三辺計のサイズ区分**で決まる。
+# 月100件規模から佐川急便の集荷、800件規模でSPSの国内集荷料が無料になるため、
+# 数が出るセラーではこの費用自体が消える。
+# ---------------------------------------------------------------------------
+
+_DOMESTIC_SIZE_JPY: tuple[tuple[int, float], ...] = (
+    (60, 800.0), (80, 1000.0), (100, 1250.0),
+    (120, 1500.0), (140, 1750.0), (160, 2000.0),
+)
+_DOMESTIC_MAX_WEIGHT_G = 25000
+
+SLS_NOTICE = (
+    "SLSでセラーが負担するのは**国内送料（集荷場所まで）だけ**です。"
+    "国際送料とラストマイル配送はSLSが処理し、関税・通関手数料は原則購入者負担。"
+    "eBay（DDPで関税も国際送料もセラー負担）とは負担の構造が逆になります。"
+    "国内送料は三辺計のサイズ区分で決まる概算で、法人契約や集荷条件で下がります。"
+    "月100件規模から佐川急便の集荷、800件規模でSPSの国内集荷料が無料になるため、"
+    "数が出れば**この費用自体が消えます**"
+)
+
+
+def domestic_leg_jpy(parcel: "Parcel") -> float | None:
+    """集荷場所まで送る国内宅配便の料金。サイズ区分で決まる。"""
+    if parcel.weight_g > _DOMESTIC_MAX_WEIGHT_G:
+        return None
+    total = parcel.sum_dims_cm if parcel.has_dimensions else 60.0
+    for limit, jpy in _DOMESTIC_SIZE_JPY:
+        if total <= limit:
+            return jpy
+    return None
 
 
 @dataclass(frozen=True)
@@ -294,12 +334,7 @@ MARKET_ZONE: dict[Market, Zone] = {
 # Shopeeの既定の配送手段。自分で国際発送するのではなく SLS に載せるのが前提。
 DEFAULT_CARRIER: dict[Market, Carrier] = {m: Carrier.SLS for m in Market if m.is_shopee}
 
-SLS_NOTICE = (
-    "SLS（Shopee Logistics Service）は、国内の集荷場所まで送れば以降の国際輸送・通関・"
-    "現地配送をShopeeが担う仕組み。重量は**Shopeeの倉庫で実測した値**で課金される。"
-    "料率表は公開されていないため、ここでは郵便の表に0.70を掛けた概算を出している。"
-    "**国内の集荷場所まで送る宅配便代（1回分）が別途かかる。**実額はセラーセンターで確認すること"
-)
+
 
 # 米国宛ての引受停止と再開（2025-08 / 2026-04）。判断に効くので警告として出す。
 US_POSTAL_NOTICE = (
@@ -361,6 +396,26 @@ def estimate(
     chargeable = parcel.chargeable_weight_g(carrier)
     warnings: list[str] = []
 
+    # SLS は郵便の料金表を使わない。セラー負担は国内送料だけなので、そこだけを出す。
+    if carrier is Carrier.SLS:
+        jpy = domestic_leg_jpy(parcel)
+        if jpy is None:
+            raise ValueError(
+                f"SLS: 三辺計または重量が国内宅配便の範囲外（{parcel.sum_dims_cm:.0f}cm / "
+                f"{parcel.weight_g}g）"
+            )
+        notes = [SLS_NOTICE]
+        if not parcel.has_dimensions:
+            notes.insert(0, "寸法が未入力のため60サイズとみなしています。"
+                            "国内送料はサイズ区分で決まるので、実寸を入れてください")
+        return ShippingQuote(
+            carrier=carrier, zone=zone,
+            actual_weight_g=parcel.weight_g,
+            volumetric_weight_g=0,          # 国内はサイズ区分で、容積重量では課金しない
+            chargeable_weight_g=parcel.weight_g,
+            jpy=jpy, provenance=Provenance.INTERPOLATED, warnings=tuple(notes),
+        )
+
     if not parcel.has_dimensions and _VOLUMETRIC_DIVISOR[carrier] is not None:
         warnings.append(
             "寸法が未入力のため容積重量を評価していない。嵩張る商品では実際の送料が上振れする"
@@ -397,11 +452,18 @@ def estimate(
     )
 
 
+# 自分で選べる郵便・クーリエだけ。SLSはShopeeに出品して初めて使えるので、
+# 一般の比較に混ぜると「選べない手段が最安」という誤った結論になる。
+POSTAL_CARRIERS: tuple[Carrier, ...] = (
+    Carrier.EMS, Carrier.PARCEL, Carrier.EPACKET, Carrier.COURIER,
+)
+
+
 def quote_all(
     parcel: Parcel,
     zone: Zone,
     *,
-    carriers: tuple[Carrier, ...] = tuple(Carrier),
+    carriers: tuple[Carrier, ...] = POSTAL_CARRIERS,
     tables: dict[Zone, RateTable] | None = None,
 ) -> list[ShippingQuote]:
     """使える手段をすべて見積もり、安い順に返す。
@@ -422,7 +484,7 @@ def cheapest(
     parcel: Parcel,
     zone: Zone,
     *,
-    carriers: tuple[Carrier, ...] = tuple(Carrier),
+    carriers: tuple[Carrier, ...] = POSTAL_CARRIERS,
     tables: dict[Zone, RateTable] | None = None,
 ) -> ShippingQuote | None:
     """最安の手段を返す。該当なしは None。"""
