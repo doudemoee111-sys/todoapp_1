@@ -115,6 +115,12 @@ p.hint{font-size:13px;color:var(--muted);margin:0 0 14px;max-width:74ch;}
 .item .flip{margin-top:8px;padding-top:8px;border-top:1px dashed var(--rule);
   font-size:12.5px;color:var(--accent-ink);}
 .item .shots-links{flex-direction:row;gap:14px;margin-top:7px;}
+.linkrow{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline;margin-top:6px;}
+.linkrow .lk{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;
+  color:var(--muted);min-width:52px;}
+.linkrow a{font-size:12px;color:var(--accent);text-decoration:none;}
+.linkrow a:hover{text-decoration:underline;}
+.mono{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--muted);}
 .i-blue{border-left-color:var(--blue);} .b-blue{background:var(--blue-bg);color:var(--accent-ink);border:1px solid var(--blue);}
 .i-probe{border-left-color:var(--probe);} .b-probe{background:var(--probe-bg);color:var(--probe);border:1px solid var(--probe);}
 .i-thin{border-left-color:var(--thin);} .b-thin{background:var(--thin-bg);color:var(--thin);border:1px solid var(--thin);}
@@ -292,6 +298,7 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
   <button role="tab" aria-selected="false" data-tab="calc">仕入上限の逆算</button>
   <button role="tab" aria-selected="false" data-tab="ship">送料（重量・サイズ）</button>
   <button role="tab" aria-selected="false" data-tab="one">1件だけ判定</button>
+  <button role="tab" aria-selected="false" data-tab="extract">抽出</button>
   <button role="tab" aria-selected="false" data-tab="axis1">軸1：出品候補の判定</button>
   <button role="tab" aria-selected="false" data-tab="price">値決め</button>
   <button role="tab" aria-selected="false" data-tab="bundle">セット販売</button>
@@ -428,6 +435,63 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
   どの手順でも使う補助画面です。<b>配送手段を横並びで比較</b>できます。
   軽くて嵩張るもの（衣類・外箱付きフィギュア）は容積重量で課金されるため、
   <b>EMSが逆にいちばん安くなる</b>ことがあります。固定送料では見えない逆転です。
+</p>
+
+<h2>抽出は人がやる ── その前後を道具にする</h2>
+<p>
+  自動巡回はしません（規約上の判断です）。担うのは<b>その前後</b>です。
+</p>
+<div class="termlist">
+  <div><span class="t">前</span><span class="d">
+    条件を決めて、<b>開くべき検索ページのURLを組み立て</b>、<b>採る項目を定める</b></span></div>
+  <div><span class="t">（抽出）</span><span class="d">
+    <b>人が開いて、人が採る。</b>ここだけは手作業です</span></div>
+  <div><span class="t">後</span><span class="d">
+    採ってきたデータを<b>検品して</b>、軸1に流せる形に直す</span></div>
+</div>
+<p>
+  「抽出」タブで、検索語を入れると<b>仕入側7サイト＋販売側2種類のリンク</b>が出ます。
+  価格帯や状態の絞り込みは<b>各サイトの画面でかけてください</b>
+  ── URLに載せると仕様変更で黙って壊れます。
+</p>
+
+<h3>採る項目 ── 定石に足りていない2つ</h3>
+<p>
+  国内せどりの定石は<b>「価格安定 × セラー少ない × ランク良い × Amazon不在」</b>です。
+  よくできた基準ですが、<b>輸出では2つ足りません。</b>
+</p>
+<div class="termlist">
+  <div><span class="t">★ 課金重量</span><span class="d">
+    寸法（縦・横・高さ）。<b>軽くて嵩張るものは実重量では課金されません。</b>
+    薄利だと送料が丸ごと利益を食います。国内販売では要らないので、
+    リサーチ項目に入っていないことがほとんどです</span></div>
+  <div><span class="t">★ リピート可能性</span><span class="d">
+    また買えるか。<b>一点物は売れても次がありません。</b>
+    Shopeeのように<b>出品枠が限られる市場では、枠を一点物で埋めると詰みます</b></span></div>
+</div>
+<p>さらに3つ、採っておくと効くものがあります。</p>
+<div class="termlist">
+  <div><span class="t">★ 仕入元の数</span><span class="d">
+    1箇所しか買えないと、切れた時点で終わり。無在庫では致命的です</span></div>
+  <div><span class="t">★ 仕入価格の振れ幅</span><span class="d">
+    薄利では仕入の変動が丸ごと利益を食います</span></div>
+  <div><span class="t">★ セットにできる括り</span><span class="d">
+    同シリーズ・同ブランドでまとめられるか。<b>束ねると送料が1回で済みます</b></span></div>
+</div>
+
+<h3>検品でみるところ</h3>
+<p>
+  貼り付けて「検品する」を押すと、<b>軸1に流す前に</b>穴が見えます。
+</p>
+<div class="termlist">
+  <div><span class="t">要修正</span><span class="d">
+    必須列が空／管理番号の重複／<b>相場が仕入を下回っている</b>（桁か通貨の取り違えがほとんど）</span></div>
+  <div><span class="t">注意</span><span class="d">
+    寸法が空／「また買えるか」が空／<b>規制に触れやすい語を含む</b>
+    （リチウム・化粧品・食品・象牙・エアガンなど。止めるのではなく確認を促します）</span></div>
+</div>
+<p>
+  問題がなければ「<b>軸1に送る</b>」で、そのまま判定の表に入ります。
 </p>
 
 <h2>Shopeeで「数千点を一括出品」はできない</h2>
@@ -1055,6 +1119,61 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
   </div>
 </section>
 
+<!-- ============ 抽出 ============ -->
+<section class="panel" id="p-extract">
+  <p class="hint">
+    <b>抽出そのものは人がやります。</b>このツールは自動で巡回しません（規約上の判断です）。
+    ここで担うのは<b>その前後</b> ── 条件を決めて開くべきページを出し、
+    採ってきたデータを検品して軸1に渡すところまでです。
+  </p>
+
+  <div class="card" style="margin-bottom:16px">
+    <h2>条件</h2>
+    <div class="sgrid" style="grid-template-columns:1fr 1fr;">
+      <label>検索語（改行で複数）
+        <textarea id="ex2-kw" spellcheck="false" style="min-height:92px"></textarea></label>
+      <div>
+        <label>Amazonの部門<select id="ex2-cat"></select></label>
+        <div class="sgrid" style="grid-template-columns:1fr 1fr;padding-top:10px">
+          <label>仕入の上限（円）<input type="number" id="ex2-maxcost" value="0" step="1000" min="0"></label>
+          <label>重量の上限（g）<input type="number" id="ex2-maxw" value="2000" step="100" min="0"></label>
+        </div>
+      </div>
+    </div>
+    <p class="hint" style="margin:12px 0 0">
+      価格帯・状態の絞り込みは<b>各サイトの画面でかけてください。</b>
+      URLに載せると仕様変更で黙って壊れます。
+    </p>
+  </div>
+
+  <h3 style="margin:0 0 8px;font-size:15px">① 開くページ</h3>
+  <div id="ex2-links"></div>
+
+  <h3 style="margin:24px 0 8px;font-size:15px">② 採る項目</h3>
+  <p class="hint" style="margin:0 0 10px">
+    <b>★ は他のセラーが見ていないのに、輸出では効く項目です。</b>
+    国内せどりの定石は「価格安定 × セラー少ない × ランク良い × Amazon不在」ですが、
+    輸出ではそこに<b>課金重量</b>と<b>リピート可能性</b>が足りません。
+  </p>
+  <div class="tbl"><table>
+    <thead><tr><th style="min-width:110px">重要度</th><th style="min-width:170px">項目</th><th>なぜ採るのか</th><th>例</th></tr></thead>
+    <tbody id="ex2-fields"></tbody>
+  </table></div>
+  <div class="btnrow">
+    <button class="ghost" id="ex2-sheet">この列でシートを作る</button>
+    <button class="ghost" id="ex2-minimal">必須だけのシートを作る</button>
+  </div>
+
+  <h3 style="margin:24px 0 8px;font-size:15px">③ 採ってきたデータを貼る</h3>
+  <textarea id="ex2-in" spellcheck="false" style="min-height:150px"
+    placeholder="②で作ったシートを埋めて、そのまま貼り付けてください"></textarea>
+  <div class="btnrow">
+    <button class="act" id="ex2-check">検品する</button>
+    <button class="ghost" id="ex2-send">軸1に送る</button>
+  </div>
+  <div id="ex2-out"></div>
+</section>
+
 <!-- ============ 軸1 ============ -->
 <section class="panel" id="p-axis1">
   <p class="hint">
@@ -1321,7 +1440,7 @@ figcaption{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7;t
 
 <footer>
   <p>
-    Python版と同じ計算式を実装しています（テスト255件）。
+    Python版と同じ計算式を実装しています（テスト286件）。
     コード：<a href="https://github.com/doudemoee111-sys/todoapp_1/tree/claude/side-business-proposal-su9ie3/tools/blueocean">tools/blueocean</a>
   </p>
   <p>
@@ -1715,6 +1834,163 @@ function copyText(el, msg){
   if (navigator.clipboard && navigator.clipboard.writeText)
     navigator.clipboard.writeText(text).then(() => toast(msg), fallback);
   else fallback();
+}
+
+
+/* ===== 抽出（extract.py と同一） =====
+   自動巡回はしない。人が開いて、人が採る。ここが担うのはその前後で、
+   条件から開くべきURLを出し、採ってきたデータを検品して軸1へ渡す。
+
+   国内せどりの定石は「価格安定 × セラー少ない × ランク良い × Amazon不在」。
+   よくできた基準だが、輸出では2つ足りない：課金重量（容積）と、リピート可能性。 */
+const EX_FIELDS = [{"key": "sku", "label": "管理番号", "tier": "required", "why": "自分で付ける識別子。出品後に軸2の観測と突き合わせる鍵になる", "example": "LENS-001"}, {"key": "title_ja", "label": "商品名（eBayでの検索語）", "tier": "required", "why": "英語の型番まで入れる。相場と競合数を引くときのクエリそのものになる", "example": "Konica Hexanon AR 40mm F1.8"}, {"key": "cost_incl_tax_jpy", "label": "仕入価格（税込）", "tier": "required", "why": "判定を動かせる唯一の変数。送料込みなら送料を抜いた額を入れる", "example": "9800"}, {"key": "weight_g", "label": "重量（g・梱包後）", "tier": "required", "why": "送料は重量区切りで階段状に上がる。梱包前の値を入れると1段ずれる", "example": "180"}, {"key": "length_cm", "label": "縦（cm・梱包後）", "tier": "edge", "why": "★ 容積重量の計算に要る。軽くて嵩張るものは実重量では課金されない", "example": "16"}, {"key": "width_cm", "label": "横（cm・梱包後）", "tier": "edge", "why": "★ 同上", "example": "12"}, {"key": "height_cm", "label": "高さ（cm・梱包後）", "tier": "edge", "why": "★ 同上", "example": "10"}, {"key": "market_price_usd", "label": "販売先の相場（USD）", "tier": "required", "why": "**落札済み**の価格を見る。出品中の価格は「売れなかった価格」", "example": "185"}, {"key": "competitor_count", "label": "競合の出品数", "tier": "required", "why": "検索結果の件数。型番まで絞らないと数字が意味を持たない", "example": "2"}, {"key": "has_demand_signal", "label": "需要の裏付け", "tier": "recommended", "why": "同型の落札実績を実際に見たときだけ yes。無いと PROBE に留まる", "example": "yes"}, {"key": "demand_note", "label": "裏付けの内容", "tier": "recommended", "why": "「直近90日で12件落札」など。後から自分で検証できるように残す", "example": ""}, {"key": "repeatable", "label": "また買えるか", "tier": "edge", "why": "★ 一点物か、再入荷するか。**一点物は売れても次が無い。**出品枠が限られる市場（Shopee）では、枠を一点物で埋めると詰む", "example": "yes"}, {"key": "source_count", "label": "仕入元の数", "tier": "edge", "why": "★ 1箇所しか買えないと、切れた時点で終わる。無在庫では致命的", "example": "3"}, {"key": "cost_range_jpy", "label": "仕入価格の振れ幅（円）", "tier": "edge", "why": "★ 薄利では仕入の変動が丸ごと利益を食う。9,800〜12,000円なら 2200 と書く", "example": "2200"}, {"key": "bundle_key", "label": "セットにできる括り", "tier": "edge", "why": "★ 同シリーズ・同ブランドでまとめられるか。束ねると送料が1回で済む。低単価ほど効く", "example": "konica-ar-lens"}, {"key": "is_restricted", "label": "輸出規制・禁止品", "tier": "required", "why": "リチウム電池内蔵、化粧品、食品、ワシントン条約該当など。yes で除外", "example": "no"}, {"key": "restricted_reason", "label": "規制の内容", "tier": "recommended", "why": "何に該当するか", "example": ""}, {"key": "source_url", "label": "仕入元のURL", "tier": "recommended", "why": "後から現物を見に戻れるように。価格の再確認にも使う", "example": ""}, {"key": "note", "label": "メモ", "tier": "recommended", "why": "状態、付属品の欠品など", "example": ""}];
+const EX_SOURCES = {"amazon_jp": {"label": "Amazon.co.jp", "tmpl": "https://www.amazon.co.jp/s?k={q}"}, "yahoo_shopping": {"label": "Yahoo!ショッピング", "tmpl": "https://shopping.yahoo.co.jp/search?p={q}"}, "rakuten": {"label": "楽天市場", "tmpl": "https://search.rakuten.co.jp/search/mall/{q}/"}, "mercari": {"label": "メルカリ", "tmpl": "https://jp.mercari.com/search?keyword={q}"}, "yahoo_auction": {"label": "ヤフオク", "tmpl": "https://auctions.yahoo.co.jp/search/search?p={q}"}, "surugaya": {"label": "駿河屋", "tmpl": "https://www.suruga-ya.jp/search?search_word={q}"}, "hardoff": {"label": "ハードオフ ネットモール", "tmpl": "https://netmall.hardoff.co.jp/search/?keyword={q}"}};
+const EX_DEPT = {"おもちゃ・ホビー": "toys", "ホビー": "hobby", "ゲーム": "videogames", "カメラ": "photo", "家電": "electronics", "楽器": "mi", "ミュージック": "popular", "ビューティー": "beauty", "ドラッグストア": "hpc", "文房具": "stationery", "スポーツ": "sports", "ホーム＆キッチン": "kitchen"};
+const EX_TIER = {required:["必須","dim"], recommended:["推奨","dim"], edge:["★ 一歩先","probe"]};
+const EX_RISK = [
+  ["リチウム","リチウム電池内蔵は航空輸送規制の対象。単体・内蔵で扱いが違う"],
+  ["バッテリー","電池内蔵の可能性。航空輸送規制を確認"],
+  ["充電","充電池内蔵の可能性。航空輸送規制を確認"],
+  ["化粧品","化粧品は輸入国側の登録・成分規制がかかることがある"],
+  ["コスメ","化粧品扱いの可能性。輸入国側の規制を確認"],
+  ["医薬","医薬品・医薬部外品は輸出入とも規制対象"],
+  ["食品","食品は輸入国側の検疫・表示規制がかかる"],
+  ["サプリ","サプリメントは食品または医薬品扱い。輸入国側の規制を確認"],
+  ["象牙","ワシントン条約該当。取引禁止"],
+  ["べっ甲","ワシントン条約該当の可能性"],
+  ["毛皮","ワシントン条約該当の可能性"],
+  ["ナイフ","刃物は輸入国側の規制がかかることがある"],
+  ["エアガン","モデルガン・エアガンは多くの国で輸入禁止"],
+  ["酒","酒類は輸出入とも免許・規制の対象"],
+];
+const exField = k => EX_FIELDS.find(f => f.key === k);
+
+function exKeywords(){
+  return $("ex2-kw").value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+}
+function renderExtractLinks(){
+  const c = cfg(), kws = exKeywords(), dept = EX_DEPT[$("ex2-cat").value] || "";
+  if (!kws.length){
+    $("ex2-links").innerHTML = '<p class="hint">検索語を1行に1つ入れてください。</p>';
+    return;
+  }
+  const site = EBAY_SITE[c.market] || EBAY_SITE.ebay_us;
+  $("ex2-links").innerHTML = kws.map(kw => {
+    const q = encodeURIComponent(kw);
+    const buy = Object.entries(EX_SOURCES).map(([k, v]) => {
+      let url = v.tmpl.replace("{q}", q);
+      if (k === "amazon_jp" && dept) url += "&i=" + dept;
+      return `<a href="${url}" target="_blank" rel="noopener">${esc(v.label)} ↗</a>`;
+    }).join("");
+    const sell = `<a href="${site}/sch/i.html?_nkw=${q}" target="_blank" rel="noopener">eBay 出品中（競合数） ↗</a>`
+      + `<a href="${site}/sch/i.html?_nkw=${q}&LH_Sold=1&LH_Complete=1" target="_blank" rel="noopener">eBay 落札済み（相場） ↗</a>`;
+    return `<div class="item i-dim">
+      <div class="top"><span class="nm">${esc(kw)}</span></div>
+      <div class="linkrow"><span class="lk">仕入側</span>${buy}</div>
+      <div class="linkrow"><span class="lk">販売側</span>${sell}</div>
+    </div>`;
+  }).join("");
+}
+function renderExtractFields(){
+  $("ex2-fields").innerHTML = EX_FIELDS.map(f => {
+    const [label, cls] = EX_TIER[f.tier];
+    return `<tr><td><span class="badge b-${cls}">${label}</span></td>`
+      + `<td><b>${esc(f.label)}</b><br><span class="mono">${esc(f.key)}</span></td>`
+      + `<td>${esc(f.why)}</td><td class="mono">${esc(f.example)}</td></tr>`;
+  }).join("");
+}
+function exSheet(minimal){
+  const cols = EX_FIELDS.filter(f => !minimal || f.tier === "required");
+  const line = a => a.map(v => /[",\n]/.test(v) ? `"${v.replace(/"/g,'""')}"` : v).join(",");
+  $("ex2-in").value = [
+    line(cols.map(f => f.key)),
+    line(cols.map(f => f.label)),
+    line(cols.map(f => (f.tier === "edge" ? "★ " : "") + f.why)),
+    line(cols.map(f => f.example)),
+  ].join("\n") + "\n";
+  toast(`${cols.length}列のシートを作りました。埋めて「検品する」を押してください`);
+}
+
+/* 凡例の判定は中身ではなく位置で行う。記入例の LENS-001 は実在しうるSKUで、
+   中身だけで見分けようとすると本物のデータと区別が付かない。 */
+function exMatches(row, pick){
+  const filled = EX_FIELDS.map(f => [f, String(row[f.key] ?? "").trim()])
+                          .filter(([, v]) => v);
+  return filled.length > 0 && filled.every(([f, v]) => v === pick(f));
+}
+function exReadRows(text){
+  let rows = parseCsv(text).filter(r => Object.values(r).some(v => String(v).trim()));
+  let skip = 0;
+  if (rows.length && exMatches(rows[0], f => f.label)){
+    skip = 1;
+    if (rows.length > 1 && exMatches(rows[1], f => (f.tier === "edge" ? "★ " : "") + f.why)){
+      skip = 2;
+      if (rows.length > 2 && exMatches(rows[2], f => f.example)) skip = 3;
+    }
+  }
+  return rows.slice(skip);
+}
+
+function exValidate(rows){
+  const out = [], seen = new Map();
+  const maxCost = +$("ex2-maxcost").value || 0, maxW = +$("ex2-maxw").value || 0;
+  rows.forEach((r, i) => {
+    const n = i + 1;
+    const sku = String(r.sku || "").trim(), title = String(r.title_ja || "").trim();
+    const id = sku || title || `${n}行目`;
+    const add = (sev, key, msg) => out.push({sev, id, msg});
+
+    if (!sku) add("warn", "sku", "管理番号が空。出品後に軸2の観測と突き合わせられません");
+    else if (seen.has(sku)) add("error", "sku", `管理番号が ${seen.get(sku)}行目 と重複しています`);
+    else seen.set(sku, n);
+
+    ["title_ja","cost_incl_tax_jpy","market_price_usd","competitor_count","weight_g"]
+      .forEach(k => { if (!String(r[k] ?? "").trim()){
+        const f = exField(k); add("error", k, `${f.label} が空。${f.why}`); }});
+
+    if (!["length_cm","width_cm","height_cm"].every(k => String(r[k] ?? "").trim()))
+      add("warn", "length_cm", "寸法が空。★ 容積重量を評価できないので、軽くて嵩張るものは送料が下振れします");
+    if (!String(r.repeatable ?? "").trim())
+      add("warn", "repeatable", "★「また買えるか」が空。一点物は売れても次が無いので、出品枠が限られる市場では枠が死にます");
+
+    const text = `${title} ${r.note || ""}`;
+    for (const [w, why] of EX_RISK) if (text.includes(w)){ add("warn","is_restricted",`「${w}」を含みます。${why}`); break; }
+
+    const cost = parseFloat(String(r.cost_incl_tax_jpy ?? "").trim() || "0");
+    const price = parseFloat(String(r.market_price_usd ?? "").trim() || "0");
+    if (!isFinite(cost) || !isFinite(price)){
+      add("error", "cost_incl_tax_jpy", "仕入価格か相場が数値になっていません"); return;
+    }
+    if (maxCost && cost > maxCost)
+      add("warn","cost_incl_tax_jpy",`仕入 ${yen(cost)}円 が条件の上限 ${yen(maxCost)}円 を超えています`);
+    if (cost && price && price * 150 < cost)
+      add("error","market_price_usd",`相場（約${yen(price*150)}円）が仕入 ${yen(cost)}円 を下回っています。桁か通貨を取り違えていませんか`);
+    const w = parseFloat(String(r.weight_g ?? "").trim() || "0");
+    if (maxW && w && w > maxW)
+      add("warn","weight_g",`重量 ${w}g が条件の上限 ${maxW}g を超えています`);
+  });
+  return out;
+}
+
+function runExtractCheck(){
+  const rows = exReadRows($("ex2-in").value);
+  if (!rows.length){
+    $("ex2-out").innerHTML = '<p class="hint">記入済みの行がありません。</p>';
+    return [];
+  }
+  const issues = exValidate(rows);
+  const err = issues.filter(i => i.sev === "error").length;
+  const warn = issues.length - err;
+  $("ex2-out").innerHTML =
+    `<div class="tally"><span class="t"><b>${rows.length}行</b> を検品</span>`
+    + `<span class="t"><b style="color:var(--red)">要修正</b> ${err}件</span>`
+    + `<span class="t"><b style="color:var(--probe)">注意</b> ${warn}件</span></div>`
+    + (issues.length
+        ? issues.map(i => `<div class="item i-${i.sev === "error" ? "red" : "probe"}">
+            <div class="top"><span class="badge b-${i.sev === "error" ? "red" : "probe"}">${i.sev === "error" ? "要修正" : "注意"}</span>
+            <span class="nm">${esc(i.id)}</span></div><ul><li>${esc(i.msg)}</li></ul></div>`).join("")
+        : '<div class="ok-note">問題は見つかりませんでした。「軸1に送る」で判定に回せます。</div>');
+  return rows;
 }
 
 /* ===== 軸1の表 =====
@@ -2764,6 +3040,21 @@ $("cfg-reset").addEventListener("click", () => {
 $("ex-src").addEventListener("change", renderExtract);
 $("ex-copy-json").addEventListener("click", () => copyText($("ex-json"), "設定をコピーしました"));
 $("ex-copy-cmd").addEventListener("click", () => copyText($("ex-cmd"), "コマンドをコピーしました"));
+$("ex2-cat").innerHTML = '<option value="">（部門を絞らない）</option>'
+  + Object.keys(EX_DEPT).map(k => `<option value="${k}">${k}</option>`).join("");
+["ex2-kw","ex2-cat","ex2-maxcost","ex2-maxw"].forEach(id =>
+  $(id).addEventListener("input", renderExtractLinks));
+$("ex2-cat").addEventListener("change", renderExtractLinks);
+$("ex2-sheet").addEventListener("click", () => exSheet(false));
+$("ex2-minimal").addEventListener("click", () => exSheet(true));
+$("ex2-check").addEventListener("click", runExtractCheck);
+$("ex2-send").addEventListener("click", () => {
+  const rows = runExtractCheck();
+  if (!rows.length){ toast("送れる行がありません"); return; }
+  A1_ROWS = rows.map(csvObjToRow); saveRows(); runAxis1();
+  document.querySelector('button[data-tab="axis1"]').click();
+  toast(`${rows.length}件を軸1に送りました`);
+});
 $("a1-add").addEventListener("click", () => {
   A1_ROWS.push(blankRow()); saveRows(); runAxis1();
   const inputs = $("a1-rows").querySelectorAll('input[data-f="title"]');
@@ -2847,6 +3138,8 @@ function toast(msg){
 }
 function refresh(){
   saveCfg(); renderCfgSummary(); renderExtract();
+$("ex2-kw").value = "Konica Hexanon AR 40mm F1.8\nNikon Ai-s 50mm F1.2";
+renderExtractFields(); renderExtractLinks();
   renderCalc(); renderOne(); renderPrice(); runAxis1(); runBundle(); runAxis2();
 }
 
@@ -2857,5 +3150,7 @@ $("a2-in").value = STORED_OBS.length ? obsRowsToCsv(STORED_OBS) : SAMPLE2;
 $("a2-date").value = todayISO();
 $("b-in").value = SAMPLE3;
 renderCfgSummary(); renderExtract();
+$("ex2-kw").value = "Konica Hexanon AR 40mm F1.8\nNikon Ai-s 50mm F1.2";
+renderExtractFields(); renderExtractLinks();
 renderCalc(); renderOne(); renderPrice(); runAxis1(); runBundle(); runAxis2();
 </script>

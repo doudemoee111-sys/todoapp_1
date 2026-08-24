@@ -25,6 +25,19 @@ from .discovery import (
     scan_one,
     write_candidate_template,
 )
+from .extract import (
+    FIELDS,
+    ExtractSpec,
+    Severity,
+    Tier,
+    read_worksheet,
+    selling_side_urls,
+    source_urls,
+    summarize,
+    to_candidates,
+    validate,
+    write_worksheet,
+)
 from .history import ChangeKind, history_of, load_snapshots
 from .ingest import merge_observations, read_report, write_observations
 from .jobs import JobError, load_jobs, run_job
@@ -653,6 +666,113 @@ _REPRICE_ICON = {
 }
 
 
+_SEV_ICON = {Severity.ERROR: "要修正", Severity.WARN: "注意  ", Severity.INFO: "情報  "}
+_TIER_ICON = {Tier.REQUIRED: "必須", Tier.RECOMMENDED: "推奨", Tier.EDGE: "★一歩先"}
+
+
+def _spec(args) -> ExtractSpec:
+    return ExtractSpec(
+        name=args.name or "extract",
+        keywords=args.keyword or [],
+        category=args.category or "",
+        market=Market(args.market),
+        max_cost_jpy=args.max_cost,
+        max_weight_g=args.max_weight_g,
+        target_margin=args.target_margin,
+    )
+
+
+def cmd_extract(args) -> int:
+    """抽出の設計と受け皿。**巡回はしない。人が開いて、人が採る。**"""
+    if args.what == "fields":
+        print("\n=== 抽出する項目 ===\n")
+        for tier in (Tier.REQUIRED, Tier.RECOMMENDED, Tier.EDGE):
+            group = [f for f in FIELDS if f.tier is tier]
+            print(f"--- {_TIER_ICON[tier]}（{len(group)}項目）---\n")
+            for f in group:
+                print(f"  {_pad(f.label, 26, trunc=True)} {f.key}")
+                print(f"    {f.why}")
+                if f.example:
+                    print(f"    例: {f.example}")
+                print()
+        print("★ の項目は、国内せどりの定石（価格安定×セラー少ない×ランク良い×Amazon不在）に")
+        print("   入っていないもの。輸出では効くのに、採っている人が少ないところです。")
+        return 0
+
+    if args.what == "urls":
+        spec = _spec(args)
+        if not spec.keywords:
+            print("--keyword を1つ以上指定してください。", file=sys.stderr)
+            return 1
+        print(f"\n=== 開く検索ページ（{len(spec.keywords)}語）===")
+        print("\n  自動では開きません。**人が開いて、人が採ります。**")
+        if spec.category:
+            print(f"  Amazonは「{spec.category}」部門に絞ってあります。")
+        print("  価格帯・状態の絞り込みは、各サイトの画面でかけてください"
+              "（URLに載せると仕様変更で黙って壊れます）。")
+        for kw in spec.keywords:
+            print(f"\n  --- {kw} ---")
+            print("  [仕入側]")
+            for link in source_urls(spec):
+                if link.keyword == kw:
+                    print(f"    {_pad(link.label, 22, trunc=True)} {link.url}")
+            print("  [販売側]")
+            for link in selling_side_urls(spec):
+                if link.keyword == kw:
+                    print(f"    {_pad(link.label, 22, trunc=True)} {link.url}")
+        return 0
+
+    if args.what == "sheet":
+        tiers = ((Tier.REQUIRED, Tier.RECOMMENDED, Tier.EDGE) if not args.minimal
+                 else (Tier.REQUIRED,))
+        n = write_worksheet(args.out or "extract-sheet.csv", _spec(args), include=tiers)
+        path = args.out or "extract-sheet.csv"
+        print(f"\n抽出用シート（{n}列）を {path} に書き出しました。")
+        print("2〜4行目に「列の意味・なぜ要るか・記入例」を入れてあります。")
+        print("そのまま残して埋めても、消して埋めても構いません（読み込み時に飛ばします）。")
+        return 0
+
+    # --- check ---
+    rows = read_worksheet(args.sheet)
+    if not rows:
+        print(f"{args.sheet} に記入済みの行がありません。", file=sys.stderr)
+        return 1
+    issues = validate(rows, _spec(args))
+    counts = summarize(issues)
+    print(f"\n=== 検品（{len(rows)}行）===\n")
+    print(f"  要修正 {counts[Severity.ERROR]}件 / 注意 {counts[Severity.WARN]}件\n")
+    shown = [i for i in issues if args.all or i.severity is Severity.ERROR]
+    for i in shown[:args.top]:
+        print(f"[{_SEV_ICON[i.severity]}] {_pad(i.sku, 16, trunc=True)} {i.message}")
+    if len(shown) > args.top:
+        print(f"  … 他 {len(shown) - args.top}件（--top N で増やせます）")
+    if not issues:
+        print("  問題は見つかりませんでした。")
+
+    if args.out:
+        cands = to_candidates(rows)
+        from .pipeline import Candidate  # noqa: F401  型の確認用
+        import csv as _csv
+
+        with open(args.out, "w", newline="", encoding="utf-8") as f:
+            w = _csv.writer(f)
+            w.writerow(["sku", "title_ja", "source_url", "cost_incl_tax_jpy", "weight_g",
+                        "length_cm", "width_cm", "height_cm", "category",
+                        "market_price_usd", "competitor_count", "has_demand_signal",
+                        "demand_note", "is_restricted", "restricted_reason"])
+            for c in cands:
+                w.writerow([c.sku, c.title_ja, c.source_url, round(c.cost_incl_tax_jpy),
+                            c.weight_g, c.length_cm or "", c.width_cm or "",
+                            c.height_cm or "", c.category,
+                            f"{c.market_price_usd:.2f}" if c.market_price_usd else "",
+                            c.competitor_count if c.competitor_count is not None else "",
+                            "yes" if c.has_demand_signal else "no", c.demand_note,
+                            "yes" if c.is_restricted else "no", c.restricted_reason])
+        print(f"\n  候補CSV {len(cands)}件 を {args.out} に書き出しました。")
+        print(f"    python -m blueocean.cli axis1 --candidates {args.out} で判定できます。")
+    return 1 if counts[Severity.ERROR] else 0
+
+
 def cmd_shopee(args) -> int:
     """Shopee専用の一括運用。枠の管理と価格差の定期確認。"""
     market = Market(args.market)
@@ -950,6 +1070,22 @@ def main(argv=None) -> int:
     ck.add_argument("--url", default=None)
     ck.add_argument("--category", default=None)
     ck.set_defaults(func=cmd_check)
+
+    ex = sub.add_parser("extract", help="抽出の設計と受け皿（巡回はしない。人が採る）")
+    ex.add_argument("what", choices=["fields", "urls", "sheet", "check"],
+                    help="fields=項目一覧 / urls=開く検索ページ / "
+                         "sheet=抽出用シート / check=記入済みシートの検品")
+    ex.add_argument("--name", default=None)
+    ex.add_argument("--keyword", action="append", default=[], help="検索語（複数可）")
+    ex.add_argument("--category", default=None, help="Amazonの部門名（例：カメラ）")
+    ex.add_argument("--max-cost", type=int, default=0, help="仕入の上限（円）")
+    ex.add_argument("--max-weight-g", type=int, default=2000)
+    ex.add_argument("--sheet", default=None, help="記入済みシート（check用）")
+    ex.add_argument("--out", default=None, help="書き出し先")
+    ex.add_argument("--minimal", action="store_true", help="必須項目だけのシートにする")
+    ex.add_argument("--top", type=int, default=30)
+    ex.add_argument("--all", action="store_true", help="注意も含めて全部出す")
+    ex.set_defaults(func=cmd_extract)
 
     sp = sub.add_parser("shopee", help="Shopee専用：出品枠の管理と価格差の定期確認")
     sp.add_argument("what", choices=["slots", "reprice"],
