@@ -201,7 +201,7 @@ function renderReprice(){
           + '<td class="num">' + (isFinite(x.floor) ? "$" + x.floor.toFixed(2) : "—") + '</td>'
           + '<td class="num">' + yen(x.cost) + '</td>'
           + '<td class="num">' + yen(x.ship) + '</td>'
-          + '<td class="num" style="color:var(--' + (x.b.margin >= c.target ? "blue"
+          + '<td class="num" style="color:var(--' + (x.b.margin >= c.target - 5e-4 ? "blue"
               : x.b.margin > 0 ? "probe" : "red") + ')">' + (x.b.margin*100).toFixed(1) + '%</td>'
           + '<td class="hint">' + esc(a.why)
           + (x.act === "raise" && isFinite(x.floor)

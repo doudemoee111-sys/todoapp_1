@@ -2307,15 +2307,17 @@ function renderListPrice(){
   const ladder = [0, .05, .10, .15, .20].map(d => {
     const p = use * (1-d);
     const x = compute(p, cost, cc);
-    return {d, p, m: x.margin, ok: x.margin >= c.target};
+    /* 目標ちょうどを「目標割れ」と言わない。0.2 を浮動小数で作ると
+       0.19999… になることがあるので、表示の桁（0.1%）ぶん余裕を持たせる。 */
+    return {d, p, m: x.margin, ok: x.margin >= c.target - 5e-4};
   });
 
   $("lp-out").innerHTML =
-      '<div class="warn ' + (b.margin >= c.target ? "ok" : (b.profit > 0 ? "" : "stop")) + '">'
+      '<div class="warn ' + (b.margin >= c.target - 5e-4 ? "ok" : (b.profit > 0 ? "" : "stop")) + '">'
     + (asked > 0
         ? '<b>$' + use.toFixed(2) + ' で出すと、手残りは ' + yen(b.profit) + '円（利益率 '
           + (b.margin*100).toFixed(1) + '%）。</b>'
-          + (b.margin >= c.target ? "目標を満たしています。"
+          + (b.margin >= c.target - 5e-4 ? "目標を満たしています。"
              : "目標 " + (c.target*100).toFixed(0) + "% には届きません。下限は $"
                + floor.toFixed(2) + " です。")
         : '<b>目標利益率 ' + (c.target*100).toFixed(0) + '% を満たす下限は $'
