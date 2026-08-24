@@ -1,0 +1,16 @@
+# FactSpark 動画自動生成パイプラインの依存ライブラリ
+# ローカル(Windows)・クラウド(Linux/Claude Code Routines)共通。
+# クラウドでは setup.sh がこのファイルを使って導入する。
+
+requests
+numpy
+pillow
+moviepy
+imageio-ffmpeg   # moviepy 用の ffmpeg バイナリを同梱(apt/root 不要)
+cffi             # cryptography(google-auth依存)のRustバインディングに必須。欠けると import 時に PanicException
+
+# YouTube Data API (アップロード・リサーチ・OAuth)
+google-api-python-client
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
