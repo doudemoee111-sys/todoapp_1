@@ -47,7 +47,9 @@ function renderFindPlan(){
   const out = [];
 
   if (!srcs.length){
-    $("q-plan").innerHTML = '<div class="warn stop"><b>取得元が選ばれていません。</b>楽天かYahoo!のどちらかにチェックを入れてください。</div>';
+    $("q-plan").innerHTML = '<div class="warn stop"><b>取得元が選ばれていません。</b>'
+      + '楽天・Yahoo!・Amazon のいずれかにチェックを入れてください。'
+      + '鍵の条件が緩いのは楽天とYahoo!です。</div>';
     $("q-cmd").textContent = "";
     return;
   }
