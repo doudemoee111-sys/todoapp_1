@@ -331,7 +331,7 @@ a{color:var(--accent)}
 <!-- ①探す。両ツール共通。国内ショップの公式APIで候補を採るところ。 -->
 <section class="screen" id="sc-find">
   <h2 class="sc"><span class="n">STEP 01</span>探す</h2>
-  <p class="sc">国内の仕入れ元を、条件を決めて採ってきます。巡回（スクレイピング）はしません。楽天とYahoo!が公式に出している検索APIを、あなた自身が発行した鍵で叩きます。</p>
+  <p class="sc">国内の仕入れ元を、条件を決めて採ってきます。巡回（スクレイピング）はしません。楽天・Yahoo!・Amazonが公式に出している検索APIを、あなた自身が発行した鍵で叩きます。<b>重量を返すのはAmazonだけ</b>なので、鍵が取れるならJANで突合して実測を持ってこられます。</p>
 
   <details class="help">
     <summary>先に鍵を取ってください（1回だけ・無料）</summary>
@@ -339,9 +339,11 @@ a{color:var(--accent)}
       <ol>
         <li><b>楽天市場</b> — <a href="https://webservice.rakuten.co.jp/" target="_blank" rel="noopener">楽天ウェブサービス</a> に楽天会員でログインし、アプリIDを発行。環境変数 <code>RAKUTEN_APP_ID</code> に入れます。<b>1秒に1回まで</b>という制限があるので、数千件を採るときは時間がかかります。</li>
         <li><b>Yahoo!ショッピング</b> — <a href="https://e.developer.yahoo.co.jp/register" target="_blank" rel="noopener">Yahoo!デベロッパーネットワーク</a> でアプリケーションを登録し、Client ID を発行。環境変数 <code>YAHOO_CLIENT_ID</code> に入れます。<b>JANコードが返る</b>ので、同じ商品を店をまたいで束ねられます。</li>
+        <li><b>Amazon.co.jp（任意・条件が厳しい）</b> — <a href="https://affiliate.amazon.co.jp/" target="_blank" rel="noopener">Amazonアソシエイト</a> の審査に通ったうえで Creators API の client_id / client_secret を発行し、パートナータグと合わせて <code>AMAZON_CREATORS_CREDS</code> に <code>id:secret:tag</code> の形で入れます。<b>旧 PA-API 5.0 は2026年5月15日に停止済み</b>で、AWS署名の古い方式はもう通りません。</li>
       </ol>
       <p><b>鍵はこの画面には入れません。</b>ブラウザから他社のAPIは叩けない（CORSで弾かれる）ので、実際の取得はお使いのPCのコマンドで行います。ここは条件を組み立てて、そのコマンドを出すところです。</p>
       <p>商用利用の可否や規約は各社の条件に従ってください。楽天のAPIはアフィリエイト用途を前提に無償提供されているもので、Yahoo!は商用利用について問い合わせ窓口が用意されています。<b>自分の仕入れ判断のための価格照会</b>として使う範囲を超える場合は、各社に確認してから使ってください。</p>
+      <p><b>Amazonの鍵は取れないかもしれません。</b>アソシエイトの審査に通り、紹介売上を出し続けないと維持できないためです（開設180日以内に3件、維持に直近30日で10件程度という報告があります）。仕入リサーチだけの利用では条件を満たしにくいので、<b>取れなくても楽天とYahoo!だけで回る</b>ように作ってあります。</p>
     </div>
   </details>
 
@@ -380,8 +382,12 @@ a{color:var(--accent)}
     <div style="display:flex; gap:18px; flex-wrap:wrap; margin-top:14px">
       <label class="ck"><input type="checkbox" id="q-rakuten" checked>楽天市場</label>
       <label class="ck"><input type="checkbox" id="q-yahoo" checked>Yahoo!ショッピング</label>
+      <label class="ck"><input type="checkbox" id="q-amazon">Amazon.co.jp <span class="why">重量が取れる唯一の取得元</span></label>
+    </div>
+    <div style="display:flex; gap:18px; flex-wrap:wrap; margin-top:8px">
       <label class="ck"><input type="checkbox" id="q-stock" checked>在庫ありのみ</label>
       <label class="ck"><input type="checkbox" id="q-postage">送料込みのみ <span class="why">原価が確定する・楽天のみ</span></label>
+      <label class="ck"><input type="checkbox" id="q-cheapest">同じJANは安いほうだけ残す</label>
     </div>
 
     <div id="q-plan"></div>
@@ -1971,14 +1977,21 @@ function bootShell(){
    コマンドを出す係。実際の取得は PC 側の python -m blueocean.cli domestic。 */
 
 const PROV = {
-  rakuten: {label:"楽天市場", page:30, pages:100, env:"RAKUTEN_APP_ID", gap:1.05},
-  yahoo:   {label:"Yahoo!ショッピング", page:50, pages:20, env:"YAHOO_CLIENT_ID", gap:0.25},
+  rakuten: {label:"楽天市場", page:30, pages:100, env:"RAKUTEN_APP_ID", gap:1.05,
+            jan:false, weight:false},
+  yahoo:   {label:"Yahoo!ショッピング", page:50, pages:20, env:"YAHOO_CLIENT_ID", gap:0.25,
+            jan:true, weight:false},
+  /* Amazon は窓が 10×10=100件しかない。面で採る用途には向かないが、
+     **重量と寸法を返すのはここだけ。** JANが一致する行にその実測を移せる。 */
+  amazon:  {label:"Amazon.co.jp", page:10, pages:10, env:"AMAZON_CREATORS_CREDS", gap:1.05,
+            jan:true, weight:true},
 };
 
 function qSources(){
   const s = [];
   if ($("q-rakuten").checked) s.push("rakuten");
   if ($("q-yahoo").checked) s.push("yahoo");
+  if ($("q-amazon").checked) s.push("amazon");
   return s;
 }
 
@@ -2029,7 +2042,9 @@ function renderFindPlan(){
       + '<td class="num">' + win.toLocaleString() + '</td>'
       + '<td class="num">' + (per * bands.length).toLocaleString() + '</td>'
       + '<td class="num">' + calls.toLocaleString() + '</td>'
-      + '<td class="num">' + (secs >= 60 ? Math.floor(secs/60) + "分" + (secs%60) + "秒" : secs + "秒") + '</td></tr>';
+      + '<td class="num">' + (secs >= 60 ? Math.floor(secs/60) + "分" + (secs%60) + "秒" : secs + "秒") + '</td>'
+      + '<td>' + (p.jan ? "返る" : '<span class="est">返らない</span>') + '</td>'
+      + '<td>' + (p.weight ? '<b style="color:var(--blue)">返る</b>' : '<span class="est">返らない</span>') + '</td></tr>';
     if (want > win)
       out.push('<div class="warn"><b>' + esc(p.label) + 'は1クエリ ' + win.toLocaleString()
         + '件までしか辿れません。</b>' + want.toLocaleString() + '件を指定しても '
@@ -2038,9 +2053,33 @@ function renderFindPlan(){
   });
 
   out.push('<div class="scrollx"><table class="mini"><thead><tr>'
-    + '<th>取得元</th><th>1クエリの上限</th><th>この条件で採れる上限</th>'
-    + '<th>リクエスト数</th><th>おおよその所要</th></tr></thead><tbody>'
+    + '<th>取得元</th><th class="num">1クエリの上限</th><th class="num">この条件で採れる上限</th>'
+    + '<th class="num">リクエスト数</th><th class="num">おおよその所要</th>'
+    + '<th>JAN</th><th>重量</th></tr></thead><tbody>'
     + rows + '</tbody></table></div>');
+
+  /* 重量が取れるかどうかは、このツールでは判定の質に直結する。
+     取れないなら推定になり、判定は「小さく試す」で止まる。 */
+  const hasWeight = srcs.some(s => PROV[s].weight);
+  const hasJan    = srcs.filter(s => PROV[s].jan);
+  if (hasWeight && hasJan.length > 1){
+    out.push('<div class="warn ok"><b>この組み合わせなら重量が実測で入ります。</b>'
+      + 'Amazonが返す登録値を、JANが一致する他社の行に移します。'
+      + '安いのは他社、重さはAmazonから、という組み合わせが作れるので、'
+      + '<b>判定が「小さく試す」で止まらずに「出せる」まで上がります。</b></div>');
+  } else if (!hasWeight){
+    out.push('<div class="warn"><b>この組み合わせでは重量が取れません。</b>'
+      + '楽天もYahoo!も重量・寸法を返さないので、商品名とカテゴリからの推定になります。'
+      + '推定のままだと判定は最良でも「小さく試す」止まりです。'
+      + 'Amazonを足すと実測が入りますが、鍵の条件が厳しい点は上の説明をご覧ください。</div>');
+  }
+  if (srcs.length === 1 && srcs[0] === "amazon")
+    out.push('<div class="warn"><b>Amazonだけだと1クエリ100件しか採れません。</b>'
+      + 'Yahoo!も一緒に選ぶと、母数はYahoo!で稼ぎ、重量はAmazonから移す形になります。</div>');
+  if ($("q-amazon").checked && $("q-rakuten").checked && !$("q-yahoo").checked)
+    out.push('<div class="warn">楽天はJANを返さないので、'
+      + '<b>Amazonの重量を楽天の行に移すことはできません。</b>'
+      + 'Yahoo!を足すと突合できます。</div>');
 
   if (split > 1){
     out.push('<p class="hint">価格帯の分割：'
@@ -2070,6 +2109,7 @@ function renderFindCmd(){
   if (+g("q-ship") > 0)  a.push("--domestic-shipping " + g("q-ship"));
   if (!$("q-stock").checked) a.push("--include-out-of-stock");
   if ($("q-postage").checked) a.push("--postage-included");
+  if ($("q-cheapest").checked) a.push("--cheapest-only");
   a.push("--out items.csv");
   a.push("--candidates-out candidates.csv");
   $("q-cmd").textContent = a.join(" \\\n  ");
@@ -2081,7 +2121,8 @@ function bootFind(applyRows){
   ["q-keyword","q-ng","q-genre","q-min","q-max","q-split","q-max-items",
    "q-cond","q-sort","q-ship"].forEach(id =>
     $(id).addEventListener("input", renderFindPlan));
-  ["q-rakuten","q-yahoo","q-stock","q-postage","q-cond","q-sort"].forEach(id =>
+  ["q-rakuten","q-yahoo","q-amazon","q-stock","q-postage","q-cheapest",
+   "q-cond","q-sort"].forEach(id =>
     $(id).addEventListener("change", renderFindPlan));
   $("q-copy").addEventListener("click", () => copyText($("q-cmd"), "コマンドをコピーしました"));
 

@@ -4,9 +4,10 @@ from __future__ import annotations
 import pytest
 
 from blueocean.domestic import (
-    ApiError, Condition, DomesticItem, Query, RateLimiter, Source,
-    WeightBasis, credentials_from_env, price_bands, provider_for, read_items,
-    search, search_all, to_candidates, weight_hint, write_items,
+    AmazonProvider, keep_cheapest, ApiError, Condition, DomesticItem, Query, RateLimiter,
+    Request, Source, WeightBasis, credentials_from_env, price_bands,
+    provider_for, read_items, search, search_all, to_candidates,
+    transfer_measurements, weight_hint, write_items,
 )
 
 
@@ -69,14 +70,20 @@ def yahoo_page(n: int, *, total: int = 100, start: int = 0, **kw):
 
 
 class Feed:
-    """ページ番号に応じて応答を返す fetch。呼ばれたパラメータを記録する。"""
+    """ページ番号に応じて応答を返す fetch。呼ばれた中身を記録する。
+
+    GET の取得元はクエリ、POST の取得元は JSON の本文を `calls` に積む。
+    どちらも「何を送ったか」を1つの形で検証できるようにするため。
+    """
 
     def __init__(self, pages):
         self.pages = pages
         self.calls: list[dict] = []
+        self.requests: list = []
 
-    def __call__(self, url, params):
-        self.calls.append(dict(params))
+    def __call__(self, req):
+        self.requests.append(req)
+        self.calls.append(dict(req.json_body if req.json_body is not None else req.params))
         i = len(self.calls) - 1
         return self.pages[i] if i < len(self.pages) else self.pages[-1]
 
@@ -337,13 +344,17 @@ def test_split_price_issues_one_query_per_band():
     assert [c["minPrice"] for c in feed.calls] == ["500", "1582", "5001", "15812"]
 
 
-def test_search_all_dedupes_across_sources_by_jan():
-    """同じJANが楽天とYahoo!に居ても1件にまとめる。"""
+def test_search_all_dedupes_within_a_source_not_across_them():
+    """同じ取得元の重複は畳むが、取得元をまたいでは畳まない。
+
+    同じJANでも楽天とAmazonでは値段が違う。束ねると安いほうが消えるので、
+    比較の材料を残す。
+    """
     both = Feed([yahoo_page(2, total=2), yahoo_page(2, total=2)])
     r = search_all(["yahoo", "yahoo"], Query(keyword="x", max_items=2),
                    {"yahoo": "C"}, fetch=both,
                    limiters={"yahoo": RateLimiter(0)})
-    assert len(r.items) == 2
+    assert len(r.items) == 2       # 同じ取得元・同じ商品なので畳まれる
 
 
 def test_search_all_skips_sources_without_a_key_and_says_so():
@@ -467,9 +478,13 @@ def test_unknown_weight_count_is_reported():
     assert any("重量の手がかりが無く" in w for w in warns)
 
 
-def test_conversion_always_warns_that_weight_is_not_from_the_api():
-    _, warns = to_candidates([item(title="お茶 500g")])
-    assert any("APIも返さない" in w for w in warns)
+def test_conversion_warns_when_some_weights_are_only_estimates():
+    """全部が実測なら黙る。1件でも推定なら、何件が推定かを言う。"""
+    _, warns = to_candidates([item(title="お茶 500g")])          # 商品名から確定
+    assert not any("推定" in w for w in warns)
+
+    _, warns = to_candidates([item(title="お茶 500g"), item(title="謎の物体")])
+    assert any("1/2件が実測" in w for w in warns)
 
 
 def test_jan_becomes_the_sku_so_the_same_product_merges_across_shops():
@@ -506,3 +521,316 @@ def test_csv_records_the_weight_basis(tmp_path):
     assert "title" in text.splitlines()[0]
     assert ",620,title," in text
     assert ",0,unknown," in text
+
+
+# --------------------------------------------------------------------------
+# Amazon（Creators API）
+# --------------------------------------------------------------------------
+
+def amazon_item(i: int, price: int = 4800, *, weight=None, dims=True, **kw):
+    d = {
+        "asin": f"B0{i:08d}",
+        "detailPageURL": f"https://www.amazon.co.jp/dp/B0{i:08d}",
+        "itemInfo": {
+            "title": {"displayValue": f"常滑焼 急須 {i}"},
+            "byLineInfo": {"brand": {"displayValue": "テストブランド"}},
+            "classifications": {"productGroup": {"displayValue": "ホーム＆キッチン"}},
+            "productInfo": {"itemDimensions": {
+                "weight": weight if weight is not None
+                          else {"displayValue": 520, "unit": "grams"},
+                **({"length": {"displayValue": 18, "unit": "centimeters"},
+                    "width": {"displayValue": 14, "unit": "centimeters"},
+                    "height": {"displayValue": 11, "unit": "centimeters"}} if dims else {}),
+            }},
+            "externalIds": {"eans": {"displayValues": [f"49{i:011d}"]}},
+        },
+        "offers": {"listings": [{
+            "price": {"amount": price, "currency": "JPY"},
+            "availability": {"message": "在庫あり"},
+            "condition": "New",
+            "merchantInfo": {"name": "Amazon.co.jp"},
+        }]},
+        "images": {"primary": {"large": {"url": f"https://m.media-amazon.com/{i}.jpg"}}},
+    }
+    for k, v in kw.items():
+        d[k] = v
+    return d
+
+
+def amazon_page(n: int, *, total: int = 10, start: int = 0, **kw):
+    return {"searchResult": {"totalResultCount": total,
+                             "items": [amazon_item(start + i, **kw) for i in range(n)]}}
+
+
+TOKEN = {"access_token": "Atza|xxx", "expires_in": 3600, "token_type": "bearer"}
+CREDS = "amzn1.application-oa2-client.abc:amzn1.oa2-cs.v1.def:mytag-22"
+
+
+def fresh_amazon():
+    """プロバイダはモジュール全体で共有されるので、トークンの持ち回しを
+    テスト間で持ち込まないよう毎回作り直す。"""
+    return AmazonProvider()
+
+
+class AmazonFeed(Feed):
+    """1回目はトークン、以降は検索結果を返す。"""
+
+    def __call__(self, req):
+        self.requests.append(req)
+        self.calls.append(dict(req.json_body or req.params))
+        if req.url.endswith("/auth/o2/token"):
+            return TOKEN
+        i = len([c for c in self.calls if "grant_type" not in c]) - 1
+        return self.pages[i] if i < len(self.pages) else self.pages[-1]
+
+
+def amazon_search(q, feed, prov=None):
+    prov = prov or fresh_amazon()
+    from blueocean import domestic as dom
+    old = dom.PROVIDERS[Source.AMAZON]
+    dom.PROVIDERS[Source.AMAZON] = prov
+    try:
+        return search(Source.AMAZON, q, CREDS, fetch=feed, limiter=RateLimiter(0))
+    finally:
+        dom.PROVIDERS[Source.AMAZON] = old
+
+
+def test_amazon_exchanges_credentials_for_a_bearer_token():
+    feed = AmazonFeed([amazon_page(1, total=1)])
+    amazon_search(Query(keyword="急須", max_items=1), feed)
+    tok = feed.requests[0]
+    assert tok.url.endswith("/auth/o2/token")
+    assert tok.method == "POST"
+    assert tok.json_body["grant_type"] == "client_credentials"
+    assert tok.json_body["scope"] == "creatorsapi::default"
+    # 検索は Bearer で送られる
+    srch = feed.requests[1]
+    assert srch.headers["Authorization"] == "Bearer Atza|xxx"
+    assert srch.headers["x-marketplace"] == "www.amazon.co.jp"
+
+
+def test_amazon_token_is_reused_across_queries():
+    """価格帯を分割すると search が何度も走る。毎回取り直さない。"""
+    prov = fresh_amazon()
+    feed = AmazonFeed([amazon_page(1, total=1)])
+    amazon_search(Query(keyword="急須", max_items=1), feed, prov)
+    amazon_search(Query(keyword="急須", max_items=1), feed, prov)
+    tokens = [r for r in feed.requests if r.url.endswith("/auth/o2/token")]
+    assert len(tokens) == 1
+
+
+def test_amazon_bad_credential_format_is_explained():
+    with pytest.raises(ApiError, match="client_id:client_secret:partner_tag"):
+        AmazonProvider.split_key("just-one-value")
+
+
+def test_amazon_token_failure_names_the_likely_cause():
+    class NoToken(AmazonFeed):
+        def __call__(self, req):
+            if req.url.endswith("/auth/o2/token"):
+                return {"error": "invalid_client"}
+            return super().__call__(req)
+
+    with pytest.raises(ApiError, match="アソシエイト"):
+        amazon_search(Query(keyword="x"), NoToken([amazon_page(1)]))
+
+
+def test_amazon_parses_weight_and_dimensions():
+    """ここがAmazonを入れる理由。他の2社は重量を返さない。"""
+    feed = AmazonFeed([amazon_page(1, total=1)])
+    r = amazon_search(Query(keyword="急須", max_items=1), feed)
+    it = r.items[0]
+    assert it.weight_g == 520
+    assert (it.length_cm, it.width_cm, it.height_cm) == (18.0, 14.0, 11.0)
+    assert it.jan == "4900000000000"
+    assert it.brand == "テストブランド"
+    assert it.in_stock is True
+    assert it.condition == "new"
+
+
+@pytest.mark.parametrize("value,unit,grams", [
+    (520, "grams", 520),
+    (1.2, "kilograms", 1200),
+    (1.15, "pounds", 522),              # ポンド表記の輸入品
+    (115, "hundredths_pounds", 522),    # 旧PA-APIが使っていた刻み
+    (18.4, "ounces", 522),
+])
+def test_amazon_converts_weight_units(value, unit, grams):
+    feed = AmazonFeed([amazon_page(1, total=1,
+                                   weight={"displayValue": value, "unit": unit})])
+    r = amazon_search(Query(keyword="x", max_items=1), feed)
+    assert abs(r.items[0].weight_g - grams) <= 1
+
+
+def test_amazon_rejects_weights_beyond_what_can_be_shipped():
+    """520 を pounds と読むと 236kg。国際発送の対象外なので誤読とみなす。"""
+    feed = AmazonFeed([amazon_page(1, total=1,
+                                   weight={"displayValue": 520, "unit": "pounds"})])
+    r = amazon_search(Query(keyword="x", max_items=1), feed)
+    assert r.items[0].weight_g == 0
+
+
+def test_amazon_refuses_unknown_weight_units_rather_than_guessing():
+    """pounds を grams と読むと450倍軽くなる。知らない単位は使わない。"""
+    feed = AmazonFeed([amazon_page(1, total=1,
+                                   weight={"displayValue": 520, "unit": "stones"})])
+    r = amazon_search(Query(keyword="x", max_items=1), feed)
+    assert r.items[0].weight_g == 0
+    assert any("重量が登録されていません" in w for w in r.warnings)
+
+
+def test_amazon_missing_dimensions_are_reported():
+    feed = AmazonFeed([amazon_page(2, total=2, weight={})])
+    r = amazon_search(Query(keyword="x", max_items=2), feed)
+    assert all(i.weight_g == 0 for i in r.items)
+    assert any("2件は重量が登録されていません" in w for w in r.warnings)
+
+
+def test_amazon_window_is_only_100_items():
+    """楽天3,000・Yahoo!1,000に対してAmazonは100。面で採る用途には向かない。"""
+    assert provider_for("amazon").window == 100
+    feed = AmazonFeed([amazon_page(10, total=5000, start=i * 10) for i in range(20)])
+    r = amazon_search(Query(keyword="フィギュア", max_items=3000), feed)
+    assert r.truncated is True
+    assert any("100件までしか返せない" in w for w in r.warnings)
+    assert any("4,900件は取れていない" in w for w in r.warnings)
+
+
+def test_amazon_body_maps_to_creators_api_field_names():
+    feed = AmazonFeed([amazon_page(1, total=1)])
+    amazon_search(Query(keyword="急須", genre_id="123", min_price=1000,
+                        max_price=9000, condition=Condition.NEW, max_items=1),
+                  feed)
+    b = feed.requests[1].json_body
+    assert b["keywords"] == "急須"
+    assert b["browseNodeId"] == "123"
+    assert b["minPrice"] == 100_000        # 通貨の最小単位
+    assert b["maxPrice"] == 900_000
+    assert b["condition"] == "New"
+    assert b["partnerTag"] == "mytag-22"
+    assert b["marketplace"] == "www.amazon.co.jp"
+    assert "itemInfo.productInfo" in b["resources"]
+    assert "itemInfo.externalIds" in b["resources"]
+
+
+def test_amazon_missing_search_result_raises_rather_than_returning_empty():
+    feed = AmazonFeed([{"somethingElse": {}}])
+    with pytest.raises(ApiError, match="searchResult"):
+        amazon_search(Query(keyword="x"), feed)
+
+
+def test_amazon_error_payload_raises():
+    feed = AmazonFeed([{"errors": [{"code": "TooManyRequests",
+                                    "message": "rate exceeded"}]}])
+    with pytest.raises(ApiError, match="TooManyRequests"):
+        amazon_search(Query(keyword="x"), feed)
+
+
+def test_amazon_key_help_names_the_three_parts():
+    with pytest.raises(ApiError) as e:
+        credentials_from_env("amazon", env={})
+    assert "AMAZON_CREATORS_CREDS" in str(e.value)
+
+
+# --------------------------------------------------------------------------
+# 実測の受け渡し（Amazonを入れる一番の効き目）
+# --------------------------------------------------------------------------
+
+from blueocean.domestic import SearchResult as SearchResultLike_
+
+
+def SearchResultLike(items):
+    return SearchResultLike_(items=list(items))
+
+
+def measured(**kw):
+    base = dict(source=Source.AMAZON, item_code="B1", title="急須", url="",
+                price_jpy=4800, jan="4901234567890", weight_g=520,
+                length_cm=18.0, width_cm=14.0, height_cm=11.0)
+    base.update(kw)
+    return DomesticItem(**base)
+
+
+def test_measurements_move_to_the_cheaper_row_with_the_same_jan():
+    cheap = item(jan="4901234567890", price_jpy=3900)      # Yahoo!・重量なし
+    out, warns = transfer_measurements([measured(), cheap])
+    moved = [i for i in out if i.source is Source.YAHOO][0]
+    assert moved.weight_g == 520
+    assert moved.length_cm == 18.0
+    assert any("Amazon の登録値から重量・寸法を移しました" in w for w in warns)
+
+
+def test_transferred_measurement_says_where_it_came_from():
+    """移した値を自分の登録値のように見せない。どこを疑うかが分からなくなる。"""
+    out, _ = transfer_measurements([measured(), item(jan="4901234567890")])
+    cands, _ = to_candidates(out)
+    moved = [c for c in cands if "JAN一致" in c.estimate_note]
+    assert moved and "Amazon.co.jp" in moved[0].estimate_note
+
+
+def test_transferred_measurement_is_not_an_estimate():
+    out, _ = transfer_measurements([measured(), item(jan="4901234567890")])
+    cands, _ = to_candidates(out)
+    assert all(c.weight_is_estimate is False for c in cands)
+
+
+def test_rows_without_a_jan_cannot_be_matched_and_it_says_so():
+    """楽天はJANを返さないので、楽天だけの行はここで埋まらない。"""
+    rakuten = item(source=Source.RAKUTEN, jan="", title="謎の物体")
+    out, warns = transfer_measurements([measured(), rakuten])
+    assert [i for i in out if i.source is Source.RAKUTEN][0].weight_g == 0
+    assert any("JANが無いため突合できませんでした" in w for w in warns)
+
+
+def test_transfer_prefers_the_row_that_also_has_dimensions():
+    only_weight = measured(item_code="B2", length_cm=0, width_cm=0, height_cm=0)
+    full = measured(item_code="B3")
+    out, _ = transfer_measurements([only_weight, full, item(jan="4901234567890")])
+    moved = [i for i in out if i.source is Source.YAHOO][0]
+    assert moved.length_cm == 18.0
+
+
+def test_measured_dimensions_reach_the_candidate():
+    cands, _ = to_candidates([measured()])
+    assert cands[0].length_cm == 18.0
+    assert cands[0].weight_g == 520 + 120        # 梱包ぶんを足す
+
+
+def test_items_csv_round_trips_measurements(tmp_path):
+    p = tmp_path / "i.csv"
+    write_items(p, [measured()])
+    back = read_items(p)[0]
+    assert back.weight_g == 520
+    assert back.length_cm == 18.0
+
+
+def test_same_jan_from_two_sources_both_survive():
+    """安いほうを勝手に捨てない。ここを畳むと選択肢が消える。"""
+    a = measured(price_jpy=4800)
+    y = item(jan="4901234567890", price_jpy=3900, item_code="y1")
+    res = SearchResultLike([a]).merged_with(SearchResultLike([y]))
+    assert len(res.items) == 2
+
+
+def test_keep_cheapest_collapses_and_reports_the_difference():
+    out, warns = keep_cheapest([measured(price_jpy=4800),
+                                item(jan="4901234567890", price_jpy=3900)])
+    assert len(out) == 1
+    assert out[0].price_jpy == 3900
+    assert any("900円 の差" in w for w in warns)
+
+
+def test_keep_cheapest_carries_the_measurement_onto_the_cheaper_row():
+    """安いほうに重量が無ければ、高いほうの登録値を持っていく。"""
+    out, _ = keep_cheapest([measured(price_jpy=4800),
+                            item(jan="4901234567890", price_jpy=3900)])
+    assert out[0].weight_g == 520
+    assert out[0].measured_from == "Amazon.co.jp"
+
+
+def test_keep_cheapest_is_not_applied_by_default():
+    """search_all は畳まない。畳むかどうかは呼び出し側が決める。"""
+    feed = Feed([yahoo_page(1, total=1)])
+    r = search_all(["yahoo"], Query(keyword="x", max_items=1), {"yahoo": "C"},
+                   fetch=feed, limiters={"yahoo": RateLimiter(0)})
+    assert not any("畳みました" in w for w in r.warnings)

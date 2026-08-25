@@ -41,9 +41,11 @@ from .models import Candidate
 
 __all__ = [
     "Source", "Query", "DomesticItem", "SearchResult", "ApiError",
-    "Provider", "RakutenProvider", "YahooProvider", "PROVIDERS", "provider_for",
-    "credentials_from_env", "search", "search_all", "price_bands",
+    "Provider", "RakutenProvider", "YahooProvider", "AmazonProvider",
+    "PROVIDERS", "provider_for",
+    "credentials_from_env", "search", "search_all", "price_bands", "Request",
     "WeightHint", "WeightBasis", "weight_hint", "to_candidates",
+    "transfer_measurements", "keep_cheapest",
     "write_items", "read_items", "ITEM_COLUMNS",
 ]
 
@@ -55,10 +57,12 @@ __all__ = [
 class Source(Enum):
     RAKUTEN = "rakuten"
     YAHOO = "yahoo"
+    AMAZON = "amazon"
 
     @property
     def label(self) -> str:
-        return {"rakuten": "楽天市場", "yahoo": "Yahoo!ショッピング"}[self.value]
+        return {"rakuten": "楽天市場", "yahoo": "Yahoo!ショッピング",
+                "amazon": "Amazon.co.jp"}[self.value]
 
 
 class ApiError(RuntimeError):
@@ -147,6 +151,16 @@ class DomesticItem:
     review_average: float = 0.0
     point_rate: float = 0.0
     ships_overseas: bool | None = None   # 楽天 shipOverseasFlag
+    # --- 実測の重量・寸法 ---
+    # **Amazon だけがこれを返す。** 楽天とYahoo!は返さないので 0 のまま。
+    # 0 でない場合は推定ではなく実測なので、判定を BLUE まで上げてよい。
+    weight_g: int = 0
+    length_cm: float = 0.0
+    width_cm: float = 0.0
+    height_cm: float = 0.0
+    # 実測が別の取得元から移されたときの出どころ。移した値を自分の登録値の
+    # ように見せると、どこを疑えばいいか分からなくなる。
+    measured_from: str = ""
     raw: Mapping[str, object] = field(default_factory=dict, repr=False, compare=False)
 
     @property
@@ -161,11 +175,26 @@ class DomesticItem:
         return int(self.price_jpy * 1.1 + 0.5)
 
     @property
-    def key(self) -> str:
-        """名寄せ用のキー。JANがあれば最優先（店をまたいで同一商品を束ねられる）。"""
+    def dedupe_key(self) -> str:
+        """同じものを二重に取ってしまったかを見るキー。
+
+        **取得元をまたいでは束ねない。** 同じJANでも楽天とAmazonでは値段が違い、
+        安いほうを選ぶのがこのツールの仕事だから、束ねると選択肢が消える。
+        """
+        return f"{self.source.value}:{self.item_code}"
+
+    @property
+    def match_key(self) -> str:
+        """別の取得元の同一商品と突き合わせるキー。JANがあればそれ。
+
+        重量の受け渡し（transfer_measurements）と、判定後の名寄せに使う。
+        """
         if self.jan:
             return f"jan:{self.jan}"
-        return f"{self.source.value}:{self.item_code}"
+        return self.dedupe_key
+
+    # 出品候補の管理番号。JANがあればJANを使う（軸2で観測と突き合わせる鍵になる）。
+    key = match_key
 
 
 @dataclass
@@ -177,11 +206,11 @@ class SearchResult:
     truncated: bool = False      # 窓の上限に当たって取りこぼした
 
     def merged_with(self, other: "SearchResult") -> "SearchResult":
-        seen = {i.key for i in self.items}
+        seen = {i.dedupe_key for i in self.items}
         items = list(self.items)
         for i in other.items:
-            if i.key not in seen:
-                seen.add(i.key)
+            if i.dedupe_key not in seen:
+                seen.add(i.dedupe_key)
                 items.append(i)
         return SearchResult(
             items=items,
@@ -196,17 +225,37 @@ class SearchResult:
 # 通信（差し替え可能にしてあるので、テストは1度もネットに出ない）
 # --------------------------------------------------------------------------
 
-Fetcher = Callable[[str, Mapping[str, str]], Mapping[str, object]]
+@dataclass(frozen=True)
+class Request:
+    """1回のリクエスト。GET＋クエリでも POST＋JSON でも同じ形で表す。
+
+    楽天とYahoo!は GET だが、Amazon（Creators API）は Bearer 認証の POST なので、
+    取得口をこの型に揃えてある。テストは fetch を差し替えるだけで全部見られる。
+    """
+    url: str
+    method: str = "GET"
+    params: Mapping[str, str] = field(default_factory=dict)
+    headers: Mapping[str, str] = field(default_factory=dict)
+    json_body: Mapping[str, object] | None = None
 
 
-def http_get_json(url: str, params: Mapping[str, str],
-                  *, headers: Mapping[str, str] | None = None,
-                  timeout: float = 20.0) -> Mapping[str, object]:
+Fetcher = Callable[[Request], Mapping[str, object]]
+
+
+def http_json(req: Request, *, timeout: float = 20.0) -> Mapping[str, object]:
     """既定の取得口。urllib しか使わないので追加の依存が要らない。"""
-    qs = urllib.parse.urlencode({k: v for k, v in params.items() if v != ""})
-    req = urllib.request.Request(f"{url}?{qs}", headers=dict(headers or {}))
+    url = req.url
+    data = None
+    headers = dict(req.headers)
+    if req.params:
+        qs = urllib.parse.urlencode({k: v for k, v in req.params.items() if v != ""})
+        url = f"{url}?{qs}"
+    if req.json_body is not None:
+        data = json.dumps(req.json_body).encode("utf-8")
+        headers.setdefault("Content-Type", "application/json")
+    r = urllib.request.Request(url, data=data, headers=headers, method=req.method)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(r, timeout=timeout) as resp:
             body = resp.read().decode("utf-8")
     except urllib.error.HTTPError as e:  # type: ignore[attr-defined]
         detail = ""
@@ -294,6 +343,20 @@ class Provider(ABC):
 
     def headers(self, key: str) -> dict[str, str]:
         return {}
+
+    def request(self, q: Query, key: str, page: int, size: int) -> Request:
+        """既定は GET＋クエリ文字列。POST が要る取得元だけ上書きする。"""
+        return Request(url=self.endpoint, method="GET",
+                       params=self.params(q, key, page, size),
+                       headers=self.headers(key))
+
+    def authorize(self, key: str, fetch: Fetcher | None) -> str:
+        """検索の前に1回だけ呼ばれる。鍵をそのまま使えない取得元のための口。
+
+        Amazon は client_id / client_secret をアクセストークンに交換する必要が
+        あるので、ここで交換する。他の取得元は素通し。
+        """
+        return key
 
 
 class RakutenProvider(Provider):
@@ -503,9 +566,307 @@ class YahooProvider(Provider):
         return items, total, warnings
 
 
+
+class AmazonProvider(Provider):
+    """Amazon.co.jp — Creators API（旧 Product Advertising API の後継）。
+
+    **PA-API 5.0 は 2026年4月30日に非推奨、5月15日に停止しました。**
+    SigV4 で署名する旧方式はもう通りません。後継の Creators API は OAuth 2.0 で、
+    client_id / client_secret をアクセストークン（有効1時間）に交換して使います。
+
+    この取得元には他の2社と違う性質が3つあります。
+
+    1. **窓が極端に狭い。** itemCount 10 × itemPage 10 = **1クエリ100件**。
+       楽天3,000件・Yahoo!1,000件と比べて桁が違うので、面で採る用途には向きません。
+       型番が分かっているものを1件ずつ確かめる使い方が本筋です。
+    2. **重量と寸法が返る。** itemInfo.productInfo.itemDimensions に実測が入ります。
+       このツールで一番弱かった「重量が分からないので送料が出せない」を、
+       ここだけが埋められます。**推定ではないので判定を BLUE まで上げられます。**
+    3. **鍵の維持条件が厳しい。** アソシエイト・プログラムの審査に通り、
+       一定期間内に紹介売上を出し続けないと使えません（開設180日以内に3件、
+       維持には直近30日に10件程度の実績が要るという報告があります）。
+       **仕入リサーチだけの利用者は、そもそも鍵を取れない可能性が高い。**
+       取れなくても他の2社で回るように作ってあります。
+    """
+    source = Source.AMAZON
+    endpoint = "https://creatorsapi.amazon/catalog/v1/searchItems"
+    token_endpoint = "https://api.amazon.co.jp/auth/o2/token"   # 極東リージョン
+    marketplace = "www.amazon.co.jp"
+    page_size = 10
+    max_pages = 10           # itemPage は 1..10
+    min_interval = 1.05      # 既定は 1 TPS。実績で緩和されるが下限で回す
+    key_env = "AMAZON_CREATORS_CREDS"
+    signup_url = "https://affiliate.amazon.co.jp/"
+
+    # 要求するリソース。使わないものを足すと応答が重くなるだけなので絞る。
+    RESOURCES = (
+        "itemInfo.title",
+        "itemInfo.byLineInfo",
+        "itemInfo.classifications",
+        "itemInfo.productInfo",      # ← 重量・寸法はここ
+        "itemInfo.externalIds",      # ← JAN/EAN はここ
+        "offers.listings.price",
+        "offers.listings.availability.message",
+        "offers.listings.condition",
+        "offers.listings.merchantInfo",
+        "images.primary.large",
+    )
+
+    _SORT = {
+        "price_asc": "Price:LowToHigh",
+        "price_desc": "Price:HighToLow",
+        "review_desc": "AvgCustomerReviews",
+        "standard": "Relevance",
+    }
+
+    def __init__(self) -> None:
+        # トークンは1時間もつ。価格帯を分割すると search() が何度も呼ばれるので、
+        # そのたびに取り直さないよう client_id ごとに持っておく。
+        self._tokens: dict[str, tuple[str, float]] = {}
+        self._clock: Callable[[], float] = time.monotonic
+
+    # -- 鍵 ---------------------------------------------------------------
+    @staticmethod
+    def split_key(key: str) -> tuple[str, str, str]:
+        """`client_id:client_secret:partner_tag` を分解する。
+
+        3つとも要る。partner_tag（アソシエイトタグ）が無いと Creators API は
+        リクエストを受け付けません。
+        """
+        parts = [p.strip() for p in key.split(":")]
+        if len(parts) != 3 or not all(parts):
+            raise ApiError(
+                "AMAZON_CREATORS_CREDS の形式が違います。\n"
+                "  client_id:client_secret:partner_tag の3つをコロンで繋いでください。\n"
+                "  例： export AMAZON_CREATORS_CREDS='amzn1.application-oa2-client.xxx:"
+                "amzn1.oa2-cs.v1.yyy:mytag-22'"
+            )
+        return parts[0], parts[1], parts[2]
+
+    def authorize(self, key: str, fetch: Fetcher | None) -> str:
+        """client_id/secret をアクセストークンに交換する。1時間ぶん持ち回す。"""
+        client_id, client_secret, tag = self.split_key(key)
+        cached = self._tokens.get(client_id)
+        if cached and cached[1] > self._clock():
+            return f"{cached[0]}\t{tag}"
+
+        req = Request(
+            url=self.token_endpoint, method="POST",
+            headers={"Content-Type": "application/json"},
+            json_body={
+                "grant_type": "client_credentials",
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "scope": "creatorsapi::default",
+            },
+        )
+        payload = fetch(req) if fetch is not None else http_json(req)
+        token = payload.get("access_token")
+        if not isinstance(token, str) or not token:
+            raise ApiError(
+                f"Amazonのトークン取得に失敗しました：{str(payload)[:300]}\n"
+                "アソシエイトの審査を通過し、Creators API の利用が有効になっているか"
+                "確認してください。"
+            )
+        ttl = _as_int(payload.get("expires_in"), 3600)
+        # 期限ぎりぎりで使うと途中で切れるので、1分手前で失効扱いにする。
+        self._tokens[client_id] = (token, self._clock() + max(60, ttl - 60))
+        return f"{token}\t{tag}"
+
+    # -- リクエスト -------------------------------------------------------
+    def params(self, q: Query, key: str, page: int, size: int) -> dict[str, str]:
+        """GET では使わないが、--dry-run が中身を見せられるように残す。"""
+        return {k: json.dumps(v, ensure_ascii=False) if not isinstance(v, str) else v
+                for k, v in self.body(q, "＜タグ＞", page, size).items()}
+
+    def body(self, q: Query, tag: str, page: int, size: int) -> dict[str, object]:
+        b: dict[str, object] = {
+            "partnerTag": tag,
+            "marketplace": self.marketplace,
+            "itemCount": min(size, self.page_size),
+            "itemPage": page,
+            "resources": list(self.RESOURCES),
+            "sortBy": self._SORT.get(q.sort, "Relevance"),
+        }
+        if q.keyword:
+            b["keywords"] = q.keyword
+        if q.jan:
+            # Creators API は外部ID検索に対応している。JANが分かっているなら
+            # キーワードより確実なのでこちらを使う。
+            b["keywords"] = q.jan
+        if q.genre_id:
+            b["browseNodeId"] = q.genre_id
+        if q.min_price is not None:
+            b["minPrice"] = q.min_price * 100      # 通貨の最小単位で渡す
+        if q.max_price is not None:
+            b["maxPrice"] = q.max_price * 100
+        if q.condition is Condition.NEW:
+            b["condition"] = "New"
+        elif q.condition is Condition.USED:
+            b["condition"] = "Used"
+        # 在庫の有無で絞る引数は無い。availability を見て呼び出し側で落とす。
+        return b
+
+    def request(self, q: Query, key: str, page: int, size: int) -> Request:
+        token, _, tag = key.partition("\t")
+        return Request(
+            url=self.endpoint, method="POST",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+                "x-marketplace": self.marketplace,
+            },
+            json_body=self.body(q, tag, page, size),
+        )
+
+    # -- 応答 -------------------------------------------------------------
+    def parse(self, payload):
+        if "errors" in payload:
+            errs = payload.get("errors") or []
+            first = errs[0] if isinstance(errs, list) and errs else errs
+            raise ApiError(f"Amazon Creators API：{str(first)[:300]}")
+        result = payload.get("searchResult")
+        if result is None:
+            raise ApiError(
+                f"Amazonの応答に searchResult がありません：{str(payload)[:200]}"
+            )
+        raw = result.get("items") if isinstance(result, dict) else None
+        if raw is None:
+            raise ApiError(f"Amazonの応答に items がありません：{str(payload)[:200]}")
+
+        warnings: list[str] = []
+        items: list[DomesticItem] = []
+        no_dims = 0
+        for it in raw:
+            if not isinstance(it, dict):
+                continue
+            info = it.get("itemInfo") or {}
+            title = _dig(info, "title", "displayValue") or ""
+            if not title:
+                warnings.append("Amazon：商品名の無い要素を1件飛ばした")
+                continue
+
+            listing = _first_listing(it)
+            price = _as_int(_dig(listing, "price", "amount"))
+            # Creators API は通貨の主単位（円）で amount を返す想定。
+            # 100倍された最小単位で来る取り違えを検知できるよう、桁が異常なら言う。
+            avail_msg = str(_dig(listing, "availability", "message") or "")
+            cond = str(listing.get("condition") or "") if listing else ""
+
+            dims = _dig(info, "productInfo", "itemDimensions") or {}
+            grams = _to_grams(dims.get("weight"))
+            l_cm = _to_cm(dims.get("length"))
+            w_cm = _to_cm(dims.get("width"))
+            h_cm = _to_cm(dims.get("height"))
+            if not grams:
+                no_dims += 1
+
+            eans = _dig(info, "externalIds", "eans", "displayValues") or []
+            jan = str(eans[0]) if isinstance(eans, list) and eans else ""
+
+            img = _dig(it, "images", "primary", "large", "url") or ""
+
+            items.append(DomesticItem(
+                source=Source.AMAZON,
+                item_code=str(it.get("asin", "")),
+                title=title,
+                url=str(it.get("detailPageURL") or it.get("detailPageUrl") or ""),
+                price_jpy=price,
+                tax_included=True,        # Amazon.co.jp の表示価格は税込
+                # 「この出品は送料込みか」を単独では返さない。分からないものは
+                # 分からないままにする（False にすると送料無料と読まれる）。
+                postage_included=None,
+                in_stock=(True if "在庫" in avail_msg and "切れ" not in avail_msg
+                          else (False if avail_msg and "切れ" in avail_msg else None)),
+                condition=("new" if cond.lower().startswith("new")
+                           else "used" if cond.lower().startswith("used") else ""),
+                jan=jan,
+                shop_name=str(_dig(listing, "merchantInfo", "name") or ""),
+                genre_name=str(_dig(info, "classifications", "productGroup",
+                                    "displayValue") or ""),
+                brand=str(_dig(info, "byLineInfo", "brand", "displayValue") or ""),
+                image_urls=(img,) if img else (),
+                weight_g=grams, length_cm=l_cm, width_cm=w_cm, height_cm=h_cm,
+                raw=it,
+            ))
+
+        if no_dims and items:
+            warnings.append(
+                f"Amazon：{no_dims}件は重量が登録されていませんでした"
+                "（itemDimensions が空）。その分は推定で埋まります"
+            )
+        total = _as_int(result.get("totalResultCount")) if isinstance(result, dict) else 0
+        return items, total or len(items), warnings
+
+
+def _dig(obj, *keys):
+    """入れ子の辞書を安全に辿る。途中が無ければ None。"""
+    cur = obj
+    for k in keys:
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(k)
+    return cur
+
+
+def _first_listing(item: Mapping[str, object]) -> Mapping[str, object]:
+    listings = _dig(item, "offers", "listings")
+    if isinstance(listings, list) and listings and isinstance(listings[0], dict):
+        return listings[0]
+    return {}
+
+
+# 単位の換算表。**知らない単位は黙って通さない。**
+# 「pounds を grams と読んで 450倍軽く見積もる」のが一番まずい壊れ方なので、
+# 未知の単位は 0（不明）にして推定側へ落とす。
+_WEIGHT_UNITS = {
+    "grams": 1.0, "gram": 1.0, "g": 1.0,
+    "kilograms": 1000.0, "kilogram": 1000.0, "kg": 1000.0,
+    "milligrams": 0.001,
+    "pounds": 453.59237, "pound": 453.59237, "lb": 453.59237, "lbs": 453.59237,
+    "hundredths_pounds": 4.5359237,
+    "ounces": 28.349523125, "ounce": 28.349523125, "oz": 28.349523125,
+}
+_LENGTH_UNITS = {
+    "centimeters": 1.0, "centimeter": 1.0, "cm": 1.0,
+    "millimeters": 0.1, "millimetres": 0.1, "mm": 0.1,
+    "meters": 100.0, "metres": 100.0, "m": 100.0,
+    "inches": 2.54, "inch": 2.54, "in": 2.54,
+    "hundredths_inches": 0.0254,
+    "feet": 30.48, "foot": 30.48,
+}
+
+
+def _measure(node, table: Mapping[str, float]) -> float:
+    if not isinstance(node, dict):
+        return 0.0
+    val = node.get("displayValue")
+    unit = str(node.get("unit") or "").strip().lower()
+    try:
+        num = float(val)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0.0
+    factor = table.get(unit)
+    if factor is None or num <= 0:
+        return 0.0
+    return num * factor
+
+
+def _to_grams(node) -> int:
+    g = _measure(node, _WEIGHT_UNITS)
+    # 30kg を超える値は国際発送の対象外。誤読の可能性が高いので採らない。
+    return int(round(g)) if 0 < g <= 30_000 else 0
+
+
+def _to_cm(node) -> float:
+    cm = _measure(node, _LENGTH_UNITS)
+    return round(cm, 1) if 0 < cm <= 300 else 0.0
+
+
 PROVIDERS: dict[Source, Provider] = {
     Source.RAKUTEN: RakutenProvider(),
     Source.YAHOO: YahooProvider(),
+    Source.AMAZON: AmazonProvider(),
 }
 
 
@@ -555,15 +916,13 @@ def search(source: Source | str, q: Query, key: str, *,
             f"要求 {q.max_items:,}件を {prov.window:,}件に切り詰めた"
         )
 
+    key = prov.authorize(key, fetch)
+
     page = 1
     while len(result.items) < want and page <= prov.max_pages:
         limiter.wait()
-        params = prov.params(q, key, page, prov.page_size)
-        if fetch is not None:
-            payload = fetch(prov.endpoint, params)
-        else:
-            payload = http_get_json(prov.endpoint, params,
-                                    headers=prov.headers(key))
+        req = prov.request(q, key, page, prov.page_size)
+        payload = fetch(req) if fetch is not None else http_json(req)
         items, total, warns = prov.parse(payload)
         result.pages_fetched += 1
         result.warnings.extend(warns)
@@ -661,14 +1020,15 @@ def search_all(sources: Sequence[Source | str], q: Query, keys: Mapping[str, str
 # --------------------------------------------------------------------------
 
 class WeightBasis(Enum):
+    MEASURED = "measured"    # APIが実測値を返した（Amazonのみ）
     TITLE = "title"          # 商品名に重量が書いてあった
     GENRE = "genre"          # カテゴリの既定値
     UNKNOWN = "unknown"      # 手がかり無し
 
     @property
     def label(self) -> str:
-        return {"title": "商品名から", "genre": "カテゴリ既定値",
-                "unknown": "不明"}[self.value]
+        return {"measured": "登録値", "title": "商品名から",
+                "genre": "カテゴリ既定値", "unknown": "不明"}[self.value]
 
 
 @dataclass(frozen=True)
@@ -679,7 +1039,8 @@ class WeightHint:
 
     @property
     def is_estimate(self) -> bool:
-        return self.basis is not WeightBasis.TITLE
+        """実測（Amazonの登録値）と、商品名に明記された重量は推定ではない。"""
+        return self.basis not in (WeightBasis.MEASURED, WeightBasis.TITLE)
 
 
 # カテゴリ既定値。**梱包後**の実重量の当たりであって、実測ではない。
@@ -756,6 +1117,99 @@ def weight_hint(title: str, genre_name: str = "",
 # Candidate への変換
 # --------------------------------------------------------------------------
 
+
+def transfer_measurements(items: Iterable[DomesticItem]) -> tuple[list[DomesticItem], list[str]]:
+    """JANが一致する商品どうしで、実測の重量・寸法を配る。
+
+    **これがAmazonを入れる一番の理由です。**
+    重量を返すのは Amazon だけ、JANを返すのは Yahoo! と Amazon。
+    つまり同じJANの行が両方にあれば、**Amazonの登録値を Yahoo! の行に移せます。**
+    Yahoo!のほうが安いことは普通にあるので、
+    「安いのはYahoo!、重さはAmazonから」という組み合わせが作れる。
+
+    楽天はJANを返さないので、この恩恵を受けられません。そこは正直に言う。
+    """
+    items = list(items)
+    by_jan: dict[str, DomesticItem] = {}
+    for it in items:
+        if it.jan and it.weight_g > 0:
+            # 同じJANで複数あるときは、寸法まで揃っているものを優先する。
+            cur = by_jan.get(it.jan)
+            if cur is None or (not cur.length_cm and it.length_cm):
+                by_jan[it.jan] = it
+
+    out: list[DomesticItem] = []
+    moved = 0
+    for it in items:
+        if it.weight_g > 0 or not it.jan or it.jan not in by_jan:
+            out.append(it)
+            continue
+        src = by_jan[it.jan]
+        out.append(replace(
+            it, weight_g=src.weight_g,
+            length_cm=it.length_cm or src.length_cm,
+            width_cm=it.width_cm or src.width_cm,
+            height_cm=it.height_cm or src.height_cm,
+            measured_from=src.source.label,
+        ))
+        moved += 1
+
+    warnings: list[str] = []
+    if moved:
+        warnings.append(
+            f"{moved}件は、同じJANの Amazon の登録値から重量・寸法を移しました"
+            "（推定ではなく実測扱いになります）"
+        )
+    no_jan = sum(1 for i in items if not i.jan and i.weight_g <= 0)
+    if no_jan:
+        warnings.append(
+            f"{no_jan}件はJANが無いため突合できませんでした"
+            "（楽天はJANを返さないので、楽天だけの行はここで埋まりません）"
+        )
+    return out, warnings
+
+
+
+def keep_cheapest(items: Iterable[DomesticItem]) -> tuple[list[DomesticItem], list[str]]:
+    """同じ商品（JAN一致）が複数の取得元にあるとき、税込原価が安いほうだけ残す。
+
+    **既定では呼びません。** 束ねると比較の材料が消えるので、
+    「1商品1行にしたい」と明示されたときだけ使います。
+    落としたぶんは件数と差額で申告します。
+    """
+    items = list(items)
+    best: dict[str, DomesticItem] = {}
+    order: list[str] = []
+    dropped = 0
+    saved = 0
+    for it in items:
+        k = it.match_key
+        cur = best.get(k)
+        if cur is None:
+            best[k] = it
+            order.append(k)
+            continue
+        dropped += 1
+        lo, hi = (it, cur) if it.cost_incl_tax_jpy < cur.cost_incl_tax_jpy else (cur, it)
+        saved += hi.cost_incl_tax_jpy - lo.cost_incl_tax_jpy
+        # 安いほうを残すが、重量が入っているのが高いほうだけなら移しておく。
+        if lo.weight_g <= 0 < hi.weight_g:
+            lo = replace(lo, weight_g=hi.weight_g,
+                         length_cm=lo.length_cm or hi.length_cm,
+                         width_cm=lo.width_cm or hi.width_cm,
+                         height_cm=lo.height_cm or hi.height_cm,
+                         measured_from=hi.measured_from or hi.source.label)
+        best[k] = lo
+
+    warnings: list[str] = []
+    if dropped:
+        warnings.append(
+            f"同じJANの重複 {dropped}件 を、安いほうだけ残して畳みました"
+            f"（合計 {saved:,.0f}円 の差）。比較したい場合は畳まずに使ってください"
+        )
+    return [best[k] for k in order], warnings
+
+
 def to_candidates(items: Iterable[DomesticItem], *,
                   domestic_shipping_jpy: int = 0,
                   packaging_g: int = 120,
@@ -772,7 +1226,15 @@ def to_candidates(items: Iterable[DomesticItem], *,
     tax_excl = 0
 
     for it in items:
-        hint = weight_hint(it.title, it.genre_name, packaging_g=packaging_g)
+        # 実測が返っている（Amazon）なら推定に落とさない。梱包ぶんだけ足す。
+        if it.weight_g > 0:
+            whose = it.measured_from or it.source.label
+            via = "（JAN一致で移した値）" if it.measured_from else ""
+            hint = WeightHint(it.weight_g + packaging_g, WeightBasis.MEASURED,
+                              f"{whose}の登録値 {it.weight_g:,}g{via}"
+                              f"＋梱包 {packaging_g}g")
+        else:
+            hint = weight_hint(it.title, it.genre_name, packaging_g=packaging_g)
         cost = it.cost_incl_tax_jpy
         notes: list[str] = []
 
@@ -800,6 +1262,9 @@ def to_candidates(items: Iterable[DomesticItem], *,
             source_url=it.url,
             cost_incl_tax_jpy=float(cost),
             weight_g=hint.grams,
+            length_cm=it.length_cm,
+            width_cm=it.width_cm,
+            height_cm=it.height_cm,
             category=category or it.genre_name or it.source.label,
             image_urls=it.image_urls,
             weight_is_estimate=hint.is_estimate,
@@ -819,10 +1284,13 @@ def to_candidates(items: Iterable[DomesticItem], *,
         )
     if tax_excl:
         warnings.append(f"{tax_excl}件は税別表示だったので10%を加算した")
-    warnings.append(
-        "重量・寸法はどちらのAPIも返さない。ここでの重量は推定なので、"
-        "現物が届いたら実測で置き換えること"
-    )
+    measured = sum(1 for c in out if not c.weight_is_estimate)
+    if measured < len(out):
+        warnings.append(
+            f"重量を返すのは Amazon だけです（{measured}/{len(out)}件が実測または"
+            "商品名からの確定値）。残りは推定なので、現物が届いたら実測で"
+            "置き換えてください"
+        )
     return out, warnings
 
 
@@ -835,6 +1303,7 @@ ITEM_COLUMNS = (
     "tax_included", "postage_included", "in_stock", "condition", "jan",
     "shop_name", "shop_code", "genre_id", "genre_name", "brand",
     "review_count", "review_average", "point_rate", "ships_overseas",
+    "weight_g", "length_cm", "width_cm", "height_cm",
     "weight_est_g", "weight_basis", "image_url",
 )
 
@@ -855,7 +1324,9 @@ def write_items(path: str | Path, items: Iterable[DomesticItem],
         w = csv.writer(f)
         w.writerow(ITEM_COLUMNS)
         for it in items:
-            hint = weight_hint(it.title, it.genre_name, packaging_g=packaging_g)
+            hint = (WeightHint(it.weight_g + packaging_g, WeightBasis.MEASURED)
+                    if it.weight_g > 0
+                    else weight_hint(it.title, it.genre_name, packaging_g=packaging_g))
             w.writerow([
                 it.source.value, it.item_code, it.title, it.url,
                 it.price_jpy, it.cost_incl_tax_jpy,
@@ -864,6 +1335,7 @@ def write_items(path: str | Path, items: Iterable[DomesticItem],
                 it.shop_name, it.shop_code, it.genre_id, it.genre_name, it.brand,
                 it.review_count, it.review_average, it.point_rate,
                 _flag(it.ships_overseas),
+                it.weight_g, it.length_cm, it.width_cm, it.height_cm,
                 hint.grams, hint.basis.value,
                 it.image_urls[0] if it.image_urls else "",
             ])
@@ -905,5 +1377,9 @@ def read_items(path: str | Path) -> list[DomesticItem]:
                 review_average=_as_float(row.get("review_average")),
                 point_rate=_as_float(row.get("point_rate")),
                 ships_overseas=flag(row.get("ships_overseas", "")),
+                weight_g=_as_int(row.get("weight_g")),
+                length_cm=_as_float(row.get("length_cm")),
+                width_cm=_as_float(row.get("width_cm")),
+                height_cm=_as_float(row.get("height_cm")),
             ))
     return out

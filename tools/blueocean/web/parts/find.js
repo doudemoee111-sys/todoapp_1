@@ -3,14 +3,21 @@
    コマンドを出す係。実際の取得は PC 側の python -m blueocean.cli domestic。 */
 
 const PROV = {
-  rakuten: {label:"楽天市場", page:30, pages:100, env:"RAKUTEN_APP_ID", gap:1.05},
-  yahoo:   {label:"Yahoo!ショッピング", page:50, pages:20, env:"YAHOO_CLIENT_ID", gap:0.25},
+  rakuten: {label:"楽天市場", page:30, pages:100, env:"RAKUTEN_APP_ID", gap:1.05,
+            jan:false, weight:false},
+  yahoo:   {label:"Yahoo!ショッピング", page:50, pages:20, env:"YAHOO_CLIENT_ID", gap:0.25,
+            jan:true, weight:false},
+  /* Amazon は窓が 10×10=100件しかない。面で採る用途には向かないが、
+     **重量と寸法を返すのはここだけ。** JANが一致する行にその実測を移せる。 */
+  amazon:  {label:"Amazon.co.jp", page:10, pages:10, env:"AMAZON_CREATORS_CREDS", gap:1.05,
+            jan:true, weight:true},
 };
 
 function qSources(){
   const s = [];
   if ($("q-rakuten").checked) s.push("rakuten");
   if ($("q-yahoo").checked) s.push("yahoo");
+  if ($("q-amazon").checked) s.push("amazon");
   return s;
 }
 
@@ -61,7 +68,9 @@ function renderFindPlan(){
       + '<td class="num">' + win.toLocaleString() + '</td>'
       + '<td class="num">' + (per * bands.length).toLocaleString() + '</td>'
       + '<td class="num">' + calls.toLocaleString() + '</td>'
-      + '<td class="num">' + (secs >= 60 ? Math.floor(secs/60) + "分" + (secs%60) + "秒" : secs + "秒") + '</td></tr>';
+      + '<td class="num">' + (secs >= 60 ? Math.floor(secs/60) + "分" + (secs%60) + "秒" : secs + "秒") + '</td>'
+      + '<td>' + (p.jan ? "返る" : '<span class="est">返らない</span>') + '</td>'
+      + '<td>' + (p.weight ? '<b style="color:var(--blue)">返る</b>' : '<span class="est">返らない</span>') + '</td></tr>';
     if (want > win)
       out.push('<div class="warn"><b>' + esc(p.label) + 'は1クエリ ' + win.toLocaleString()
         + '件までしか辿れません。</b>' + want.toLocaleString() + '件を指定しても '
@@ -70,9 +79,33 @@ function renderFindPlan(){
   });
 
   out.push('<div class="scrollx"><table class="mini"><thead><tr>'
-    + '<th>取得元</th><th>1クエリの上限</th><th>この条件で採れる上限</th>'
-    + '<th>リクエスト数</th><th>おおよその所要</th></tr></thead><tbody>'
+    + '<th>取得元</th><th class="num">1クエリの上限</th><th class="num">この条件で採れる上限</th>'
+    + '<th class="num">リクエスト数</th><th class="num">おおよその所要</th>'
+    + '<th>JAN</th><th>重量</th></tr></thead><tbody>'
     + rows + '</tbody></table></div>');
+
+  /* 重量が取れるかどうかは、このツールでは判定の質に直結する。
+     取れないなら推定になり、判定は「小さく試す」で止まる。 */
+  const hasWeight = srcs.some(s => PROV[s].weight);
+  const hasJan    = srcs.filter(s => PROV[s].jan);
+  if (hasWeight && hasJan.length > 1){
+    out.push('<div class="warn ok"><b>この組み合わせなら重量が実測で入ります。</b>'
+      + 'Amazonが返す登録値を、JANが一致する他社の行に移します。'
+      + '安いのは他社、重さはAmazonから、という組み合わせが作れるので、'
+      + '<b>判定が「小さく試す」で止まらずに「出せる」まで上がります。</b></div>');
+  } else if (!hasWeight){
+    out.push('<div class="warn"><b>この組み合わせでは重量が取れません。</b>'
+      + '楽天もYahoo!も重量・寸法を返さないので、商品名とカテゴリからの推定になります。'
+      + '推定のままだと判定は最良でも「小さく試す」止まりです。'
+      + 'Amazonを足すと実測が入りますが、鍵の条件が厳しい点は上の説明をご覧ください。</div>');
+  }
+  if (srcs.length === 1 && srcs[0] === "amazon")
+    out.push('<div class="warn"><b>Amazonだけだと1クエリ100件しか採れません。</b>'
+      + 'Yahoo!も一緒に選ぶと、母数はYahoo!で稼ぎ、重量はAmazonから移す形になります。</div>');
+  if ($("q-amazon").checked && $("q-rakuten").checked && !$("q-yahoo").checked)
+    out.push('<div class="warn">楽天はJANを返さないので、'
+      + '<b>Amazonの重量を楽天の行に移すことはできません。</b>'
+      + 'Yahoo!を足すと突合できます。</div>');
 
   if (split > 1){
     out.push('<p class="hint">価格帯の分割：'
@@ -102,6 +135,7 @@ function renderFindCmd(){
   if (+g("q-ship") > 0)  a.push("--domestic-shipping " + g("q-ship"));
   if (!$("q-stock").checked) a.push("--include-out-of-stock");
   if ($("q-postage").checked) a.push("--postage-included");
+  if ($("q-cheapest").checked) a.push("--cheapest-only");
   a.push("--out items.csv");
   a.push("--candidates-out candidates.csv");
   $("q-cmd").textContent = a.join(" \\\n  ");
@@ -113,7 +147,8 @@ function bootFind(applyRows){
   ["q-keyword","q-ng","q-genre","q-min","q-max","q-split","q-max-items",
    "q-cond","q-sort","q-ship"].forEach(id =>
     $(id).addEventListener("input", renderFindPlan));
-  ["q-rakuten","q-yahoo","q-stock","q-postage","q-cond","q-sort"].forEach(id =>
+  ["q-rakuten","q-yahoo","q-amazon","q-stock","q-postage","q-cheapest",
+   "q-cond","q-sort"].forEach(id =>
     $(id).addEventListener("change", renderFindPlan));
   $("q-copy").addEventListener("click", () => copyText($("q-cmd"), "コマンドをコピーしました"));
 

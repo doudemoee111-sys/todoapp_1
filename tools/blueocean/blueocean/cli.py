@@ -999,6 +999,17 @@ def cmd_domestic(args) -> int:
             print(f"    上限： 1クエリ {prov.window:,}件 / 間隔 {prov.min_interval}秒\n")
         print("  鍵は環境変数からしか読みません。CSVにもコードにも書きません。")
         print("  例： export RAKUTEN_APP_ID='...'\n")
+        print("  --- Amazon について ---")
+        print("  ・旧 PA-API 5.0 は 2026年4月30日に非推奨、5月15日に停止しました。")
+        print("    SigV4 で署名する古い方式はもう通りません。後継の Creators API は")
+        print("    OAuth 2.0 で、client_id / client_secret / パートナータグの3点が要ります。")
+        print("      export AMAZON_CREATORS_CREDS='<client_id>:<client_secret>:<tag>'")
+        print("  ・アソシエイトの審査に通り、紹介売上を出し続けないと鍵が維持できません。")
+        print("    **仕入リサーチだけの利用では鍵を取れない可能性が高い。**")
+        print("    取れなくても楽天とYahoo!だけで回るように作ってあります。")
+        print("  ・1クエリ100件しか辿れないので、面で採る用途には向きません。")
+        print("    代わりに**重量と寸法が返る唯一の取得元**なので、")
+        print("    JANが一致する行にその実測を移す使い方が本命です。\n")
         return 0
 
     sources = [s.strip() for s in args.source.split(",") if s.strip()]
@@ -1053,8 +1064,19 @@ def cmd_domestic(args) -> int:
         on_progress=lambda t: print(f"  取得中… {t}", flush=True),
     )
 
+    # JANが一致する行に、Amazonの登録値（重量・寸法）を移す。
+    # 重量を返すのは Amazon だけなので、ここが実測を得る唯一の経路になる。
+    result.items, moved = dom.transfer_measurements(result.items)
+    result.warnings.extend(moved)
+
+    if args.cheapest_only:
+        result.items, folded = dom.keep_cheapest(result.items)
+        result.warnings.extend(folded)
+
+    measured = sum(1 for i in result.items if i.weight_g > 0)
     print(f"\n=== 取得 {len(result.items):,}件"
-          f"（該当 {result.total_available:,}件 / {result.pages_fetched} ページ）===\n")
+          f"（該当 {result.total_available:,}件 / {result.pages_fetched} ページ"
+          f" / 重量が判明 {measured:,}件）===\n")
 
     if result.warnings:
         print("--- 注意 ---")
@@ -1069,8 +1091,13 @@ def cmd_domestic(args) -> int:
     print(f"{_pad('価格', 9, right=True)} {_pad('推定重量', 9, right=True)} "
           f"{_pad('元', 5)} {_pad('店', 14, trunc=True)} 商品名")
     for it in head:
-        hint = dom.weight_hint(it.title, it.genre_name)
-        mark = "" if hint.basis is dom.WeightBasis.TITLE else "?"
+        if it.weight_g > 0:
+            # 実測。移してきた値なら出どころが違うので印を変える。
+            hint = dom.WeightHint(it.weight_g, dom.WeightBasis.MEASURED)
+            mark = "*" if it.measured_from else ""
+        else:
+            hint = dom.weight_hint(it.title, it.genre_name)
+            mark = "" if hint.basis is dom.WeightBasis.TITLE else "?"
         wt = f"{hint.grams:,}g{mark}" if hint.grams else "不明"
         tax = "" if it.tax_included else "＋税"
         post = "" if it.postage_included is not False else "＋送"
@@ -1081,6 +1108,8 @@ def cmd_domestic(args) -> int:
               f"{_pad(it.title, 46, trunc=True)}")
     if len(result.items) > len(head):
         print(f"  … 他 {len(result.items) - len(head):,}件")
+    print("  重量の印： 無印=実測 / *=同じJANの他社から移した実測 / "
+          "?=推定 / 不明=手がかり無し")
     print()
 
     if args.out:
@@ -1104,7 +1133,8 @@ def cmd_domestic(args) -> int:
                         "weight_is_estimate", "cost_is_estimate", "estimate_note"])
             for c in usable:
                 w.writerow([c.sku, c.title_ja, c.source_url,
-                            round(c.cost_incl_tax_jpy), c.weight_g, "", "", "",
+                            round(c.cost_incl_tax_jpy), c.weight_g,
+                            c.length_cm or "", c.width_cm or "", c.height_cm or "",
                             c.category, "", "", "no", "", "no", "",
                             c.image_urls[0] if c.image_urls else "",
                             "yes" if c.weight_is_estimate else "no",
@@ -1258,7 +1288,10 @@ def main(argv=None) -> int:
                         help="国内ショップの公式APIから仕入れ候補を採る（巡回はしない）")
     dm.add_argument("what", choices=["search", "keys"])
     dm.add_argument("--source", default="rakuten,yahoo",
-                    help="取得元をカンマ区切りで（rakuten / yahoo）")
+                    help="取得元をカンマ区切りで（rakuten / yahoo / amazon）。"
+                         "amazon は鍵の維持条件が厳しいので既定に入れていない")
+    dm.add_argument("--cheapest-only", action="store_true",
+                    help="同じJANが複数の取得元にあるとき、安いほうだけ残す")
     dm.add_argument("--keyword", default="")
     dm.add_argument("--ng-keyword", default="", help="除外語（楽天のみ有効）")
     dm.add_argument("--genre-id", default="", help="ジャンルID／カテゴリID")

@@ -1,7 +1,7 @@
 <!-- ①探す。両ツール共通。国内ショップの公式APIで候補を採るところ。 -->
 <section class="screen" id="sc-find">
   <h2 class="sc"><span class="n">STEP 01</span>探す</h2>
-  <p class="sc">国内の仕入れ元を、条件を決めて採ってきます。巡回（スクレイピング）はしません。楽天とYahoo!が公式に出している検索APIを、あなた自身が発行した鍵で叩きます。</p>
+  <p class="sc">国内の仕入れ元を、条件を決めて採ってきます。巡回（スクレイピング）はしません。楽天・Yahoo!・Amazonが公式に出している検索APIを、あなた自身が発行した鍵で叩きます。<b>重量を返すのはAmazonだけ</b>なので、鍵が取れるならJANで突合して実測を持ってこられます。</p>
 
   <details class="help">
     <summary>先に鍵を取ってください（1回だけ・無料）</summary>
@@ -9,9 +9,11 @@
       <ol>
         <li><b>楽天市場</b> — <a href="https://webservice.rakuten.co.jp/" target="_blank" rel="noopener">楽天ウェブサービス</a> に楽天会員でログインし、アプリIDを発行。環境変数 <code>RAKUTEN_APP_ID</code> に入れます。<b>1秒に1回まで</b>という制限があるので、数千件を採るときは時間がかかります。</li>
         <li><b>Yahoo!ショッピング</b> — <a href="https://e.developer.yahoo.co.jp/register" target="_blank" rel="noopener">Yahoo!デベロッパーネットワーク</a> でアプリケーションを登録し、Client ID を発行。環境変数 <code>YAHOO_CLIENT_ID</code> に入れます。<b>JANコードが返る</b>ので、同じ商品を店をまたいで束ねられます。</li>
+        <li><b>Amazon.co.jp（任意・条件が厳しい）</b> — <a href="https://affiliate.amazon.co.jp/" target="_blank" rel="noopener">Amazonアソシエイト</a> の審査に通ったうえで Creators API の client_id / client_secret を発行し、パートナータグと合わせて <code>AMAZON_CREATORS_CREDS</code> に <code>id:secret:tag</code> の形で入れます。<b>旧 PA-API 5.0 は2026年5月15日に停止済み</b>で、AWS署名の古い方式はもう通りません。</li>
       </ol>
       <p><b>鍵はこの画面には入れません。</b>ブラウザから他社のAPIは叩けない（CORSで弾かれる）ので、実際の取得はお使いのPCのコマンドで行います。ここは条件を組み立てて、そのコマンドを出すところです。</p>
       <p>商用利用の可否や規約は各社の条件に従ってください。楽天のAPIはアフィリエイト用途を前提に無償提供されているもので、Yahoo!は商用利用について問い合わせ窓口が用意されています。<b>自分の仕入れ判断のための価格照会</b>として使う範囲を超える場合は、各社に確認してから使ってください。</p>
+      <p><b>Amazonの鍵は取れないかもしれません。</b>アソシエイトの審査に通り、紹介売上を出し続けないと維持できないためです（開設180日以内に3件、維持に直近30日で10件程度という報告があります）。仕入リサーチだけの利用では条件を満たしにくいので、<b>取れなくても楽天とYahoo!だけで回る</b>ように作ってあります。</p>
     </div>
   </details>
 
@@ -50,8 +52,12 @@
     <div style="display:flex; gap:18px; flex-wrap:wrap; margin-top:14px">
       <label class="ck"><input type="checkbox" id="q-rakuten" checked>楽天市場</label>
       <label class="ck"><input type="checkbox" id="q-yahoo" checked>Yahoo!ショッピング</label>
+      <label class="ck"><input type="checkbox" id="q-amazon">Amazon.co.jp <span class="why">重量が取れる唯一の取得元</span></label>
+    </div>
+    <div style="display:flex; gap:18px; flex-wrap:wrap; margin-top:8px">
       <label class="ck"><input type="checkbox" id="q-stock" checked>在庫ありのみ</label>
       <label class="ck"><input type="checkbox" id="q-postage">送料込みのみ <span class="why">原価が確定する・楽天のみ</span></label>
+      <label class="ck"><input type="checkbox" id="q-cheapest">同じJANは安いほうだけ残す</label>
     </div>
 
     <div id="q-plan"></div>
