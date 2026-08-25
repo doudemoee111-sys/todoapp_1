@@ -598,6 +598,39 @@ python -m blueocean.cli domestic search \
 
 `--dry-run` を足すと、叩かずに送るパラメータだけ確認できます。
 
+#### 実行する場所と、結果の保存先
+
+このパッケージは `pip install` していないので、**`tools/blueocean` の中で実行してください。**
+
+```bash
+cd <このリポジトリ>/tools/blueocean
+python -m blueocean.cli domestic keys       # 鍵の一覧が出れば場所は合っている
+```
+
+`No module named blueocean` と出たらフォルダが違います。
+
+`--out` と `--candidates-out` は**いまいるフォルダからの相対パス**です。
+実行が終わると**フルパスを表示する**ので、どこに出たか迷うことはありません。
+
+```
+  抽出結果 300件 を書き出しました：
+    /Users/you/tools/blueocean/items.csv
+  候補CSV 287件 を書き出しました：
+    /Users/you/tools/blueocean/candidates.csv
+```
+
+どちらも指定しないと結果は画面に出るだけで消えるので、その場合は実行時に警告します。
+
+| ファイル | 中身 | 使いどころ |
+|---|---|---|
+| `items.csv` | 採ってきた生データ全部（店名・JAN・レビュー数・在庫・税別/送料別フラグまで） | あとで見返す |
+| `candidates.csv` | 判定にかけられる形に整えたもの。重量が出せなかった行は除外 | **②選ぶ に読み込むのはこちら** |
+
+> コマンドは**1行**で出しています。行末の `\` は Linux/macOS のシェル専用で、
+> Windows のコマンドプロンプトでも PowerShell でも通りません。
+> また、先に `python` と打って**対話モード（`>>>`）**に入ってから貼ると
+> `IndentationError` になります。貼るのはターミナルそのものです。
+
 ### Amazon を入れる理由と、入らない場合
 
 **PA-API 5.0 は 2026年4月30日に非推奨、5月15日に停止しました。** AWS署名(SigV4)の

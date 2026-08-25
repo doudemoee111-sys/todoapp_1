@@ -398,6 +398,46 @@ a{color:var(--accent)}
       <button class="btn sm" id="q-copy">コマンドをコピー</button>
       <span class="hint" id="q-note"></span>
     </div>
+
+    <details class="help">
+      <summary>どこに貼るのか／結果はどこに保存されるのか</summary>
+      <div class="bd">
+        <p><b>貼る場所を間違えると必ず失敗します。</b>よくある失敗は、先に <code>python</code> と打って
+        <b>Pythonの対話モード（行頭が <code>&gt;&gt;&gt;</code>）</b>に入ってから貼ってしまうことです。
+        そこはPythonの文法しか受け付けないので、<code>IndentationError: unexpected indent</code> が出ます。
+        出てしまったら <code>exit()</code> と打って戻ってください。</p>
+
+        <p>貼るのは<b>ターミナルそのもの</b>です。行頭がこうなっている状態で貼ります。</p>
+        <ul>
+          <li>Windows … <code>C:\Users\あなた&gt;</code>（コマンドプロンプト）または <code>PS C:\Users\あなた&gt;</code>（PowerShell）</li>
+          <li>macOS / Linux … <code>あなた@PC ~ $</code> や <code>%</code></li>
+        </ul>
+
+        <p><b>実行する前に、このツールのフォルダへ移動してください。</b>
+        <code>blueocean</code> というフォルダが見える場所（<code>tools/blueocean</code>）から実行します。</p>
+        <pre class="out">cd  ここに tools/blueocean のパス
+python -m blueocean.cli domestic keys</pre>
+        <p><code>domestic keys</code> が鍵の一覧を表示すれば、場所は合っています。
+        <code>No module named blueocean</code> と出たら、フォルダが違います。</p>
+
+        <h4 style="margin:16px 0 6px;font-size:13px">結果の保存先</h4>
+        <p>コマンドの末尾にある <code>--out items.csv</code> と <code>--candidates-out candidates.csv</code> が
+        書き出し先です。<b>いま <code>cd</code> でいるフォルダ</b>に、その名前で作られます。
+        実行が終わると、画面に<b>フルパスが表示される</b>ので、そこを開いてください。</p>
+        <pre class="out">  抽出結果 300件 を書き出しました：
+    /Users/you/tools/blueocean/items.csv
+  候補CSV 287件 を書き出しました：
+    /Users/you/tools/blueocean/candidates.csv</pre>
+        <p>別の場所に出したいときは、ファイル名のかわりに置きたい場所を丸ごと書きます。
+        例：<code>--out C:\Users\あなた\Desktop\items.csv</code></p>
+        <p>2つのファイルの違いです。</p>
+        <ul>
+          <li><code>items.csv</code> … <b>採ってきた生データ全部。</b>店名・JAN・レビュー数・在庫・税別か送料別かまで残っています。あとで見返す用。</li>
+          <li><code>candidates.csv</code> … <b>判定にかけられる形に整えたもの。</b>重量が出せなかった行は除いてあります。<b>②選ぶ に読み込むのはこちら。</b></li>
+        </ul>
+        <p><b>どちらも指定しないと、結果は画面に出るだけで消えます。</b>その場合はその旨を実行時に警告します。</p>
+      </div>
+    </details>
   </div>
 
   <div class="panel">
@@ -2054,7 +2094,10 @@ function renderFindCmd(){
   if ($("q-cheapest").checked) a.push("--cheapest-only");
   a.push("--out items.csv");
   a.push("--candidates-out candidates.csv");
-  $("q-cmd").textContent = a.join(" \\\n  ");
+  /* **1行で出す。** 行末の \\ は Linux/macOS のシェル専用で、
+     Windows のコマンドプロンプトでも PowerShell でも Python の対話モードでも
+     エラーになる。折り返して見せるより、どこに貼っても動くほうが大事。 */
+  $("q-cmd").textContent = a.join(" ");
   $("q-note").textContent = "実行前に " + qSources().map(s => PROV[s].env).join(" と ")
     + " を設定してください。--dry-run を足すと、叩かずに送るパラメータだけ確認できます。";
 }

@@ -140,7 +140,10 @@ function renderFindCmd(){
   if ($("q-cheapest").checked) a.push("--cheapest-only");
   a.push("--out items.csv");
   a.push("--candidates-out candidates.csv");
-  $("q-cmd").textContent = a.join(" \\\n  ");
+  /* **1行で出す。** 行末の \\ は Linux/macOS のシェル専用で、
+     Windows のコマンドプロンプトでも PowerShell でも Python の対話モードでも
+     エラーになる。折り返して見せるより、どこに貼っても動くほうが大事。 */
+  $("q-cmd").textContent = a.join(" ");
   $("q-note").textContent = "実行前に " + qSources().map(s => PROV[s].env).join(" と ")
     + " を設定してください。--dry-run を足すと、叩かずに送るパラメータだけ確認できます。";
 }

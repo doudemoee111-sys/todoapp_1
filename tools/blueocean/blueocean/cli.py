@@ -1112,9 +1112,18 @@ def cmd_domestic(args) -> int:
           "?=推定 / 不明=手がかり無し")
     print()
 
+    if not args.out and not args.candidates_out:
+        print("  ! --out も --candidates-out も指定していないので、"
+              "この結果はどこにも保存されません。")
+        print(f"    保存するなら： --out items.csv --candidates-out candidates.csv")
+        print(f"    保存先は、いまいるフォルダ（{Path.cwd()}）になります。\n")
+
     if args.out:
         n = dom.write_items(args.out, result.items)
-        print(f"  抽出結果 {n:,}件 を {args.out} に書き出しました。")
+        # 相対パスだけ出すと「どこに保存されたのか」が分からなくなる。
+        # 実行した場所によって変わるので、必ずフルパスで言う。
+        print(f"  抽出結果 {n:,}件 を書き出しました：")
+        print(f"    {Path(args.out).resolve()}")
 
     if args.candidates_out:
         cands, warns = dom.to_candidates(
@@ -1140,7 +1149,8 @@ def cmd_domestic(args) -> int:
                             "yes" if c.weight_is_estimate else "no",
                             "yes" if c.cost_is_estimate else "no",
                             c.estimate_note])
-        print(f"  候補CSV {len(usable):,}件 を {args.candidates_out} に書き出しました。")
+        print(f"  候補CSV {len(usable):,}件 を書き出しました：")
+        print(f"    {Path(args.candidates_out).resolve()}")
         if len(usable) < len(cands):
             print(f"    （重量が出せなかった {len(cands) - len(usable):,}件は除外。"
                   f"{args.out or '抽出結果CSV'} には残っています）")
