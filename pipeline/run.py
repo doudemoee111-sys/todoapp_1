@@ -190,7 +190,8 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     print("[5/6] thumbnail…")
     thumb = work / "thumbnail.png"
     try:
-        make_thumbnail(pkg["thumbnail_text"] or pkg["title"], pkg["thumbnail_prompt"], thumb)
+        make_thumbnail(pkg["thumbnail_text"] or pkg["title"], pkg["thumbnail_prompt"], thumb,
+                       genre_key=genre_key)
     except Exception as e:  # noqa: BLE001
         print(f"      thumbnail failed: {e}")
         thumb = None
