@@ -184,10 +184,13 @@ def _build_user_content(
         )
 
     if avoid_titles:
-        recent = "\n".join(f"- {t}" for t in avoid_titles[-40:])
+        # fetch_recent_titles() は「新しい順」で返すため、モデルに“直近で避けるべき題材”を
+        # 見せるには先頭(最新)を渡す。以前は avoid_titles[-40:]（＝最も古い40件）を渡しており、
+        # 最近扱った題材がモデルに伝わらず重複が再発していた。先頭60件(≒直近1か月分)に修正。
+        recent = "\n".join(f"- {t}" for t in avoid_titles[:60])
         user_content += (
-            "\n\n直近ですでに扱った題材は次の通りです。タイトルだけでなく、"
-            "テーマ・題材・切り口が似ているものも避け、明確に異なる題材・別の切り口にしてください:\n"
+            "\n\n直近ですでに扱った題材は次の通りです（新しい順）。タイトルだけでなく、"
+            "テーマ・題材・切り口・オチが似ているものも避け、明確に異なる題材・別の切り口にしてください:\n"
             f"{recent}"
         )
     return user_content
