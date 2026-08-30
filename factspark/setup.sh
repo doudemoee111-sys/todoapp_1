@@ -6,6 +6,13 @@
 # ffmpeg は pip の imageio-ffmpeg で導入(apt/root 不要)。moviepy はこれを自動利用する。
 # 日本語フォントは apt の fonts-noto-cjk を試す(使えなければ診断に出す)。
 # =============================================================================
+# このスクリプトは親ディレクトリから `bash factspark/setup.sh` として呼ばれるため、
+# requirements.txt や generator/ を相対パスで解決できるよう、まず自分のあるディレクトリ
+# (factspark/)へ移動する。これが無いと ~/todoapp_1 側の別ファイルを見てしまい、依存導入や
+# FONT_PATH 診断(sys.path.insert(0,"generator"))が失敗する。
+cd "$(dirname "${BASH_SOURCE[0]}")" || { echo "[setup][err] cd to script dir failed"; exit 0; }
+echo "[setup] cwd=$(pwd)"
+
 echo "[setup] === start ==="
 echo "[setup] whoami=$(whoami)  sudo=$(command -v sudo || echo none)"
 
