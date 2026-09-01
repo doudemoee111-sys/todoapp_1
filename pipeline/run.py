@@ -146,6 +146,7 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     work = OUTPUT_DIR / f"{genre_key}_{stamp}"
     work.mkdir(parents=True, exist_ok=True)
+    t0 = time.time()
     print(f"== {genre['label']} == work dir: {work}")
 
     # 1. Script
@@ -210,8 +211,10 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
         print(f"      thumbnail failed: {e}")
         thumb = None
 
-    result = {"genre": genre_key, "work_dir": str(work), "video": str(video),
-              "title": pkg["title"], "topic": pkg["topic"], "duration_s": dur}
+    result = {"genre": genre_key, "mode": "narrated", "work_dir": str(work),
+              "video": str(video), "title": pkg["title"], "topic": pkg["topic"],
+              "axis": pkg.get("axis"), "thumbnail_text": pkg.get("thumbnail_text", ""),
+              "duration_s": dur}
 
     # 6. Upload (scheduled)
     if do_upload:
@@ -244,7 +247,9 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     else:
         print("[6/6] upload skipped (--no-upload)")
 
+    result["elapsed_s"] = round(time.time() - t0)
     (work / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
+    append_runlog(result)
     return result
 
 
@@ -289,6 +294,48 @@ def _fmt_ts(sec: float) -> str:
     h, rem = divmod(sec, 3600)
     m, s = divmod(rem, 60)
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+RUNLOG = config.ASSETS_DIR / "runlog.md"
+
+
+def append_runlog(result: dict) -> None:
+    """Leave one line of evidence per run, in the repository.
+
+    A scheduled run happens in a container nobody can reach afterwards, and it
+    pushes nothing, so from outside there is no way to tell a finished video from
+    a run that died after two minutes. The routine's own recorded duration does
+    not answer it either — it reads ~110s whether the mode is a 10-minute
+    explainer or a 2-hour guide, so it is measuring the session hand-off, not the
+    work.
+
+    One appended row fixes that: whoever looks at the repo next can see what ran,
+    what it produced, and how long it took. Best-effort — a logging failure must
+    never cost an upload that already succeeded.
+    """
+    try:
+        from datetime import timezone, timedelta
+        jst = datetime.now(timezone(timedelta(hours=9))).strftime("%m/%d %H:%M")
+        row = (f"| {jst} | {result.get('mode', 'narrated')} "
+               f"| {result.get('axis', '-')} "
+               f"| {str(result.get('title', ''))[:34]} "
+               f"| {result.get('thumbnail_text', '')[:14]} "
+               f"| {result.get('duration_s', 0) / 60:.0f}分 "
+               f"| {result.get('elapsed_s', 0) / 60:.0f}分 "
+               f"| {result.get('video_id', '(未投稿)')} "
+               f"| {str(result.get('publish_at_jst', ''))[5:16]} |\n")
+        if not RUNLOG.exists():
+            RUNLOG.write_text(
+                "# 実行記録\n\n"
+                "定期実行が残す唯一の証跡。リポジトリの外からは実行の成否が見えないため、\n"
+                "1行ずつ追記する。`elapsed` が数分なら生成は完走していない。\n\n"
+                "| 日時(JST) | mode | 切口 | タイトル | サムネ | 尺 | 所要 | videoId | 公開予定 |\n"
+                "|---|---|---|---|---|---|---|---|---|\n", encoding="utf-8")
+        with RUNLOG.open("a", encoding="utf-8") as f:
+            f.write(row)
+        print(f"  [runlog] {RUNLOG.name} に追記しました")
+    except Exception as e:  # noqa: BLE001
+        print(f"  [runlog] 追記に失敗（続行）: {e}")
 
 
 def playlist_url(playlist_id: str | None) -> str:
@@ -383,6 +430,7 @@ def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     work = OUTPUT_DIR / f"{genre_key}_ambient_{stamp}"
     work.mkdir(parents=True, exist_ok=True)
+    t0 = time.time()
     print(f"== {genre['label']} / マスキング音源 {seconds/3600:.1f}h == work dir: {work}")
 
     print("[1/5] メタデータ生成…")
@@ -416,6 +464,7 @@ def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> 
         thumb = None
 
     result = {"genre": genre_key, "mode": "ambient", "work_dir": str(work),
+              "axis": pkg.get("axis"), "thumbnail_text": pkg.get("thumbnail_text", ""),
               "video": str(video), "title": pkg["title"], "duration_s": seconds,
               "noise_params": params_record(params)}
 
@@ -442,7 +491,9 @@ def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> 
     else:
         print("[5/5] upload skipped (--no-upload)")
 
+    result["elapsed_s"] = round(time.time() - t0)
     (work / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
+    append_runlog(result)
     return result
 
 
@@ -466,6 +517,7 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     work = OUTPUT_DIR / f"{genre_key}_guide_{stamp}"
     work.mkdir(parents=True, exist_ok=True)
+    t0 = time.time()
     print(f"== {genre['label']} / 入眠ガイド（解説＋{ambient_seconds/3600:.1f}h） == {work}")
 
     print("[1/6] 台本生成…")
@@ -510,6 +562,7 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
         thumb = None
 
     result = {"genre": genre_key, "mode": "guide", "work_dir": str(work),
+              "axis": pkg.get("axis"), "thumbnail_text": pkg.get("thumbnail_text", ""),
               "video": str(video), "title": pkg["title"], "topic": pkg["topic"],
               "intro_s": intro_s, "ambient_s": ambient_seconds,
               "noise_params": params_record(params)}
@@ -537,7 +590,9 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
     else:
         print("[6/6] upload skipped (--no-upload)")
 
+    result["elapsed_s"] = round(time.time() - t0)
     (work / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
+    append_runlog(result)
     return result
 
 
