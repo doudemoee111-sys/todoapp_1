@@ -42,12 +42,23 @@ def _solid_fallback(out_path: Path, width: int = VIDEO_W, height: int = VIDEO_H)
         check=True)
 
 
+class ImagesMostlyFailedError(RuntimeError):
+    """画像生成の大半が失敗（＝Stability全滅：残高切れ/キー/レート等）。単色フォールバック
+    だけで“画像のない動画”を公開しないよう、生成段階で中断させるための例外。"""
+
+
+# 半分以上が単色フォールバックに落ちたら、その動画は実質「画像なし」なので中断する。
+# 1〜数枚の単発失敗は従来どおり許容（フォールバックで穴埋め）する。
+_MAX_FALLBACK_RATIO = 0.5
+
+
 def generate_images(prompts: list[str], style: str, out_dir: str | Path,
                     aspect: str = "16:9", width: int = VIDEO_W, height: int = VIDEO_H) -> list[Path]:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     negative = "text, watermark, signature, blurry, deformed, extra limbs, low quality"
     paths: list[Path] = []
+    failed = 0
     for i, p in enumerate(prompts):
         out = out_dir / f"img_{i:03d}.png"
         full_prompt = f"{p}. {style}"
@@ -57,9 +68,19 @@ def generate_images(prompts: list[str], style: str, out_dir: str | Path,
         except Exception as e:  # noqa: BLE001
             print(f"  [images] error on {i}: {e}")
         if not ok:
+            failed += 1
             _solid_fallback(out, width, height)
         paths.append(out)
-        print(f"  [images] {i+1}/{len(prompts)} -> {out.name}")
+        print(f"  [images] {i+1}/{len(prompts)} -> {out.name}{'  (fallback)' if not ok else ''}")
+    total = len(prompts) or 1
+    if failed / total >= _MAX_FALLBACK_RATIO:
+        raise ImagesMostlyFailedError(
+            f"画像生成が大半失敗しました（{failed}/{total}枚が単色フォールバック）。"
+            "Stabilityの残高切れ/キー/レート制限の可能性が高いです。"
+            "画像のない動画を公開しないため、この動画の生成を中断します。"
+            "Stabilityの残高・キーを確認してから再実行してください。")
+    if failed:
+        print(f"  [images] 注意: {failed}/{total}枚がフォールバック（許容範囲内で続行）")
     return paths
 
 
