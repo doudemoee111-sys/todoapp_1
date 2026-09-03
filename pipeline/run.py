@@ -18,6 +18,7 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -147,6 +148,7 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     work = OUTPUT_DIR / f"{genre_key}_{stamp}"
     work.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
+    start_runlog(genre_key, "narrated")
     print(f"== {genre['label']} == work dir: {work}")
 
     # 1. Script
@@ -250,6 +252,8 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     result["elapsed_s"] = round(time.time() - t0)
     (work / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
     append_runlog(result)
+    push_runlog(f"chore(runlog): {result.get('mode', 'narrated')} 完了 "
+                f"{result.get('video_id', '(未投稿)')}")
     return result
 
 
@@ -299,7 +303,60 @@ def _fmt_ts(sec: float) -> str:
 RUNLOG = config.ASSETS_DIR / "runlog.md"
 
 
-def append_runlog(result: dict) -> None:
+def push_runlog(message: str) -> bool:
+    """Commit and push runlog.md from inside the pipeline, not from the caller.
+
+    The trigger prompt also has a push step, but a run that is cut short never
+    reaches it — which is exactly the case the log exists to detect. Pushing from
+    here means the evidence survives the failure it is meant to record.
+
+    Only runlog.md is staged, so a half-finished working tree cannot ride along.
+    Best-effort throughout: a repository this code cannot push to is a reporting
+    problem, never a reason to fail a video that already uploaded.
+    """
+    repo = ROOT.parent
+    branch = "claude/youtube-sleep-content-automation-4k28y3"
+    rel = str(RUNLOG.relative_to(repo))
+    try:
+        for attempt in range(3):
+            subprocess.run(["git", "add", rel], cwd=repo, check=True,
+                           capture_output=True, timeout=60)
+            done = subprocess.run(["git", "commit", "-m", message], cwd=repo,
+                                  capture_output=True, text=True, timeout=60)
+            if done.returncode != 0 and "nothing to commit" in done.stdout:
+                return True
+            pushed = subprocess.run(["git", "push", "origin", branch], cwd=repo,
+                                    capture_output=True, text=True, timeout=180)
+            if pushed.returncode == 0:
+                print(f"  [runlog] push しました: {message}")
+                return True
+            # Someone else pushed first; rebase onto them and try again.
+            subprocess.run(["git", "pull", "--rebase", "origin", branch], cwd=repo,
+                           capture_output=True, timeout=180)
+            time.sleep(2 ** attempt)
+        print("  [runlog] push できませんでした（記録はローカルに残ります）")
+        return False
+    except Exception as e:  # noqa: BLE001
+        print(f"  [runlog] push に失敗（続行）: {e}")
+        return False
+
+
+def start_runlog(genre_key: str, mode: str, axis=None) -> None:
+    """Record that a run began, and push it immediately.
+
+    Written before any generation so that a run which dies mid-way still leaves
+    a trace. A start row with no matching finish row is the signal that the
+    session was cut off — which nothing else in this system can tell us from
+    outside the container.
+    """
+    append_runlog({"mode": mode, "axis": axis, "title": "（実行開始）",
+                   "genre": genre_key}, phase="start")
+    from datetime import timezone, timedelta
+    stamp = datetime.now(timezone(timedelta(hours=9))).strftime("%m/%d %H:%M")
+    push_runlog(f"chore(runlog): {stamp} {mode} 開始")
+
+
+def append_runlog(result: dict, phase: str = "done") -> None:
     """Leave one line of evidence per run, in the repository.
 
     A scheduled run happens in a container nobody can reach afterwards, and it
@@ -316,7 +373,8 @@ def append_runlog(result: dict) -> None:
     try:
         from datetime import timezone, timedelta
         jst = datetime.now(timezone(timedelta(hours=9))).strftime("%m/%d %H:%M")
-        row = (f"| {jst} | {result.get('mode', 'narrated')} "
+        row = (f"| {jst} | {'▶ 開始' if phase == 'start' else '✔ 完了'} "
+               f"| {result.get('mode', 'narrated')} "
                f"| {result.get('axis', '-')} "
                f"| {str(result.get('title', ''))[:34]} "
                f"| {result.get('thumbnail_text', '')[:14]} "
@@ -328,9 +386,10 @@ def append_runlog(result: dict) -> None:
             RUNLOG.write_text(
                 "# 実行記録\n\n"
                 "定期実行が残す唯一の証跡。リポジトリの外からは実行の成否が見えないため、\n"
-                "1行ずつ追記する。`elapsed` が数分なら生成は完走していない。\n\n"
-                "| 日時(JST) | mode | 切口 | タイトル | サムネ | 尺 | 所要 | videoId | 公開予定 |\n"
-                "|---|---|---|---|---|---|---|---|---|\n", encoding="utf-8")
+                "実行の開始時と完了時に1行ずつ追記し、その都度pushする。\n"
+                "**▶開始 の行があるのに ✔完了 の行が無ければ、その実行は途中で切られている。**\n\n"
+                "| 日時(JST) | 段階 | mode | 切口 | タイトル | サムネ | 尺 | 所要 | videoId | 公開予定 |\n"
+                "|---|---|---|---|---|---|---|---|---|---|\n", encoding="utf-8")
         with RUNLOG.open("a", encoding="utf-8") as f:
             f.write(row)
         print(f"  [runlog] {RUNLOG.name} に追記しました")
@@ -431,6 +490,7 @@ def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> 
     work = OUTPUT_DIR / f"{genre_key}_ambient_{stamp}"
     work.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
+    start_runlog(genre_key, "ambient")
     print(f"== {genre['label']} / マスキング音源 {seconds/3600:.1f}h == work dir: {work}")
 
     print("[1/5] メタデータ生成…")
@@ -494,6 +554,8 @@ def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> 
     result["elapsed_s"] = round(time.time() - t0)
     (work / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
     append_runlog(result)
+    push_runlog(f"chore(runlog): {result.get('mode', 'narrated')} 完了 "
+                f"{result.get('video_id', '(未投稿)')}")
     return result
 
 
@@ -518,6 +580,7 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
     work = OUTPUT_DIR / f"{genre_key}_guide_{stamp}"
     work.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
+    start_runlog(genre_key, "guide")
     print(f"== {genre['label']} / 入眠ガイド（解説＋{ambient_seconds/3600:.1f}h） == {work}")
 
     print("[1/6] 台本生成…")
@@ -593,6 +656,8 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
     result["elapsed_s"] = round(time.time() - t0)
     (work / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
     append_runlog(result)
+    push_runlog(f"chore(runlog): {result.get('mode', 'narrated')} 完了 "
+                f"{result.get('video_id', '(未投稿)')}")
     return result
 
 
