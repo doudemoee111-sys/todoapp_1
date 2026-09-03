@@ -293,12 +293,14 @@ def _build_and_upload_teaser(genre_key: str, source_pkg: dict, long_video_id: st
              sub_segments=sub_segments)
 
     title = t["title"] if "#Shorts" in t["title"] else (t["title"][:88] + " #Shorts")
+    # 誘導文はジャンル非依存（宇宙/ミステリー/都市伝説どれでも自然に）。
+    default_tags = ["#Shorts"] + [f"#{g}" for g in (genre.get("tags") or [])[:3]]
     desc = (f"{t['narration'][:70]}…\n\n"
-            f"▼ 事件の全貌・結末は本編で（約15分）\n{long_url}\n\n"
-            + " ".join(t.get("hashtags") or ["#Shorts", "#未解決事件", "#ミステリー"]))
+            f"▼ 続き・詳しい解説は本編で\n{long_url}\n\n"
+            + " ".join(t.get("hashtags") or default_tags))
     vid = upload_video(video, title, desc, t["tags"], genre["youtube_category_id"],
                        publish_at_jst, None, UPLOAD_PRIVACY)
-    post_comment(vid, f"👇 事件の全貌・結末はこちら（本編・約15分）\n{long_url}")
+    post_comment(vid, f"👇 続き・詳しい解説はこちら（本編）\n{long_url}")
     url = f"https://youtu.be/{vid}"
     print(f"[7/7] teaser done {url} -> links to {long_url}")
     teaser_result = {"video_id": vid, "url": url, "title": title, "links_to": long_url}
