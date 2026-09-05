@@ -309,16 +309,21 @@ def push_runlog(message: str) -> bool:
     reaches it — which is exactly the case the log exists to detect. Pushing from
     here means the evidence survives the failure it is meant to record.
 
-    Only runlog.md is staged, so a half-finished working tree cannot ride along.
+    Two files are staged, and only these two, so a half-finished working tree
+    cannot ride along. runlog.md is the record of the run. bookends.json is the
+    memory the next run reads to avoid opening with the sentence this one used —
+    it exists precisely to cross container boundaries, so leaving it unpushed
+    made it a file that was rewritten from scratch every night and never read.
     Best-effort throughout: a repository this code cannot push to is a reporting
     problem, never a reason to fail a video that already uploaded.
     """
     repo = config.ROOT.parent
     branch = "claude/youtube-sleep-content-automation-4k28y3"
-    rel = str(RUNLOG.relative_to(repo))
+    carried = [RUNLOG, config.ASSETS_DIR / "bookends.json"]
+    rels = [str(p.relative_to(repo)) for p in carried if p.exists()]
     try:
         for attempt in range(3):
-            subprocess.run(["git", "add", rel], cwd=repo, check=True,
+            subprocess.run(["git", "add", *rels], cwd=repo, check=True,
                            capture_output=True, timeout=60)
             done = subprocess.run(["git", "commit", "-m", message], cwd=repo,
                                   capture_output=True, text=True, timeout=60)
