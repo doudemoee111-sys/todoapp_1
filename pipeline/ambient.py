@@ -57,11 +57,26 @@ def _run(cmd: list[str]) -> None:
 # ---- per-video variation ----------------------------------------------------
 # Every video must differ from its siblings, or the channel drifts towards the
 # "inauthentic content" definition (templated mass production). Varying the
-# seeds alone would be inaudible, so the band shaping moves too.
+# seeds alone would be inaudible, so the band shaping moves too — and since the
+# textures below were added, the soundscape itself rotates.
 _COLORS = ["brown", "brown", "pink"]          # brown weighted: lowest, least hissy
 _LOW_CENTRES = [160, 180, 200, 220]
 _MID_CENTRES = [340, 380, 420, 460]
 _CEILINGS = [1600, 1800, 2000]
+
+# The soundscapes, all synthesised here — no sample, no licence, no Content ID.
+# That property is the whole reason this file exists: a single copyright claim on
+# a two-hour video takes 100% of that video's revenue, and licensed background
+# music is the most common way faceless channels lose theirs.
+#
+# "mask" is the original and still the most effective at its literal job: this
+# channel's premise is covering a partner's snoring, which sits around
+# 100-500 Hz, so mask puts its energy exactly there. The others trade some of
+# that for something a listener would choose to fall asleep to. Ranked by how
+# well they still mask: waves > rain > mask's equal > stream > drone. Drone is
+# the most musical and the weakest mask, which is the honest trade.
+TEXTURES = ("mask", "rain", "waves", "stream", "drone")
+_TEXTURE_ROTATION = ["mask", "rain", "waves", "mask", "stream", "rain", "drone", "waves"]
 
 
 @dataclass
@@ -72,21 +87,28 @@ class NoiseParams:
     low_hz: int
     mid_hz: int
     ceiling_hz: int
+    texture: str = "mask"
 
     def filter_chain(self) -> str:
+        """Band shaping for the masking texture (kept for callers that use it)."""
         return (f"highpass=f=40,lowpass=f={self.ceiling_hz},"
                 f"equalizer=f={self.low_hz}:t=q:w=1.0:g=6,"
                 f"equalizer=f={self.mid_hz}:t=q:w=1.2:g=4")
 
 
-def variation(key: str) -> NoiseParams:
+def variation(key: str, texture: str | None = None) -> NoiseParams:
     """Derive stable-but-different noise parameters from a per-video key.
 
     Deterministic on purpose: the same video rebuilt after a failure produces
-    the same sound, while the next video sounds different.
+    the same sound, while the next video sounds different. `texture` overrides
+    the rotation when a run wants a specific soundscape.
     """
     raw = str(key).encode("utf-8")
     h = abs(int.from_bytes(raw[-8:].ljust(8, b"\0"), "big"))
+    if texture is None:
+        texture = _TEXTURE_ROTATION[(h // 13) % len(_TEXTURE_ROTATION)]
+    if texture not in TEXTURES:
+        raise ValueError(f"未知のテクスチャ {texture!r}。選べるのは {', '.join(TEXTURES)}")
     return NoiseParams(
         seed_l=h % 900_000 + 1_000,
         seed_r=(h // 7) % 900_000 + 100_000,
@@ -94,37 +116,135 @@ def variation(key: str) -> NoiseParams:
         low_hz=_LOW_CENTRES[(h // 3) % len(_LOW_CENTRES)],
         mid_hz=_MID_CENTRES[(h // 5) % len(_MID_CENTRES)],
         ceiling_hz=_CEILINGS[(h // 11) % len(_CEILINGS)],
+        texture=texture,
     )
 
 
 # ---- audio ------------------------------------------------------------------
+def _noise(seconds: int, colour: str, seed: int, amp: float = 0.9) -> str:
+    return f"anoisesrc=d={seconds}:c={colour}:r=48000:a={amp}:seed={seed}"
+
+
+def _sine(seconds: int, hz: float) -> str:
+    return f"sine=frequency={hz}:sample_rate=48000:duration={seconds}"
+
+
+def _texture_graph(p: NoiseParams, seconds: int) -> tuple[list[str], str, str]:
+    """Build the lavfi inputs, the graph ending at [pre], and the modulation.
+
+    The modulation is returned separately because it has to be applied *after*
+    loudnorm. loudnorm's default single-pass mode is a dynamic normaliser: it
+    rides the level, so a slow swell fed into it comes out the other side
+    flattened. Measured on a first attempt, the waves texture's level variation
+    was 0.06 against mask's 0.03 — an eleven-second surf reduced to almost
+    nothing. Applied after normalisation, the swell survives intact.
+
+    Each texture is two decorrelated channels merged to stereo. Decorrelation is
+    not a detail: the same mono signal in both ears is heard as a source inside
+    the head and masks noticeably worse than two independent ones.
+
+    Modulation is what separates "a filtered hiss" from "weather", and it takes
+    two filters, not one. apulsator is a stereo auto-panner: it moves energy
+    between the ears, so it drifts the sound across the pillow but barely
+    changes the overall level — measured in isolation it took a track's level
+    variation from 0.033 to 0.058, against 0.316 for tremolo at the same depth.
+    tremolo supplies the swell; apulsator supplies the movement. Neither
+    substitutes for the other.
+
+    tremolo bottoms out at 0.1 Hz, a ten-second cycle, which happens to be about
+    the period of real surf; apulsator reaches 0.01 Hz for the slower drift.
+    """
+    eq = p.filter_chain()
+
+    if p.texture == "mask":
+        ins = [_noise(seconds, p.color, p.seed_l), _noise(seconds, p.color, p.seed_r)]
+        return ins, f"[0:a]{eq}[l];[1:a]{eq}[r];[l][r]amerge=inputs=2[pre]", ""
+
+    if p.texture == "rain":
+        # Rain is broadband hiss weighted towards 1-4 kHz over a low patter.
+        # highpass at 300 keeps it from turning into wind; the slow pulsator is
+        # the gusting that stops it sounding like a broken radio.
+        ch = ("highpass=f=300,lowpass=f=7500,"
+              f"equalizer=f=2200:t=q:w=1.4:g=3,equalizer=f={p.low_hz}:t=q:w=1.0:g=2")
+        ins = [_noise(seconds, "white", p.seed_l), _noise(seconds, "white", p.seed_r)]
+        return ins, f"[0:a]{ch}[l];[1:a]{ch}[r];[l][r]amerge=inputs=2[pre]", \
+            "tremolo=f=0.1:d=0.25,apulsator=hz=0.05:amount=0.30:offset_r=0.6"
+
+    if p.texture == "waves":
+        # Surf: brown noise under a ~11 second swell. The long period is the
+        # whole effect — at 0.09 Hz the ear follows it as breathing rather than
+        # hearing it as tremolo.
+        ch = ("highpass=f=55,lowpass=f=1400,"
+              f"equalizer=f=300:t=q:w=1.0:g=5,equalizer=f={p.mid_hz}:t=q:w=1.4:g=2")
+        ins = [_noise(seconds, "brown", p.seed_l), _noise(seconds, "brown", p.seed_r)]
+        return ins, f"[0:a]{ch}[l];[1:a]{ch}[r];[l][r]amerge=inputs=2[pre]", \
+            "tremolo=f=0.1:d=0.55,apulsator=hz=0.09:amount=0.50:offset_r=0.55"
+
+    if p.texture == "stream":
+        # A brook is fast burbling over a steady rush. Procedural noise cannot
+        # do the burble convincingly, so this stays honest about what it is: a
+        # bright, gently moving rush, lighter than rain.
+        ch = ("highpass=f=700,lowpass=f=6000,"
+              "equalizer=f=1800:t=q:w=1.6:g=4,equalizer=f=3400:t=q:w=1.8:g=2")
+        ins = [_noise(seconds, "pink", p.seed_l), _noise(seconds, "pink", p.seed_r)]
+        return ins, f"[0:a]{ch}[l];[1:a]{ch}[r];[l][r]amerge=inputs=2[pre]", \
+            "tremolo=f=0.35:d=0.15,apulsator=hz=0.35:amount=0.20:offset_r=0.4"
+
+    # drone: the musical one. Two stacks of three partials, the right detuned by
+    # a fraction of a hertz, so the two ears hear slowly beating intervals rather
+    # than a static chord. A quiet noise bed keeps it from sounding synthetic.
+    #
+    # The root sits in the low-mid, not the bass. A first version rooted at 98 Hz
+    # put 76% of its energy below 100 Hz: inaudible on a phone speaker and a
+    # featureless rumble on headphones. Rooted near 130 Hz with a partial at 2.5x
+    # the energy lands in 100-500 Hz where a listener actually hears it.
+    root = 130.8 + (p.low_hz % 4) * 11.0         # 130.8 / 141.8 / 152.8 / 163.8 Hz
+    ratios = (1.0, 1.5, 2.5)
+    left = [root * r for r in ratios]
+    right = [root * r + 0.3 * (i + 1) for i, r in enumerate(ratios)]
+    ins = [_sine(seconds, f) for f in left] + [_sine(seconds, f) for f in right] \
+        + [_noise(seconds, "brown", p.seed_l, amp=0.35),
+           _noise(seconds, "brown", p.seed_r, amp=0.35)]
+    bed = "highpass=f=60,lowpass=f=1200,volume=0.5"
+    body = (
+        "[0:a][1:a][2:a]amix=inputs=3:weights=1 0.45 0.28:normalize=0,"
+        "lowpass=f=900[dl];"
+        "[3:a][4:a][5:a]amix=inputs=3:weights=1 0.45 0.28:normalize=0,"
+        "lowpass=f=900[dr];"
+        # The bed is generated twice, from the two seeds, and merged as stereo.
+        # A single mono bed sent to both ears pulled the whole texture's
+        # channel correlation to +0.96 — a wide chord collapsed to a point.
+        f"[6:a]{bed}[bl];[7:a]{bed}[br];[bl][br]amerge=inputs=2[bedst];"
+        "[dl][dr]amerge=inputs=2[tone];"
+        "[tone][bedst]amix=inputs=2:weights=1 0.6:normalize=0[pre]"
+    )
+    return ins, body, "tremolo=f=0.1:d=0.22,apulsator=hz=0.03:amount=0.35:offset_r=0.5"
+
+
 def synthesize_masking_noise(out_path: str | Path, seconds: int, params: NoiseParams,
                              fade_in: int = 20, fade_out: int = 30) -> Path:
-    """Generate `seconds` of decorrelated stereo masking noise.
+    """Generate `seconds` of decorrelated stereo ambience in params.texture.
 
     Note the `aresample=48000` after `loudnorm`: loudnorm resamples its output
     to 192 kHz internally, and without this the AAC encoder silently lands on
     96 kHz — a wasteful and needlessly exotic sample rate for a noise track.
     """
     out_path = Path(out_path)
-    eq = params.filter_chain()
+    ins, body, mod = _texture_graph(params, seconds)
     fade_out_start = max(0, seconds - fade_out)
-    fc = (f"[0:a]{eq}[l];[1:a]{eq}[r];"
-          f"[l][r]amerge=inputs=2,"
+    fc = (f"{body};[pre]"
           f"loudnorm=I={AMBIENT_TARGET_LUFS}:TP=-2:LRA=11,"
           f"aresample=48000,"
-          f"afade=t=in:st=0:d={fade_in},"
+          + (f"{mod}," if mod else "")
+          + f"afade=t=in:st=0:d={fade_in},"
           f"afade=t=out:st={fade_out_start}:d={fade_out}[a]")
-    _run([_ffmpeg(), "-y", "-hide_banner", "-loglevel", "error",
-          "-f", "lavfi", "-i",
-          f"anoisesrc=d={seconds}:c={params.color}:r=48000:a=0.9:seed={params.seed_l}",
-          "-f", "lavfi", "-i",
-          f"anoisesrc=d={seconds}:c={params.color}:r=48000:a=0.9:seed={params.seed_r}",
-          "-filter_complex", fc, "-map", "[a]", "-ac", "2",
-          "-c:a", "aac", "-b:a", AMBIENT_AUDIO_BITRATE, str(out_path)])
+    cmd = [_ffmpeg(), "-y", "-hide_banner", "-loglevel", "error"]
+    for src in ins:
+        cmd += ["-f", "lavfi", "-i", src]
+    cmd += ["-filter_complex", fc, "-map", "[a]", "-ac", "2",
+            "-c:a", "aac", "-b:a", AMBIENT_AUDIO_BITRATE, str(out_path)]
+    _run(cmd)
     return out_path
-
-
 
 
 # ---- video ------------------------------------------------------------------
