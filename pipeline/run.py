@@ -182,6 +182,9 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     # raises rather than publishing something it could not fix.
     import compliance
     pkg = compliance.enforce(pkg, genre)
+    pkg["tags"], _dropped = compliance.clean_tags(pkg.get("tags") or [])
+    for _t in _dropped:
+        print(f"  [compliance] タグを除外: 「{_t}」")
 
     (work / "script.json").write_text(json.dumps(pkg, ensure_ascii=False, indent=2))
     print(f"      topic: {pkg['topic']}")
@@ -239,8 +242,10 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
         playlist_id = (ensure_playlist(genre["playlist_title"],
                                        genre.get("playlist_description", ""))
                        if genre.get("playlist_title") else None)
+        _desc = _description(genre, pkg, sub_segments, related, playlist_id)
+        _final_check(pkg["title"], _desc, pkg["tags"])
         vid = upload_video(video, pkg["title"],
-                           _description(genre, pkg, sub_segments, related, playlist_id), pkg["tags"],
+                           _desc, pkg["tags"],
                            genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
         result["video_id"] = vid
         result["publish_at_jst"] = pub.isoformat()
@@ -443,6 +448,76 @@ def watch_url(video_id: str, playlist_id: str | None = None) -> str:
     return f"https://youtu.be/{video_id}"
 
 
+def _audit_back_catalogue(result: dict) -> None:
+    """Re-check everything already published against today's dictionary.
+
+    The gate sees a video once, on the day it is made; the dictionary keeps
+    growing afterwards. Nothing re-read the back catalogue, so a title that was
+    compliant when published stayed up unexamined after the rule that would have
+    caught it was written — which is exactly what happened on 8/25.
+
+    Run here rather than as its own routine because a check nobody remembers to
+    run is not a control. It costs two API calls, it cannot fail the video that
+    just uploaded, and it puts the list into the run report the operator already
+    reads.
+    """
+    if not result.get("video_id"):
+        return
+    try:
+        from audit_published import audit
+        print("\n[audit] 公開済み動画を現在の薬機法辞書で再チェックします")
+        n = audit()
+        if n:
+            print(f"[audit] ★ {n}件の指摘があります。上の一覧を確認してください")
+    except Exception as e:  # noqa: BLE001
+        print(f"[audit] 再チェックを実行できませんでした（本編には影響しません）: {e}")
+
+
+def _safe_related(related: list[tuple[str, str]] | None) -> list[tuple[str, str]]:
+    """Drop sibling videos whose own titles break the 薬機法 dictionary.
+
+    The related-videos block embeds other videos' titles verbatim, and it is
+    built in _description() — which runs *after* compliance.enforce(). So a
+    single bad title does not stay on its own video: every later video repeats
+    it in the description, and none of those copies is ever checked. That is how
+    one title from 8/25 ended up quoted in three more descriptions.
+
+    Filtering here is also the right editorial call. A video we would not
+    publish under that title today is not one to send viewers to.
+    """
+    import compliance
+    out = []
+    for title, vid in related or []:
+        bad = compliance.scan(title, "title")
+        if bad:
+            print(f"  [compliance] 関連動画から除外: {vid} 「{bad[0].match}」が題名に含まれます")
+            continue
+        out.append((title, vid))
+    return out
+
+
+def _final_check(title: str, description: str, tags: list[str]) -> None:
+    """Last gate, on exactly the three strings that are about to be uploaded.
+
+    enforce() checks the script package; this checks the assembled result. The
+    two are not the same text — the description gains an affiliate block, the
+    genre's fixed lead line, chapter headings and sibling titles after the gate
+    has already run. Anything that slips in during assembly has, until now, had
+    no check at all between here and YouTube.
+    """
+    import compliance
+    rep = compliance.Report()
+    rep.findings.extend(compliance.scan(title, "title"))
+    rep.findings.extend(compliance.scan(description, "description"))
+    for t in tags:
+        rep.findings.extend(compliance.scan(str(t), "tags"))
+    if not rep.ok:
+        raise compliance.ComplianceError(
+            "アップロード直前チェックで薬機法の指摘が残っています。"
+            f"投稿を中断します:\n{rep.describe()}")
+    print("  [compliance] アップロード直前チェック: タイトル・概要欄・タグ すべて指摘なし")
+
+
 def _description(genre: dict, pkg: dict, sub_segments=None,
                  related: list[tuple[str, str]] | None = None,
                  playlist_id: str | None = None) -> str:
@@ -486,6 +561,7 @@ def _description(genre: dict, pkg: dict, sub_segments=None,
     if pkg.get("description"):
         parts.append(pkg["description"].strip())
 
+    related = _safe_related(related)
     if related:
         # &list= rather than a bare youtu.be link: entering through the playlist
         # is what makes the next video auto-play when this one ends. A bare link
@@ -531,6 +607,9 @@ def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> 
 
     import compliance
     pkg = compliance.enforce(pkg, genre)
+    pkg["tags"], _dropped = compliance.clean_tags(pkg.get("tags") or [])
+    for _t in _dropped:
+        print(f"  [compliance] タグを除外: 「{_t}」")
     print(f"      title: {pkg['title']}")
 
     print("[2/5] 静止画（Stability, 1枚）…")
@@ -567,8 +646,10 @@ def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> 
         playlist_id = (ensure_playlist(genre["playlist_title"],
                                        genre.get("playlist_description", ""))
                        if genre.get("playlist_title") else None)
+        _desc = _description(genre, pkg, None, related, playlist_id)
+        _final_check(pkg["title"], _desc, pkg["tags"])
         vid = upload_video(video, pkg["title"],
-                           _description(genre, pkg, None, related, playlist_id), pkg["tags"],
+                           _desc, pkg["tags"],
                            genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
         result["video_id"] = vid
         result["publish_at_jst"] = pub.isoformat()
@@ -620,6 +701,9 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
 
     import compliance
     pkg = compliance.enforce(pkg, genre)
+    pkg["tags"], _dropped = compliance.clean_tags(pkg.get("tags") or [])
+    for _t in _dropped:
+        print(f"  [compliance] タグを除外: 「{_t}」")
     print(f"      title: {pkg['title']}")
 
     print("[2/6] TTS…")
@@ -668,8 +752,10 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
         playlist_id = (ensure_playlist(genre["playlist_title"],
                                        genre.get("playlist_description", ""))
                        if genre.get("playlist_title") else None)
+        _desc = _description(genre, pkg, sub_segments, related, playlist_id)
+        _final_check(pkg["title"], _desc, pkg["tags"])
         vid = upload_video(video, pkg["title"],
-                           _description(genre, pkg, sub_segments, related, playlist_id), pkg["tags"],
+                           _desc, pkg["tags"],
                            genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
         result["video_id"] = vid
         result["publish_at_jst"] = pub.isoformat()
@@ -890,6 +976,7 @@ def main() -> None:
         except Exception as e:  # noqa: BLE001
             abort_runlog(args.mode, e)
             raise
+        _audit_back_catalogue(result)
         print(f"\nDONE in {time.time()-t0:.0f}s -> {result.get('video_id', '(not uploaded)')}")
         return
 
@@ -920,6 +1007,7 @@ def main() -> None:
         raise
     state["last_genre"] = genre_key
     _save_state(state)
+    _audit_back_catalogue(result)
     print(f"\nDONE in {time.time()-t0:.0f}s -> {result.get('video_id', '(not uploaded)')}")
 
 

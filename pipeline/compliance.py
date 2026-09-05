@@ -211,9 +211,28 @@ def review(pkg: dict, use_llm: bool = True) -> Report:
         if not text:
             continue
         rep.findings.extend(scan(text, where))
+    # Tags are viewer-facing and were missed for three weeks: a live video went
+    # out carrying the tag 「いびき解消法」, which the dictionary would have
+    # caught on sight. They are scanned one at a time so the excerpt names the
+    # offending tag rather than a slice of the joined string.
+    for tag in (pkg.get("tags") or []):
+        rep.findings.extend(scan(str(tag), "tags"))
     if use_llm:
         rep.findings.extend(adjudicate(pkg.get("narration", ""), "narration"))
     return rep
+
+
+def clean_tags(tags: list[str]) -> tuple[list[str], list[str]]:
+    """Split tags into the ones that pass and the ones that must be dropped.
+
+    Dropping is the whole remedy for a tag: unlike a sentence there is nothing
+    to rewrite around, and a search phrase that promises a cure is exactly the
+    phrase we do not want to be found by.
+    """
+    keep, drop = [], []
+    for t in tags or []:
+        (drop if scan(str(t), "tags") else keep).append(t)
+    return keep, drop
 
 
 # ---- Rewrite ----------------------------------------------------------------
