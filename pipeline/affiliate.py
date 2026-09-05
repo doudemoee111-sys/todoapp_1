@@ -40,6 +40,54 @@ def _load() -> dict:
         raise AffiliateError(f"assets/affiliate_links.json が壊れています: {e}") from e
 
 
+def check_axis_map(data: dict | None = None) -> None:
+    """Verify every link's axes still point at the topic it was chosen for.
+
+    "axes" is a list of positions in config.GENRES["sleep"]["topic_axes"]. That
+    is a fragile thing to store: inserting one line into the axis list shifts
+    every index below it, and nothing about the resulting mismatch is visible —
+    the run succeeds, the description renders, and a mattress link quietly
+    appears under a video about talking to a reluctant partner. Nobody reviews
+    a description that looks fine.
+
+    So each index is stored alongside a word that must appear in the axis text.
+    The index can drift; the wording cannot drift the same way by accident. When
+    they disagree we stop before uploading, because a mis-targeted advertisement
+    on a medical channel is a compliance problem, not a cosmetic one.
+
+    Raises AffiliateError. Called from run.py's preflight.
+    """
+    from config import GENRES
+    axes = GENRES["sleep"]["topic_axes"]
+    data = _load() if data is None else data
+    problems: list[str] = []
+    for link in data.get("links") or []:
+        name = link.get("program") or link.get("label") or link.get("url", "")[:40]
+        idxs = link.get("axes")
+        if idxs is None:
+            continue
+        keys = link.get("axis_keys")
+        if keys is None:
+            problems.append(f"{name}: axes はあるが axis_keys が無い（照合できない）")
+            continue
+        if len(keys) != len(idxs):
+            problems.append(
+                f"{name}: axes {len(idxs)}件 と axis_keys {len(keys)}件 の数が合わない")
+            continue
+        for i, key in zip(idxs, keys):
+            if not 0 <= i < len(axes):
+                problems.append(f"{name}: 切り口 {i} は存在しない（切り口は0〜{len(axes)-1}）")
+            elif key not in axes[i]:
+                problems.append(
+                    f"{name}: 切り口 {i} に「{key}」が無い。"
+                    f"現在の切り口{i}は「{axes[i][:28]}…」。"
+                    "切り口を並べ替えたなら axes を直すこと")
+    if problems:
+        raise AffiliateError(
+            "アフィリエイトリンクの切り口指定が、config.py の topic_axes とずれています。"
+            "このまま投稿すると、無関係な回に広告が出ます:\n  - " + "\n  - ".join(problems))
+
+
 def active_links(axis: int | None = None, data: dict | None = None) -> list[dict]:
     """Links allowed under this video's topic axis (see config.py topic_axes).
 

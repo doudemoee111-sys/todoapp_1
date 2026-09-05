@@ -101,6 +101,17 @@ def preflight(do_upload: bool, need_tts: bool = True, genre: dict | None = None)
                   "config.py のジャンルに channel_id を入れるか、環境変数 "
                   "EXPECTED_CHANNEL_ID を設定してください")
 
+    # The advertising block is gated on the topic axis, and that gate is a list
+    # index. Check it here, where a mismatch costs nothing, rather than
+    # discovering it in a published description.
+    if genre and genre.get("topic_axes"):
+        from affiliate import check_axis_map, AffiliateError
+        try:
+            check_axis_map()
+        except AffiliateError as e:
+            raise PreflightError(str(e)) from e
+        print("[preflight] アフィリエイトの切り口指定: topic_axes と一致")
+
     print(f"[preflight] OK — credentials{'（upload込み）' if do_upload else ''}・"
           f"ffmpeg・コード すべて揃っています。")
 
