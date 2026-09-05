@@ -1,24 +1,33 @@
-"""Create a 1280x720 YouTube thumbnail in the channel's own typographic style.
+"""Create a 1280x720 YouTube thumbnail in the channel's daylight style.
 
-This used to generate a background with Stability and overlay text on it. That
+History, because the reasoning matters more than the code:
+
+The first version generated a background with Stability and overlaid text. That
 produced photorealistic people — a distressed woman's face shipped on a video
-about snoring — which was wrong three times over: it broke a channel whose
-visual language is dark and quiet, a stock human face is the single most common
-image in mass-produced health content, and a realistic depiction of a scene that
-never happened is exactly what YouTube's synthetic-content disclosure asks about.
+about snoring — which broke a channel whose visual language is quiet, put the
+single most common image in mass-produced health content on our shelf, and
+depicted a scene that never happened, which is exactly what YouTube's
+synthetic-content disclosure asks about.
 
-So the image is drawn here instead, from the same elements as the banner and the
-icon: a night gradient, one low light from the upper left, two very large lines
-of type with the second in the channel's teal, and the snore waveform with its
-apnea pause along the bottom. Nothing is generated, so nothing can surprise us
-in the one place viewers always look.
+The second version drew the image here instead, from the same elements as the
+banner: a night gradient, two large lines of type, and the snore waveform. The
+design brief was "nothing here should be the brightest thing in the room when a
+phone is unlocked at 2am."
 
-It also costs nothing and takes about a second, where the old path spent
-Stability credits on every video.
+That brief was wrong, and the data said so. Over 28 days the channel took 8,390
+impressions and converted 0.7% of them. 94% of those impressions were in the
+suggested-videos rail — which is not a dark bedroom at 2am, it is a browsing
+session, and a near-black 168px tile in a dark UI has no edge at all. The
+constraint that belongs to the video had been applied to its shop window.
 
-Legibility is the constraint that decides the layout: a thumbnail is judged at
-246px wide in search results and 168px in the suggested column, so the headline
-is set very large and everything else is allowed to disappear at that size.
+So this version inverts the luminance and keeps the hues. Pale ground, deep navy
+type, the same teal and amber. It is the same channel; it is simply visible.
+
+Legibility at the size it is actually judged decides everything else: 246px wide
+in search, 168px in the suggested column. At 168px a 1280px canvas is displayed
+at 13%, so a 200px headline arrives as 26px — about the smallest that survives.
+That is why the headline is enormous, short, and dark on light, and why
+everything else is allowed to disappear.
 """
 from __future__ import annotations
 
@@ -31,14 +40,17 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 W, H = 1280, 720
 
-# Same palette as the banner, the icon, and the project's documents, so the
-# channel reads as one thing wherever it appears.
-INK = (238, 243, 250)
-MUTED = (146, 162, 188)
-TEAL = (79, 199, 214)
-AMBER = (214, 158, 88)
-BG_TOP = (8, 11, 20)
-BG_BOT = (22, 32, 56)
+# Same hues as the banner and the icon, re-tuned for a light ground. Contrast
+# ratios against BG are what matter here, not the swatches: INK is ~13:1, TEAL
+# ~5.3:1, both far above the 4.5:1 that stays readable when YouTube overlays its
+# duration badge and hover state.
+INK = (16, 26, 46)          # deep navy — the headline
+TEAL = (11, 106, 122)       # darkened from the night palette so it reads on cream
+AMBER = (214, 122, 26)      # the one warm mark, used solid rather than as text
+MUTED = (86, 102, 128)
+BG_TOP = (252, 248, 240)    # warm cream
+BG_BOT = (214, 230, 238)    # pale sky
+EDGE = (24, 38, 62)
 
 _BOLD_CANDIDATES = [
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
@@ -69,18 +81,21 @@ def _gradient(w: int, h: int, top, bottom) -> Image.Image:
 
 
 def _ground() -> Image.Image:
-    """Night gradient with a single low light. Nothing here should be the
-    brightest thing in the room when a phone is unlocked at 2am."""
+    """Pale ground with one soft warm glow in the upper left.
+
+    Morning light rather than a bedside lamp. The glow is there to stop the
+    gradient reading as a flat placeholder at thumbnail size, nothing more.
+    """
     img = _gradient(W, H, BG_TOP, BG_BOT).convert("RGB")
-    light = Image.new("RGB", (W, H), (0, 0, 0))
-    ImageDraw.Draw(light).ellipse([-260, -340, 760, 460], fill=(14, 34, 46))
-    light = light.filter(ImageFilter.GaussianBlur(150))
-    bp, lp = img.load(), light.load()
+    glow = Image.new("RGB", (W, H), (0, 0, 0))
+    ImageDraw.Draw(glow).ellipse([-300, -380, 720, 420], fill=(22, 16, 4))
+    glow = glow.filter(ImageFilter.GaussianBlur(170))
+    bp, gp = img.load(), glow.load()
     for y in range(H):
         for x in range(W):
             r, g, b = bp[x, y]
-            lr, lg, lb = lp[x, y]
-            bp[x, y] = (min(255, r + lr), min(255, g + lg), min(255, b + lb))
+            gr, gg, gb = gp[x, y]
+            bp[x, y] = (min(255, r + gr), min(255, g + gg), min(255, b + gb))
     return img
 
 
@@ -107,31 +122,45 @@ def _snore_wave(d: ImageDraw.ImageDraw, x0: int, x1: int, y: int, amp: int,
     d.line(pts, fill=colour, width=width, joint="curve")
 
 
-def _wave_band(img: Image.Image, y: int, amp: int = 38, width: int = 6) -> None:
+def _wave_band(img: Image.Image, y: int, amp: int = 28, width: int = 9) -> None:
     d = ImageDraw.Draw(img)
-    _snore_wave(d, 40, W - 40, y, amp, (0.44, 0.56), (26, 66, 82), width + 4)
-    _snore_wave(d, 40, W - 40, y, amp, (0.44, 0.56), (58, 138, 158), width)
-    # The pause itself, in the only warm colour on the image.
-    d.line([(40 + (W - 80) * 0.44, y), (40 + (W - 80) * 0.56, y)], fill=AMBER, width=width + 1)
+    _snore_wave(d, 56, W - 56, y, amp, (0.44, 0.56), TEAL, width)
+    # The pause itself, in the only warm colour on the image and thick enough to
+    # still be a mark rather than a hairline when the tile is 168px wide.
+    d.line([(56 + (W - 112) * 0.44, y), (56 + (W - 112) * 0.56, y)],
+           fill=AMBER, width=width + 5)
+
+
+# A headline is read in the suggested rail in well under a second, so it has to
+# be short before it has to be complete. Two short lines beat one long one every
+# time: two lines of five characters can be set at 230px, where seven characters
+# on one line have to shrink to 160px to fit. Size is the contrast we control, so
+# the splitter breaks early and the renderer spends what it saves on scale.
+MAX_PER_LINE = 5
 
 
 def _split_lines(text: str) -> list[str]:
-    """Two lines if we can manage it — the layout is built for two.
+    """At most two lines, as short as the wording allows.
 
     An explicit newline from the script wins. Otherwise the text is broken at a
     Japanese punctuation mark when there is one near the middle, because a break
     after 「、」 reads as intended rather than as a wrap.
     """
-    text = (text or "").strip()
+    text = (text or "").strip().replace("｜", "\n")
     if "\n" in text:
-        return [l.strip() for l in text.split("\n") if l.strip()][:3]
-    if len(text) <= 7:
+        return [l.strip() for l in text.split("\n") if l.strip()][:2]
+    if len(text) <= MAX_PER_LINE:
         return [text]
-    for mark in ("、", "。", "｜", "・"):
+    best = None
+    for mark in ("、", "。", "・", "？", "?"):
         i = text.find(mark)
         if 2 <= i <= len(text) - 2:
-            return [text[:i + 1], text[i + 1:]]
-    return textwrap.wrap(text, width=max(6, (len(text) + 1) // 2))[:3] or [text]
+            keep = text[:i + 1] if mark in "？?" else text[:i]
+            best = [keep, text[i + 1:]]
+            break
+    if best is None:
+        best = textwrap.wrap(text, width=max(MAX_PER_LINE, (len(text) + 1) // 2))[:2]
+    return [l for l in best if l] or [text]
 
 
 def make_thumbnail(text: str, out_path: str | Path, subtitle: str = "") -> Path:
@@ -144,33 +173,63 @@ def make_thumbnail(text: str, out_path: str | Path, subtitle: str = "") -> Path:
     out_path = Path(out_path)
     img = _ground()
     d = ImageDraw.Draw(img)
-    _wave_band(img, 600)
 
     lines = _split_lines(text)
-    # One line has nothing to balance against, so it sits lower; two is the
-    # layout this design was built for; three only happens when the script
-    # writes a long headline, and then everything shrinks to make room.
-    size, top = {1: (150, 250), 2: (142, 120)}.get(len(lines), (112, 96))
-    while size > 60:
+    BAR_H, SUB_H, WAVE_Y, TOP_MIN = 20, 58, 672, 48
+    ROOM = WAVE_Y - 44 - TOP_MIN          # vertical space the block may occupy
+
+    def _block(size: int, with_sub: bool) -> int:
+        return (len(lines) * int(size * 1.08)
+                + (BAR_H + 22 if len(lines) > 1 else 0)
+                + (SUB_H if with_sub else 0))
+
+    # Size is bounded by the canvas on both axes. Width alone is not enough: two
+    # short lines fit side to side at 240px but stand 560px tall, and the block
+    # then runs into the waveform. Checking only width is what pushed the
+    # subtitle onto the wave in the first version of this layout.
+    size, has_sub = 240, bool(subtitle)
+    while size > 96:
         f = _font(size)
-        if max(d.textlength(l, font=f) for l in lines) <= W - 144:
+        if (max(d.textlength(l, font=f) for l in lines) <= W - 132
+                and _block(size, has_sub) <= ROOM):
             break
         size -= 6
+    # The headline is the thing that earns the click; the subtitle is invisible
+    # at 168px anyway. If they cannot both fit, the subtitle goes.
+    if has_sub and _block(size, True) > ROOM:
+        has_sub = False
     f = _font(size)
+    line_h = int(size * 1.08)
 
-    # The block sits above the waveform, with the second line in teal: one
-    # accent, in one place, so the eye lands on the turn of the sentence.
-    line_h = int(size * 1.14)
-    y = top
+    # The block is centred in the space above the waveform, so a headline that
+    # had to shrink does not leave a hole where a reader expects the image.
+    y = TOP_MIN + max(0, (ROOM - _block(size, has_sub)) // 2)
+
     for i, line in enumerate(lines):
-        d.text((72, y), line, font=f, fill=TEAL if i == 1 else INK)
+        d.text((66, y), line, font=f, fill=INK if i == 0 else TEAL)
         y += line_h
 
-    if subtitle:
-        # Clamped so it never crowds the headline above or the waveform below —
-        # a caption touching either reads as a layout accident.
-        sub_y = min(max(y + 26, 300), 496)
-        d.text((72, sub_y), subtitle.strip()[:26], font=_font(44, bold=False), fill=MUTED)
+    # A solid amber bar under the last line: at 168px the eye resolves a block of
+    # colour long before it resolves a glyph, so the block is what earns the look
+    # that then reads the words. Placed below the whole line box, never through
+    # it — an earlier version put it at 90% of the font size and struck the text
+    # out.
+    if len(lines) > 1:
+        w2 = d.textlength(lines[-1], font=f)
+        d.rectangle([66, y + 4, 66 + w2 + 14, y + 4 + BAR_H], fill=AMBER)
+        y += BAR_H + 22
+
+    if has_sub:
+        # Unreadable at 168px and barely there at 246px, so it is set for the
+        # larger preview only and given no space the headline could have used.
+        d.text((70, y), subtitle.strip()[:22], font=_font(44, bold=False), fill=MUTED)
+
+    _wave_band(img, WAVE_Y)
+
+    # A thin dark frame. On a pale tile this is what separates the thumbnail from
+    # YouTube's own light-mode background; without it the image bleeds into the
+    # page and loses the crispness that made it bright in the first place.
+    d.rectangle([0, 0, W - 1, H - 1], outline=EDGE, width=6)
 
     img.save(out_path, "PNG")
     return out_path
@@ -178,9 +237,10 @@ def make_thumbnail(text: str, out_path: str | Path, subtitle: str = "") -> Path:
 
 if __name__ == "__main__":
     for i, (t, s) in enumerate([
-        ("その枕、高すぎるかも", "いびきと寝る姿勢の、わかっていること"),
+        ("その枕、高すぎ", "いびきと寝る姿勢の話"),
         ("眠れないのは\n私の方", "いびきで起こされる家族へ"),
-        ("明日の朝、どう言うか", "いびきを責めずに、受診をすすめる"),
+        ("明日の朝、どう言う", "責めずに受診をすすめる"),
+        ("別室という選択", "関係と健康のバランス"),
     ]):
         p = make_thumbnail(t, f"output/_thumb_test_{i}.png", s)
         print(p, Image.open(p).size)
