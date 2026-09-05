@@ -260,6 +260,7 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
                            _desc, pkg["tags"],
                            genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
         result["video_id"] = vid
+        _threads_draft(result, pkg, playlist_id)
         result["publish_at_jst"] = pub.isoformat()
         if genre.get("playlist_title"):
             add_to_playlist(vid, genre["playlist_title"],
@@ -347,7 +348,7 @@ def push_runlog(message: str) -> bool:
     """
     repo = config.ROOT.parent
     branch = "claude/youtube-sleep-content-automation-4k28y3"
-    carried = [RUNLOG, config.ASSETS_DIR / "bookends.json",
+    carried = [RUNLOG, THREADS_QUEUE, config.ASSETS_DIR / "bookends.json",
                config.ASSETS_DIR / "ambient_rotation.json"]
     rels = [str(p.relative_to(repo)) for p in carried if p.exists()]
     try:
@@ -470,6 +471,70 @@ def watch_url(video_id: str, playlist_id: str | None = None) -> str:
     if playlist_id:
         return f"https://www.youtube.com/watch?v={video_id}&list={playlist_id}"
     return f"https://youtu.be/{video_id}"
+
+
+THREADS_QUEUE = config.ASSETS_DIR / "threads_queue.md"
+
+
+def _queue_threads(result: dict, post: str, problems: list[str]) -> None:
+    """Append the draft to a file that is committed and pushed.
+
+    Printing it in the run report is not enough. A scheduled run happens in a
+    container that is deleted minutes later, and whether the draft ever reaches
+    a person then depends on that session remembering to quote it. Writing it
+    into the repository removes that dependency: the queue is there to read
+    whenever someone gets to it, days later if need be.
+    """
+    try:
+        from datetime import timezone, timedelta
+        jst = datetime.now(timezone(timedelta(hours=9))).strftime("%m/%d %H:%M")
+        if not THREADS_QUEUE.exists():
+            THREADS_QUEUE.write_text(
+                "# Threads 告知文の下書き\n\n"
+                "動画1本につき1件、パイプラインが自動で追記する。**手直ししてから投稿すること。**\n"
+                "自動生成の見出しはサムネ文言、本文はテーマの流用で、読ませる文にはなっていない。\n"
+                "30秒だけ手を入れる価値がある場所で、そこを機械に任せる意味はない。\n\n"
+                "投稿したら見出しの `[ ]` を `[x]` に変える。\n\n"
+                "外部SNSからの流入は、ショートや広告と違って YPP の4,000時間に算入される。\n"
+                "無料で、かつ算入される導線はここだけなので、溜めずに出すこと。\n\n",
+                encoding="utf-8")
+        with THREADS_QUEUE.open("a", encoding="utf-8") as f:
+            f.write(f"\n## [ ] {jst} {result.get('video_id', '')}"
+                    f"（{result.get('texture', 'L1')}）\n\n")
+            if problems:
+                f.write(f"> ★ 送る前に直すこと: {' / '.join(problems)}\n\n")
+            f.write("```\n" + post + "\n```\n")
+        print(f"  [threads] {THREADS_QUEUE.name} に追記しました")
+    except Exception as e:  # noqa: BLE001
+        print(f"  [threads] 追記に失敗（続行）: {e}")
+
+
+def _threads_draft(result: dict, pkg: dict, playlist_id: str | None) -> None:
+    """Print a Threads draft with the run report, and save it beside the video.
+
+    External traffic is the one growth lever that is both free and counted:
+    watch time from an outside link accrues to the 4,000 hours, where the Shorts
+    feed and paid ads do not. The last 28 days show 外部 at 0% of traffic, so
+    this route has never once been used.
+
+    Printed rather than posted. There is no Threads API in this environment, and
+    a draft that someone reads before sending is the point — a post written to
+    nobody performs like one.
+    """
+    try:
+        import social
+        post, problems = social.from_package(
+            pkg, result["video_id"], playlist_id, result.get("texture"))
+        (Path(result["work_dir"]) / "threads.txt").write_text(post, encoding="utf-8")
+        _queue_threads(result, post, problems)
+        print("\n[threads] 告知文の下書き（そのまま貼れます。手直し推奨）")
+        print("-" * 60)
+        print(post)
+        print("-" * 60)
+        if problems:
+            print("[threads] ★ 送る前に直してください: " + " / ".join(problems))
+    except Exception as e:  # noqa: BLE001
+        print(f"[threads] 下書きを作れませんでした（本編には影響しません）: {e}")
 
 
 def _audit_back_catalogue(result: dict) -> None:
@@ -684,6 +749,7 @@ def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> 
                            _desc, pkg["tags"],
                            genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
         result["video_id"] = vid
+        _threads_draft(result, pkg, playlist_id)
         result["publish_at_jst"] = pub.isoformat()
         if genre.get("playlist_title"):
             add_to_playlist(vid, genre["playlist_title"],
@@ -798,6 +864,7 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
                            _desc, pkg["tags"],
                            genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
         result["video_id"] = vid
+        _threads_draft(result, pkg, playlist_id)
         result["publish_at_jst"] = pub.isoformat()
         if genre.get("playlist_title"):
             add_to_playlist(vid, genre["playlist_title"],
