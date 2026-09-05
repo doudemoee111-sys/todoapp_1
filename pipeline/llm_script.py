@@ -128,6 +128,10 @@ def _outline(genre: dict, topic: str, shape: dict | None = None) -> dict:
     # eight chapters reads as a template even when each one is fine on its own.
     n_ch = (shape or {}).get("chapters", 8)
     note = editorial_note()
+    rules = ""
+    if genre.get("compliance") == "medical":
+        from compliance import writing_rules
+        rules = "\n\n" + writing_rules()
     voice = (f"\n\n【このチャンネルの人が書いた方針】以下は運営者本人の言葉です。"
              f"構成と語り口はこれに従ってください。一般論に流れそうになったら、"
              f"ここに書かれている立場に戻ること。\n{note}" if note else "")
@@ -136,7 +140,7 @@ def _outline(genre: dict, topic: str, shape: dict | None = None) -> dict:
 
 テーマ: {topic}
 ジャンル: {genre['label']}
-トーン: {genre['narration_style']}{voice}{avoid_bookends_block()}
+トーン: {genre['narration_style']}{voice}{rules}{avoid_bookends_block()}
 
 要件:
 - chapters は{n_ch}個。導入(フック)→本編→まとめ→締めの流れ。
@@ -189,6 +193,12 @@ def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
                 "冒頭の問題提起を再現せず、ここまでで語った内容を受けてまとめる。")
     from originality import editorial_note, TEMPLATE_TELLS
     note = editorial_note()
+    # The compliance gate's own vocabulary, handed to the writer. Rewriting after
+    # the fact costs a round trip each time and, three rounds in, costs the video.
+    rules = ""
+    if genre.get("compliance") == "medical":
+        from compliance import writing_rules
+        rules = "\n\n" + writing_rules()
     voice = (f"\n\nこのチャンネルの運営者本人が書いた方針:\n{note}\n"
              "一般論に流れそうになったら、ここに書かれている立場に戻ること。" if note else "")
     banned = "、".join(f"「{t}」" for t in TEMPLATE_TELLS[:12])
@@ -214,7 +224,7 @@ def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
 - 出典のある話は「〜という研究があります」「〜学会の資料では」と、根拠の所在を示す。
 
 【使ってはいけない言い回し】{banned}
-これらはどの生成動画にも出てくる言い方で、見た人にはすぐ分かる。別の言い方にすること。{voice}"""
+これらはどの生成動画にも出てくる言い方で、見た人にはすぐ分かる。別の言い方にすること。{voice}{rules}"""
     out = _chat([{"role": "system", "content": "プロのナレーション脚本家。"},
                  {"role": "user", "content": user}], temperature=0.85)
     return out.strip()

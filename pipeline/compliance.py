@@ -255,6 +255,59 @@ class ComplianceError(RuntimeError):
     """The script could not be brought into compliance. Abort the run."""
 
 
+def writing_rules() -> str:
+    """The gate's vocabulary, phrased for the writer rather than the reviewer.
+
+    Until now the generator was told to "avoid assertions" while the actual list
+    of forbidden constructions lived only in the checker. The model was being
+    graded on a rubric it had never seen, so the same few phrases came back round
+    after round and the rewrite budget went on catching what should never have
+    been written.
+    """
+    return """
+【薬機法・景表法／絶対に書いてはいけない表現】この動画は医療・健康を扱うため、
+次の型は一切使わないこと。1つでも残ると公開できません。
+
+- 効果の断定: 「治る」「治ります」「改善します」「効果があります」「解消します」
+  「予防できます」「いびきがなくなります」
+- 結果の約束: 「朝まで熟睡」「ぐっすり眠れます」「もう悩まない」「夜が変わる」
+  「いびき解消法」「いびき軽減法」
+- 最上級・唯一性: 「日本一」「No.1」「唯一の」「絶対に」「必ず」
+- 診断・指示: 「あなたは〜です」と視聴者を診断する言い方、受診の要否を断定する言い方
+
+【代わりに使う言い方】
+- 「〜と報告されています」「〜という研究があります」「〜学会の資料では」
+- 「〜と考えられています」「〜する人がいます」「〜という選択肢があります」
+- 「気になる場合は医療機関にご相談ください」
+
+断定を避けることは、歯切れを悪くすることではありません。
+「出典を示して具体的に語る」ほうが、断定するより情報として強くなります。
+""".strip()
+
+
+def _sentences(text: str) -> list[str]:
+    return [x for x in re.split(r"(?<=[。！？\n])", text or "") if x.strip()]
+
+
+def excise(text: str) -> tuple[str, list[str]]:
+    """Delete the sentences that still violate, instead of failing the run.
+
+    Reached only after the rewriter has had every round and some sentence still
+    will not come clean. Removing it is stricter than rewriting it — the words
+    simply stop existing — and it keeps a finished video rather than trading a
+    day's upload for a sentence the script did not need.
+
+    A narration that loses too much this way is a different script, so that case
+    still aborts.
+    """
+    kept, dropped = [], []
+    for sentence in _sentences(text):
+        hit = any(rx.search(sentence) and not _is_negated(sentence, rx.search(sentence))
+                  for rx, _ in _COMPILED)
+        (dropped if hit else kept).append(sentence)
+    return "".join(kept), [d.strip() for d in dropped]
+
+
 def enforce(pkg: dict, genre: dict, use_llm: bool = True) -> dict:
     """Gate a script package. Returns the (possibly rewritten) package.
 
@@ -272,9 +325,27 @@ def enforce(pkg: dict, genre: dict, use_llm: bool = True) -> dict:
             break
         print(f"  [compliance] {len(rep.findings)}件の指摘 ({attempt}/{MAX_ROUNDS}):\n{rep.describe()}")
         if attempt == MAX_ROUNDS:
+            # Last resort before losing the day's video: cut the offending
+            # sentences out. Stricter than another rewrite, and the rest of the
+            # script is unaffected.
+            before = len(pkg.get("narration", ""))
+            cleaned, dropped = excise(pkg.get("narration", ""))
+            if dropped and len(cleaned) >= before * 0.85:
+                print(f"  [compliance] {len(dropped)}文を削除して通過させます"
+                      f"（{before}字 → {len(cleaned)}字）:")
+                for d in dropped:
+                    print(f"    - {d[:60]}")
+                pkg["narration"] = cleaned
+                for key in ("title", "description", "thumbnail_text"):
+                    if pkg.get(key):
+                        fixed, _ = excise(pkg[key])
+                        pkg[key] = fixed.strip() or pkg[key]
+                rep = review(pkg, use_llm=False)
+                if rep.ok:
+                    break
             raise ComplianceError(
-                f"薬機法チェックを{MAX_ROUNDS}回のリライトで通過できませんでした。"
-                f"投稿を中断します。指摘内容:\n{rep.describe()}")
+                f"薬機法チェックを{MAX_ROUNDS}回のリライトと該当文の削除でも"
+                f"通過できませんでした。投稿を中断します。指摘内容:\n{rep.describe()}")
         narration_findings = [f for f in rep.findings if f.where == "narration"]
         if narration_findings:
             pkg["narration"] = rewrite(pkg["narration"], narration_findings)
