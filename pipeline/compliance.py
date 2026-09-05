@@ -93,8 +93,9 @@ _COMPILED = [(re.compile(p), why) for p, why in NG_PATTERNS]
 @dataclass
 class Finding:
     where: str          # "narration" / "title" / "description"
-    excerpt: str
+    excerpt: str        # the match plus surrounding words, for a human reading the log
     reason: str
+    match: str = ""     # the exact violating substring, for the rewriter to target
 
 
 @dataclass
@@ -142,7 +143,7 @@ def scan(text: str, where: str) -> list[Finding]:
         for m in rx.finditer(text):
             if _is_negated(text, m):
                 continue
-            out.append(Finding(where, _excerpt(text, m), why))
+            out.append(Finding(where, _excerpt(text, m), why, m.group(0)))
     return out
 
 
@@ -231,6 +232,10 @@ _REWRITE_USER = """次の原稿には、薬機法・景表法上の問題があ�
 - 効果・安全性の保証は削除する。
 - 最上級表現は削除するか、客観的な事実に置き換える。
 - 視聴者への診断は「気になる場合は医療機関にご相談ください」に置き換える。
+- 【最重要】指摘の「」内の語句は、修正後の原稿に一字一句そのままの形で残してはならない。
+  語尾や前後を言い換えるだけでは通らない。断定している語そのものを別の語に置き換えること。
+  例: 「熟睡できる時間が増えることがあるとされています」→「睡眠時間が長くなったという報告があります」
+  （「とされています」に変えても「熟睡できる」が残っていれば不合格）
 - 指摘された箇所以外は一切変更しない。文字数を大きく減らさない。
 - 見出し・箇条書き記号・絵文字は使わない。読み上げ用の地の文のまま。
 
@@ -244,7 +249,10 @@ _REWRITE_USER = """次の原稿には、薬機法・景表法上の問題があ�
 
 def rewrite(text: str, findings: list[Finding]) -> str:
     from llm_script import _chat
-    listed = "\n".join(f"- 「{f.excerpt}」 … {f.reason}" for f in findings[:20])
+    listed = "\n".join(
+        (f"- 「{f.match}」 … {f.reason}（前後: …{f.excerpt}…）" if f.match
+         else f"- 「{f.excerpt}」 … {f.reason}")
+        for f in findings[:20])
     out = _chat([{"role": "system", "content": _REWRITE_SYSTEM},
                  {"role": "user", "content": _REWRITE_USER.format(findings=listed, body=text)}],
                 temperature=0.3)
