@@ -313,7 +313,7 @@ def push_runlog(message: str) -> bool:
     Best-effort throughout: a repository this code cannot push to is a reporting
     problem, never a reason to fail a video that already uploaded.
     """
-    repo = ROOT.parent
+    repo = config.ROOT.parent
     branch = "claude/youtube-sleep-content-automation-4k28y3"
     rel = str(RUNLOG.relative_to(repo))
     try:
