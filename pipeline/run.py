@@ -148,7 +148,6 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     work = OUTPUT_DIR / f"{genre_key}_{stamp}"
     work.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
-    start_runlog(genre_key, "narrated")
     print(f"== {genre['label']} == work dir: {work}")
 
     # 1. Script
@@ -341,6 +340,20 @@ def push_runlog(message: str) -> bool:
         return False
 
 
+def abort_runlog(mode: str, error: BaseException) -> None:
+    """Write why a run stopped, and push it.
+
+    The message matters more than the fact: "GOOGLE_TTS_API_KEY 未設定" and
+    "ChannelMismatch" call for completely different fixes, and neither is
+    visible from outside the container otherwise.
+    """
+    reason = f"{type(error).__name__}: {str(error)}".replace("\n", " ")[:110]
+    append_runlog({"mode": mode, "title": reason}, phase="abort")
+    from datetime import timezone, timedelta
+    stamp = datetime.now(timezone(timedelta(hours=9))).strftime("%m/%d %H:%M")
+    push_runlog(f"chore(runlog): {stamp} {mode} 中断")
+
+
 def start_runlog(genre_key: str, mode: str, axis=None) -> None:
     """Record that a run began, and push it immediately.
 
@@ -373,10 +386,11 @@ def append_runlog(result: dict, phase: str = "done") -> None:
     try:
         from datetime import timezone, timedelta
         jst = datetime.now(timezone(timedelta(hours=9))).strftime("%m/%d %H:%M")
-        row = (f"| {jst} | {'▶ 開始' if phase == 'start' else '✔ 完了'} "
+        mark = {"start": "▶ 開始", "abort": "✖ 中断", "done": "✔ 完了"}[phase]
+        row = (f"| {jst} | {mark} "
                f"| {result.get('mode', 'narrated')} "
                f"| {result.get('axis', '-')} "
-               f"| {str(result.get('title', ''))[:34]} "
+               f"| {str(result.get('title', ''))[:110 if phase == 'abort' else 34]} "
                f"| {result.get('thumbnail_text', '')[:14]} "
                f"| {result.get('duration_s', 0) / 60:.0f}分 "
                f"| {result.get('elapsed_s', 0) / 60:.0f}分 "
@@ -490,7 +504,6 @@ def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> 
     work = OUTPUT_DIR / f"{genre_key}_ambient_{stamp}"
     work.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
-    start_runlog(genre_key, "ambient")
     print(f"== {genre['label']} / マスキング音源 {seconds/3600:.1f}h == work dir: {work}")
 
     print("[1/5] メタデータ生成…")
@@ -580,7 +593,6 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
     work = OUTPUT_DIR / f"{genre_key}_guide_{stamp}"
     work.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
-    start_runlog(genre_key, "guide")
     print(f"== {genre['label']} / 入眠ガイド（解説＋{ambient_seconds/3600:.1f}h） == {work}")
 
     print("[1/6] 台本生成…")
@@ -843,13 +855,25 @@ def main() -> None:
     genre_key = _resolve_genre(args, state)
 
     # --mode ambient never speaks, so it must not be blocked on a TTS key.
-    preflight(do_upload, need_tts=args.mode != "ambient", genre=GENRES[genre_key])
+    # Announce the run before anything can stop it. preflight raises on a missing
+    # key, a crossed channel or a missing tool, and until now that path wrote
+    # nothing anywhere reachable — the run simply vanished.
+    start_runlog(genre_key, args.mode)
+    try:
+        preflight(do_upload, need_tts=args.mode != "ambient", genre=GENRES[genre_key])
+    except Exception as e:  # noqa: BLE001
+        abort_runlog(args.mode, e)
+        raise
 
     if args.mode in ("ambient", "guide"):
         t0 = time.time()
         fn = run_ambient if args.mode == "ambient" else run_guide
-        result = (fn(genre_key, do_upload, args.seconds) if args.mode == "ambient"
-                  else fn(genre_key, args.topic, do_upload, args.seconds))
+        try:
+            result = (fn(genre_key, do_upload, args.seconds) if args.mode == "ambient"
+                      else fn(genre_key, args.topic, do_upload, args.seconds))
+        except Exception as e:  # noqa: BLE001
+            abort_runlog(args.mode, e)
+            raise
         print(f"\nDONE in {time.time()-t0:.0f}s -> {result.get('video_id', '(not uploaded)')}")
         return
 
@@ -872,8 +896,12 @@ def main() -> None:
             print(f"[intro] 初回シード台本でビルド: {args.intro_seed}（{len(narration)}字）")
 
     t0 = time.time()
-    result = run(genre_key, args.topic, do_upload=do_upload, subtitles=not args.no_subtitles,
-                 narration=narration, title=title_override, make_teaser=args.teaser)
+    try:
+        result = run(genre_key, args.topic, do_upload=do_upload, subtitles=not args.no_subtitles,
+                     narration=narration, title=title_override, make_teaser=args.teaser)
+    except Exception as e:  # noqa: BLE001
+        abort_runlog(args.mode, e)
+        raise
     state["last_genre"] = genre_key
     _save_state(state)
     print(f"\nDONE in {time.time()-t0:.0f}s -> {result.get('video_id', '(not uploaded)')}")
