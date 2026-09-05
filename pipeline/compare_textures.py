@@ -12,6 +12,13 @@ performs best. That decision needs three things the system did not have:
 
     python3 compare_textures.py
 
+One thing the ranking now measures that it did not before: each title carries
+its soundscape as a 【…】 prefix, so a viewer chooses between 「【波の音】…」 and
+「【音楽】…」 without having heard either. The label and the audio are therefore
+not separable here. That is the right thing to measure — nobody hears a video
+before clicking it, so the label is the decision — but it means a win belongs to
+the pair, and swapping the wording of a label invalidates the comparison so far.
+
 Read the sample size before the ranking. Two ambient videos a week across five
 textures is one full cycle every two and a half weeks, and view counts on a
 young channel are dominated by which video the algorithm happened to test. The

@@ -610,7 +610,7 @@ def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> 
     feed or ad-driven views, which do not count at all.
     """
     from ambient import (build_package, variation, synthesize_masking_noise,
-                         render_ambient, params_record)
+                         render_ambient, params_record, titled, TEXTURE_LABEL)
     from images import generate_images
     from thumbnail import make_thumbnail
 
@@ -640,7 +640,13 @@ def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> 
     imgs = generate_images(pkg["image_prompts"], genre["image_style"], work / "img")
 
     params = variation(pkg["title"])
-    print(f"  [ambient] 音風景: {params.texture}")
+    # Label the title after the seed is drawn, so the same topic keeps the same
+    # sound parameters whether or not the prefix scheme changes later.
+    pkg["title"] = titled(pkg["title"], params.texture)
+    _label = TEXTURE_LABEL.get(params.texture)
+    if _label and _label not in (pkg.get("tags") or []):
+        pkg.setdefault("tags", []).append(_label)
+    print(f"  [ambient] 音風景: {params.texture} → 件名 「{pkg['title'][:40]}」")
     print(f"[3/5] マスキングノイズ合成… {params.color} / "
           f"{params.low_hz}Hz・{params.mid_hz}Hz強調 / 上限{params.ceiling_hz}Hz")
     audio = synthesize_masking_noise(work / "noise.m4a", seconds, params)
@@ -706,7 +712,7 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
     from llm_script import generate_script
     from tts import synthesize_timed, audio_duration
     from images import generate_images
-    from ambient import (variation, synthesize_masking_noise,
+    from ambient import (variation, synthesize_masking_noise, titled, TEXTURE_LABEL,
                          combine_narration_and_ambient, assemble_guide, params_record)
     from thumbnail import make_thumbnail
 
@@ -742,7 +748,13 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
                            genre["image_style"], work / "img")
 
     params = variation(pkg["title"])
-    print(f"  [ambient] 音風景: {params.texture}")
+    # Label the title after the seed is drawn, so the same topic keeps the same
+    # sound parameters whether or not the prefix scheme changes later.
+    pkg["title"] = titled(pkg["title"], params.texture)
+    _label = TEXTURE_LABEL.get(params.texture)
+    if _label and _label not in (pkg.get("tags") or []):
+        pkg.setdefault("tags", []).append(_label)
+    print(f"  [ambient] 音風景: {params.texture} → 件名 「{pkg['title'][:40]}」")
     print(f"[4/6] アンビエント合成 {ambient_seconds/3600:.1f}h…")
     bed = synthesize_masking_noise(work / "bed.m4a", ambient_seconds, params, fade_in=2)
     crossfade = 8

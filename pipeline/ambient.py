@@ -111,6 +111,41 @@ def next_texture(advance: bool = True) -> str:
     return texture
 
 
+# What the title says this video sounds like. A viewer never hears the audio
+# before clicking, so this label is the only thing they choose on — and it is
+# also what makes the soundscape visible in YouTube Studio without running
+# compare_textures.py.
+#
+# The words are chosen to be searched as well as read: 「雨音」「波の音」
+# 「せせらぎ」 are how people actually look for this content, and each one
+# doubles as a tag.
+TEXTURE_LABEL = {
+    "mask":   "安眠ノイズ",
+    "rain":   "雨音",
+    "waves":  "波の音",
+    "stream": "せせらぎ",
+    "drone":  "音楽",
+}
+
+
+def titled(title: str, texture: str, limit: int = 100) -> str:
+    """Prefix a title with its soundscape, inside YouTube's 100-character limit.
+
+    The body is trimmed rather than the label: a title cut off mid-phrase still
+    reads, a bracket cut in half looks broken. Trimming is rare — the generator
+    is asked for short titles — but a silently rejected upload at the end of a
+    forty-minute render is not an acceptable failure mode.
+    """
+    label = TEXTURE_LABEL.get(texture)
+    if not label:
+        return title
+    prefix = f"【{label}】"
+    if title.startswith(prefix):
+        return title
+    room = limit - len(prefix)
+    return prefix + (title if len(title) <= room else title[:room - 1] + "…")
+
+
 @dataclass
 class NoiseParams:
     seed_l: int
