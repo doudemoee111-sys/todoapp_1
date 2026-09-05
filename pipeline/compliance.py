@@ -28,6 +28,9 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from datetime import date
+
+import config
 
 MAX_ROUNDS = 3
 
@@ -41,6 +44,70 @@ DISCLAIMER_TEXT = (
     "※本動画は一般的な情報提供を目的としたものであり、医学的な診断・治療に代わるものでは"
     "ありません。症状が続く場合は医療機関にご相談ください。"
 )
+
+
+# ---- Periodic review of the dictionary itself -------------------------------
+# The four gates protect against a dictionary that has grown. Nothing in them
+# ever asks whether the dictionary is still *right* — and that question has a
+# different clock from everything else here.
+#
+# Two things drift at very different speeds, and treating them as one is what
+# let this slip:
+#
+#   * The law. 薬機法・景表法・医療広告ガイドライン change rarely. Checking them
+#     monthly is theatre; checking them never is how a channel wakes up
+#     non-compliant. A quarter is the right unit for something that moves in
+#     years but matters immediately when it moves.
+#   * Our own blind spots. Four times in three weeks the dictionary gained a
+#     pattern because our own output had already published the phrase it was
+#     missing. That is not caught by reading the law; it is caught by reading
+#     what we actually wrote. audit_published.py covers the published side
+#     automatically, so the quarterly review only has to look at the near
+#     misses — what the gate rewrote rather than what it let through.
+#
+# The record lives in the repository because nothing else survives: the
+# container is deleted, and a review nobody can prove happened did not happen.
+REVIEW_LOG = config.ASSETS_DIR / "compliance_review.md"
+REVIEW_INTERVAL_DAYS = 90
+
+_REVIEW_DATE = re.compile(r"^\|\s*(\d{4}-\d{2}-\d{2})\s*\|", re.M)
+
+
+def last_reviewed() -> date | None:
+    """The most recent review date on record, or None if never reviewed."""
+    try:
+        found = _REVIEW_DATE.findall(REVIEW_LOG.read_text(encoding="utf-8"))
+    except OSError:
+        return None
+    dates = []
+    for d in found:
+        try:
+            dates.append(date.fromisoformat(d))
+        except ValueError:
+            continue
+    return max(dates) if dates else None
+
+
+def review_due() -> tuple[bool, int | None]:
+    """(is it due, days since the last review). None when never reviewed."""
+    last = last_reviewed()
+    if last is None:
+        return True, None
+    days = (date.today() - last).days
+    return days >= REVIEW_INTERVAL_DAYS, days
+
+
+def review_warning() -> str:
+    """One line for the run log, empty when the review is current."""
+    due, days = review_due()
+    if not due:
+        return ""
+    if days is None:
+        return ("[compliance] ★ 薬機法辞書の定期見直しが未実施です。"
+                f"{REVIEW_LOG.name} を参照してください")
+    return (f"[compliance] ★ 薬機法辞書の定期見直しから {days}日 経過しています"
+            f"（目安 {REVIEW_INTERVAL_DAYS}日）。{REVIEW_LOG.name} を参照してください")
+
 
 # ---- Pass 1: deterministic dictionary ---------------------------------------
 # Each entry is (regex, why it is a problem). Kept as plain patterns so the list

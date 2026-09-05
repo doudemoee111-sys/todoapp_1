@@ -112,6 +112,18 @@ def preflight(do_upload: bool, need_tts: bool = True, genre: dict | None = None)
             raise PreflightError(str(e)) from e
         print("[preflight] アフィリエイトの切り口指定: topic_axes と一致")
 
+    # The dictionary itself has an expiry. Warned, never blocked: a stale review
+    # is a reason to look at the law this week, not a reason to skip today's
+    # video. It prints on every run so it cannot be quietly outlived.
+    import compliance
+    warn = compliance.review_warning()
+    if warn:
+        print(warn)
+    else:
+        _, _days = compliance.review_due()
+        print(f"[preflight] 薬機法辞書の定期見直し: {_days}日前に実施済み"
+              f"（目安 {compliance.REVIEW_INTERVAL_DAYS}日）")
+
     print(f"[preflight] OK — credentials{'（upload込み）' if do_upload else ''}・"
           f"ffmpeg・コード すべて揃っています。")
 
@@ -335,7 +347,8 @@ def push_runlog(message: str) -> bool:
     """
     repo = config.ROOT.parent
     branch = "claude/youtube-sleep-content-automation-4k28y3"
-    carried = [RUNLOG, config.ASSETS_DIR / "bookends.json"]
+    carried = [RUNLOG, config.ASSETS_DIR / "bookends.json",
+               config.ASSETS_DIR / "ambient_rotation.json"]
     rels = [str(p.relative_to(repo)) for p in carried if p.exists()]
     try:
         for attempt in range(3):
@@ -408,23 +421,34 @@ def append_runlog(result: dict, phase: str = "done") -> None:
         from datetime import timezone, timedelta
         jst = datetime.now(timezone(timedelta(hours=9))).strftime("%m/%d %H:%M")
         mark = {"start": "▶ 開始", "abort": "✖ 中断", "done": "✔ 完了"}[phase]
+
+        def cell(v) -> str:
+            """One table cell. A newline or a pipe would break the row.
+
+            thumbnail_text is written as two lines now, and a raw newline split
+            one recorded run across two table rows — the parser in
+            compare_textures.py then saw neither. Cells are sanitised here
+            rather than at each call site so no future field can reintroduce it.
+            """
+            return str(v).replace("\n", " ").replace("|", "／").strip()
         row = (f"| {jst} | {mark} "
-               f"| {result.get('mode', 'narrated')} "
-               f"| {result.get('axis', '-')} "
-               f"| {str(result.get('title', ''))[:110 if phase == 'abort' else 34]} "
-               f"| {result.get('thumbnail_text', '')[:14]} "
+               f"| {cell(result.get('mode', 'narrated'))} "
+               f"| {cell(result.get('axis', '-'))} "
+               f"| {cell(result.get('title', ''))[:110 if phase == 'abort' else 34]} "
+               f"| {cell(result.get('thumbnail_text', ''))[:14]} "
+               f"| {cell(result.get('texture', '-'))} "
                f"| {result.get('duration_s', 0) / 60:.0f}分 "
                f"| {result.get('elapsed_s', 0) / 60:.0f}分 "
-               f"| {result.get('video_id', '(未投稿)')} "
-               f"| {str(result.get('publish_at_jst', ''))[5:16]} |\n")
+               f"| {cell(result.get('video_id', '(未投稿)'))} "
+               f"| {cell(result.get('publish_at_jst', ''))[5:16]} |\n")
         if not RUNLOG.exists():
             RUNLOG.write_text(
                 "# 実行記録\n\n"
                 "定期実行が残す唯一の証跡。リポジトリの外からは実行の成否が見えないため、\n"
                 "実行の開始時と完了時に1行ずつ追記し、その都度pushする。\n"
                 "**▶開始 の行があるのに ✔完了 の行が無ければ、その実行は途中で切られている。**\n\n"
-                "| 日時(JST) | 段階 | mode | 切口 | タイトル | サムネ | 尺 | 所要 | videoId | 公開予定 |\n"
-                "|---|---|---|---|---|---|---|---|---|---|\n", encoding="utf-8")
+                "| 日時(JST) | 段階 | mode | 切口 | タイトル | サムネ | 音 | 尺 | 所要 | videoId | 公開予定 |\n"
+                "|---|---|---|---|---|---|---|---|---|---|---|\n", encoding="utf-8")
         with RUNLOG.open("a", encoding="utf-8") as f:
             f.write(row)
         print(f"  [runlog] {RUNLOG.name} に追記しました")
@@ -616,6 +640,7 @@ def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> 
     imgs = generate_images(pkg["image_prompts"], genre["image_style"], work / "img")
 
     params = variation(pkg["title"])
+    print(f"  [ambient] 音風景: {params.texture}")
     print(f"[3/5] マスキングノイズ合成… {params.color} / "
           f"{params.low_hz}Hz・{params.mid_hz}Hz強調 / 上限{params.ceiling_hz}Hz")
     audio = synthesize_masking_noise(work / "noise.m4a", seconds, params)
@@ -632,6 +657,7 @@ def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> 
         thumb = None
 
     result = {"genre": genre_key, "mode": "ambient", "work_dir": str(work),
+              "texture": params.texture,
               "axis": pkg.get("axis"), "thumbnail_text": pkg.get("thumbnail_text", ""),
               "video": str(video), "title": pkg["title"], "duration_s": seconds,
               "noise_params": params_record(params)}
@@ -716,6 +742,7 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
                            genre["image_style"], work / "img")
 
     params = variation(pkg["title"])
+    print(f"  [ambient] 音風景: {params.texture}")
     print(f"[4/6] アンビエント合成 {ambient_seconds/3600:.1f}h…")
     bed = synthesize_masking_noise(work / "bed.m4a", ambient_seconds, params, fade_in=2)
     crossfade = 8
@@ -737,6 +764,7 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
         thumb = None
 
     result = {"genre": genre_key, "mode": "guide", "work_dir": str(work),
+              "texture": params.texture,
               "axis": pkg.get("axis"), "thumbnail_text": pkg.get("thumbnail_text", ""),
               "video": str(video), "title": pkg["title"], "topic": pkg["topic"],
               "intro_s": intro_s, "ambient_s": ambient_seconds,

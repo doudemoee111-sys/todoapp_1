@@ -33,6 +33,7 @@ import tempfile
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
+import config
 from config import (VIDEO_W, VIDEO_H, FPS, AMBIENT_FPS, AMBIENT_CRF,
                     AMBIENT_LOOP_SECONDS, AMBIENT_AUDIO_BITRATE,
                     AMBIENT_TARGET_LUFS)
@@ -76,7 +77,38 @@ _CEILINGS = [1600, 1800, 2000]
 # well they still mask: waves > rain > mask's equal > stream > drone. Drone is
 # the most musical and the weakest mask, which is the honest trade.
 TEXTURES = ("mask", "rain", "waves", "stream", "drone")
-_TEXTURE_ROTATION = ["mask", "rain", "waves", "mask", "stream", "rain", "drone", "waves"]
+
+# Which texture the next ambient video gets. Strict round-robin rather than a
+# hash of the title, because the point of the rotation is now a comparison: the
+# channel will keep whichever soundscape earns the most views, and a hash gives
+# lumpy coverage that would take far longer to read. A counter gives each
+# texture exactly its turn.
+#
+# The counter lives in the repository, not in the container. A scheduled run
+# starts from a fresh checkout and is thrown away afterwards, so a counter held
+# anywhere else resets to zero every time and the channel would publish nothing
+# but "mask" forever. run.py commits and pushes this file with runlog.md.
+ROTATION_STATE = config.ASSETS_DIR / "ambient_rotation.json"
+
+
+def next_texture(advance: bool = True) -> str:
+    """The texture whose turn it is, advancing the committed counter."""
+    import json
+    try:
+        n = int(json.loads(ROTATION_STATE.read_text()).get("next", 0))
+    except (OSError, ValueError, TypeError):
+        n = 0
+    texture = TEXTURES[n % len(TEXTURES)]
+    if advance:
+        try:
+            ROTATION_STATE.write_text(json.dumps(
+                {"next": (n + 1) % len(TEXTURES),
+                 "_note": "次のアンビエント動画で使う音風景の順番。ambient.TEXTURES の添字。"
+                          "リポジトリに置くのは、定期実行のコンテナが毎回まっさらから始まるため。"},
+                ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        except OSError as e:
+            print(f"  [ambient] 順番の保存に失敗（続行）: {e}")
+    return texture
 
 
 @dataclass
@@ -106,7 +138,7 @@ def variation(key: str, texture: str | None = None) -> NoiseParams:
     raw = str(key).encode("utf-8")
     h = abs(int.from_bytes(raw[-8:].ljust(8, b"\0"), "big"))
     if texture is None:
-        texture = _TEXTURE_ROTATION[(h // 13) % len(_TEXTURE_ROTATION)]
+        texture = next_texture()
     if texture not in TEXTURES:
         raise ValueError(f"未知のテクスチャ {texture!r}。選べるのは {', '.join(TEXTURES)}")
     return NoiseParams(
