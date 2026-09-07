@@ -84,8 +84,13 @@ def main() -> int:
                     "-c:a", "libmp3lame", str(work / "narration.mp3")], check=True)
 
     t0 = time.time()
+    # texture を明示するのは、変えたいからではなく進めたくないから。
+    # variation() を引数なしで呼ぶと、リポジトリに置いた順番カウンタを1つ
+    # 進めてしまう。このセルフテストは週次レビューが毎週流すので、動画を
+    # 1本も作らないまま毎週1つずつ順番が飛び、音風景の総当たりが崩れる。
+    # 比較の前提が壊れるので、ここは固定で mask を使う。
     bed = synthesize_masking_noise(work / "bed.m4a", args.seconds,
-                                   variation("selftest"), fade_in=2)
+                                   variation("selftest", texture="mask"), fade_in=2)
     combined = combine_narration_and_ambient(work / "narration.mp3", bed,
                                              work / "audio.m4a", crossfade=crossfade)
     total_s = intro_s + args.seconds - crossfade
