@@ -109,3 +109,19 @@ https://www.youtube.com/watch?v=DUlLFoWwkaU&list=PLP9ausaDhr0Q
 
 #睡眠
 ```
+
+## [ ] 09/08 16:16 SOEBP2IRCyw（mask）
+
+```
+枕の高さを変えただけで、いびきが静かになる人がいます。
+
+仰向けか横向きかで気道の通り方がどう変わるのか、枕がそこにどう関わるのかを、研究で分かっている範囲だけで話しました。
+
+後半は、いびきの帯域に合わせた安眠ノイズが2時間続きます。
+
+https://www.youtube.com/watch?v=SOEBP2IRCyw&list=PLP9ausaDhr0Q
+
+※一般的な情報の紹介です。気になる症状が続く場合は医療機関にご相談ください。
+
+#睡眠
+```

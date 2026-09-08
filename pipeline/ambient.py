@@ -78,43 +78,10 @@ _CEILINGS = [1600, 1800, 2000]
 # the most musical and the weakest mask, which is the honest trade.
 TEXTURES = ("mask", "rain", "waves", "stream", "drone")
 
-# Which texture the next ambient video gets. Strict round-robin rather than a
-# hash of the title, because the point of the rotation is now a comparison: the
-# channel will keep whichever soundscape earns the most views, and a hash gives
-# lumpy coverage that would take far longer to read. A counter gives each
-# texture exactly its turn.
-#
-# The counter lives in the repository, not in the container. A scheduled run
-# starts from a fresh checkout and is thrown away afterwards, so a counter held
-# anywhere else resets to zero every time and the channel would publish nothing
-# but "mask" forever. run.py commits and pushes this file with runlog.md.
-ROTATION_STATE = config.ASSETS_DIR / "ambient_rotation.json"
-
-
-def next_texture(advance: bool = True) -> str:
-    """The texture whose turn it is, advancing the committed counter."""
-    import json
-    try:
-        n = int(json.loads(ROTATION_STATE.read_text()).get("next", 0))
-    except (OSError, ValueError, TypeError):
-        n = 0
-    texture = TEXTURES[n % len(TEXTURES)]
-    if advance:
-        try:
-            ROTATION_STATE.write_text(json.dumps(
-                {"next": (n + 1) % len(TEXTURES),
-                 "_note": "次のアンビエント動画で使う音風景の順番。ambient.TEXTURES の添字。"
-                          "リポジトリに置くのは、定期実行のコンテナが毎回まっさらから始まるため。"},
-                ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        except OSError as e:
-            print(f"  [ambient] 順番の保存に失敗（続行）: {e}")
-    return texture
-
-
 # What the title says this video sounds like. A viewer never hears the audio
-# before clicking, so this label is the only thing they choose on — and it is
-# also what makes the soundscape visible in YouTube Studio without running
-# compare_textures.py.
+# before clicking, so this label is the only thing they choose on — and, since
+# the rotation is now derived from published titles, it is also the record of
+# which soundscape each video used.
 #
 # The words are chosen to be searched as well as read: 「雨音」「波の音」
 # 「せせらぎ」 are how people actually look for this content, and each one
@@ -132,9 +99,9 @@ def titled(title: str, texture: str, limit: int = 100) -> str:
     """Prefix a title with its soundscape, inside YouTube's 100-character limit.
 
     The body is trimmed rather than the label: a title cut off mid-phrase still
-    reads, a bracket cut in half looks broken. Trimming is rare — the generator
-    is asked for short titles — but a silently rejected upload at the end of a
-    forty-minute render is not an acceptable failure mode.
+    reads, a bracket cut in half looks broken. The label is also load-bearing
+    now — used_textures() reads it back to decide what to make next — so it must
+    survive intact.
     """
     label = TEXTURE_LABEL.get(texture)
     if not label:
@@ -145,6 +112,82 @@ def titled(title: str, texture: str, limit: int = 100) -> str:
     room = limit - len(prefix)
     return prefix + (title if len(title) <= room else title[:room - 1] + "…")
 
+# Which texture the next ambient video gets: whichever has been used least on
+# the channel so far, ties broken by the order above.
+#
+# Read from the published titles, not from a file. The first version kept a
+# counter in the repository and had the pipeline push it. That push has never
+# once succeeded from a scheduled run — the only two runlog commits in the
+# history are from a manual run on 2026-09-05 — so the counter stayed at 0 and
+# every ambient video would have been "mask" forever, which is exactly the
+# comparison this rotation exists to make possible.
+#
+# The channel is the one piece of state that cannot be lost: it survives the
+# container, needs no credentials to write, and each title already carries its
+# soundscape as a 【…】 prefix. Counting is also self-correcting in a way a
+# counter is not — a failed run or a deleted video simply rebalances, where a
+# counter would drift permanently.
+ROTATION_STATE = config.ASSETS_DIR / "ambient_rotation.json"
+
+
+def used_textures() -> dict[str, int] | None:
+    """How many published videos carry each soundscape label.
+
+    None when the channel cannot be read (no credentials, network trouble), so
+    the caller can fall back rather than fail a render that is otherwise fine.
+    """
+    try:
+        from youtube_upload import _service
+        yt = _service()
+        ch = yt.channels().list(part="contentDetails", mine=True).execute()["items"][0]
+        uploads = ch["contentDetails"]["relatedPlaylists"]["uploads"]
+        titles, page = [], None
+        while True:
+            r = yt.playlistItems().list(part="snippet", playlistId=uploads,
+                                        maxResults=50, pageToken=page).execute()
+            titles += [i["snippet"]["title"] for i in r["items"]]
+            page = r.get("nextPageToken")
+            if not page:
+                break
+    except Exception as e:  # noqa: BLE001
+        print(f"  [ambient] チャンネルを読めませんでした（順番はローカルの控えを使います）: {e}")
+        return None
+    counts = {t: 0 for t in TEXTURES}
+    for t, label in TEXTURE_LABEL.items():
+        marker = f"【{label}】"
+        counts[t] = sum(1 for title in titles if title.startswith(marker))
+    return counts
+
+
+def _fallback_texture(advance: bool) -> str:
+    """The old committed counter, kept only for when the channel is unreadable."""
+    import json
+    try:
+        n = int(json.loads(ROTATION_STATE.read_text()).get("next", 0))
+    except (OSError, ValueError, TypeError):
+        n = 0
+    texture = TEXTURES[n % len(TEXTURES)]
+    if advance:
+        try:
+            ROTATION_STATE.write_text(json.dumps(
+                {"next": (n + 1) % len(TEXTURES),
+                 "_note": "チャンネルを読めなかったときだけ使う控え。通常は公開済みの"
+                          "件名【…】から、いちばん使われていない音風景を選ぶ。"},
+                ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        except OSError as e:
+            print(f"  [ambient] 控えの保存に失敗（続行）: {e}")
+    return texture
+
+
+def next_texture(advance: bool = True) -> str:
+    """The soundscape whose turn it is."""
+    counts = used_textures()
+    if counts is None:
+        return _fallback_texture(advance)
+    texture = min(TEXTURES, key=lambda t: (counts[t], TEXTURES.index(t)))
+    print("  [ambient] 公開済みの内訳 "
+          + " / ".join(f"{TEXTURE_LABEL[t]}{counts[t]}" for t in TEXTURES))
+    return texture
 
 @dataclass
 class NoiseParams:

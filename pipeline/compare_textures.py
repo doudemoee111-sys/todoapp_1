@@ -5,8 +5,11 @@ performs best. That decision needs three things the system did not have:
 
   * an even sample — the texture used to be chosen by hashing the title, which
     gives lumpy coverage; it is now strict round-robin from a committed counter
-  * a record of which video got which texture — added as the 音 column of
-    runlog.md, because the container that knew is deleted minutes later
+  * a record of which video got which texture — read from the 【…】 prefix on
+    each published title. runlog.md was tried first and does not work: the
+    scheduled containers have never once managed to push it, so the record
+    never leaves the machine that is about to be deleted. The title is on
+    YouTube, which is the only storage here that cannot be lost.
   * a fair comparison — raw view counts favour whatever was published first, so
     everything here is per-day-since-publish
 
@@ -27,46 +30,46 @@ script says how confident the current data allows you to be, and will say
 """
 from __future__ import annotations
 
-import re
 import statistics
 from datetime import datetime, timezone
 
 from ambient import TEXTURES
-from run import RUNLOG
 
-# | 日時 | 段階 | mode | 切口 | タイトル | サムネ | 音 | 尺 | 所要 | videoId | 公開予定 |
-_ROW = re.compile(r"^\|([^|]*)\|\s*✔ 完了\s*\|" + r"([^|]*)\|" * 5 + r"([^|]*)\|" * 2
-                  + r"\s*([\w-]{11})\s*\|")
-
-# Below this, differences are noise on a channel this size. Stated up front so
-# the number does not get invented after seeing a result somebody likes.
-MIN_PER_TEXTURE = 3
+MIN_PER_TEXTURE = 3     # below this, differences are noise on a channel this size
 
 
-def rows() -> list[tuple[str, str]]:
-    """(texture, video_id) for finished runs that actually uploaded."""
-    if not RUNLOG.exists():
-        return []
+def rows(yt) -> list[tuple[str, str]]:
+    """(texture, video_id) for every published video carrying a soundscape label."""
+    from ambient import TEXTURE_LABEL
+    ch = yt.channels().list(part="contentDetails", mine=True).execute()["items"][0]
+    uploads = ch["contentDetails"]["relatedPlaylists"]["uploads"]
+    items, page = [], None
+    while True:
+        r = yt.playlistItems().list(part="snippet", playlistId=uploads,
+                                    maxResults=50, pageToken=page).execute()
+        items += r["items"]
+        page = r.get("nextPageToken")
+        if not page:
+            break
+    by_marker = {f"【{lab}】": tex for tex, lab in TEXTURE_LABEL.items()}
     out = []
-    for line in RUNLOG.read_text(encoding="utf-8").splitlines():
-        m = _ROW.match(line)
-        if not m:
-            continue
-        texture, vid = m.group(6).strip(), m.group(9).strip()
-        if texture in TEXTURES:
-            out.append((texture, vid))
+    for it in items:
+        title = it["snippet"]["title"]
+        for marker, tex in by_marker.items():
+            if title.startswith(marker):
+                out.append((tex, it["snippet"]["resourceId"]["videoId"]))
+                break
     return out
 
 
 def main() -> None:
-    pairs = rows()
-    if not pairs:
-        print("runlog.md にまだアンビエント動画の記録がありません。")
-        print("音風景の記録は今回の変更から始まるので、火・木のL3が回り始めてから読めます。")
-        return
-
     from youtube_upload import _service
     yt = _service()
+    pairs = rows(yt)
+    if not pairs:
+        print("件名に【…】が付いた動画がまだありません。")
+        print("音風景のラベルは 2026-09-08 の回から付き始めます。")
+        return
     ids = [v for _, v in pairs]
     stats = {}
     for i in range(0, len(ids), 50):
