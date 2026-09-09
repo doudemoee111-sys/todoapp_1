@@ -9,8 +9,9 @@ youtubeAnalytics API（yt-analytics.readonly スコープ）が必要で、現�
 
 出力:
   - 標準出力に人間可読レポート
-  - pipeline/output/report_latest.md （sekai の日次実行でコミット→管理セッションが git pull
-    して読む、という受け渡しに使う）
+  - pipeline/reports/report_latest.md （非gitignore。sekai の日次実行でコミット→管理
+    セッションが git pull して読む、という受け渡しに使う。pipeline/output/ は .gitignore
+    対象なのでコミット用途には使えない点に注意）
 
 使い方: cd pipeline && python3 report.py  （sekai 環境で認証情報が必要）
 """
@@ -187,7 +188,8 @@ def main() -> int:
         print(f"[report] 失敗: {e}", file=sys.stderr)
         return 1
     print(report)
-    out = Path(__file__).resolve().parent / "output" / "report_latest.md"
+    # git 受け渡し用（非gitignore）。output/ は .gitignore 対象なので使わない。
+    out = Path(__file__).resolve().parent / "reports" / "report_latest.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(report, encoding="utf-8")
     print(f"\n[report] 書き出し: {out}")
