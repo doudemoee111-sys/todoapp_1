@@ -722,7 +722,8 @@ def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> 
 
     thumb = work / "thumbnail.png"
     try:
-        make_thumbnail(pkg["thumbnail_text"], thumb, subtitle=pkg.get("topic", ""))
+        make_thumbnail(pkg["thumbnail_text"], thumb, subtitle=pkg.get("topic", ""),
+                       badge=TEXTURE_LABEL.get(params.texture, ""))
     except Exception as e:  # noqa: BLE001
         print(f"      thumbnail failed: {e}")
         thumb = None
@@ -836,7 +837,8 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
     thumb = work / "thumbnail.png"
     try:
         make_thumbnail(pkg["thumbnail_text"] or pkg["title"], thumb,
-                       subtitle=pkg.get("topic", ""))
+                       subtitle=pkg.get("topic", ""),
+                       badge=TEXTURE_LABEL.get(params.texture, ""))
     except Exception as e:  # noqa: BLE001
         print(f"      thumbnail failed: {e}")
         thumb = None

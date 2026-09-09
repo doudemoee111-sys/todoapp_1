@@ -163,8 +163,31 @@ def _split_lines(text: str) -> list[str]:
     return [l for l in best if l] or [text]
 
 
-def make_thumbnail(text: str, out_path: str | Path, subtitle: str = "") -> Path:
+def _badge(d: ImageDraw.ImageDraw, label: str, y: int) -> int:
+    """A small teal pill naming the soundscape. Returns the height it consumed.
+
+    Placed above the headline on its own line rather than in a corner. A corner
+    badge has to be dodged by the headline, and the headline is the one thing on
+    this image that must never be compromised; giving the badge its own band
+    means the two can never collide however long the words get.
+
+    It is not legible at 168px — nothing this size is — and that is accepted.
+    It earns its place on the video page, in search results, and in the Studio
+    list, where the soundscape is what someone is trying to tell apart.
+    """
+    f = _font(52)
+    tw = d.textlength(label, font=f)
+    d.rounded_rectangle([66, y, 66 + tw + 44, y + 74], radius=37, fill=TEAL)
+    d.text((88, y + 10), label, font=f, fill=BG_TOP)
+    return 74 + 26
+
+
+def make_thumbnail(text: str, out_path: str | Path, subtitle: str = "",
+                   badge: str = "") -> Path:
     """Render the thumbnail. `text` is the headline, `subtitle` the quiet line.
+
+    `badge` names the soundscape (雨音 / 波の音 …) on the ambient videos, so a
+    viewer can tell them apart before opening one.
 
     Font size steps down as the headline grows so a long line never runs off the
     edge; the check is on the measured width, not a character count, because a
@@ -176,7 +199,8 @@ def make_thumbnail(text: str, out_path: str | Path, subtitle: str = "") -> Path:
 
     lines = _split_lines(text)
     BAR_H, SUB_H, WAVE_Y, TOP_MIN = 20, 58, 672, 48
-    ROOM = WAVE_Y - 44 - TOP_MIN          # vertical space the block may occupy
+    BADGE_H = 100 if badge else 0
+    ROOM = WAVE_Y - 44 - TOP_MIN - BADGE_H   # vertical space left for the block
 
     def _block(size: int, with_sub: bool) -> int:
         return (len(lines) * int(size * 1.08)
@@ -203,25 +227,39 @@ def make_thumbnail(text: str, out_path: str | Path, subtitle: str = "") -> Path:
 
     # The block is centred in the space above the waveform, so a headline that
     # had to shrink does not leave a hole where a reader expects the image.
-    y = TOP_MIN + max(0, (ROOM - _block(size, has_sub)) // 2)
+    y = TOP_MIN
+    if badge:
+        y += _badge(d, badge, y)
+    y += max(0, (ROOM - _block(size, has_sub)) // 2)
 
+    last_top = y
     for i, line in enumerate(lines):
+        last_top = y
         d.text((66, y), line, font=f, fill=INK if i == 0 else TEAL)
         y += line_h
 
     # A solid amber bar under the last line: at 168px the eye resolves a block of
     # colour long before it resolves a glyph, so the block is what earns the look
-    # that then reads the words. Placed below the whole line box, never through
-    # it — an earlier version put it at 90% of the font size and struck the text
-    # out.
+    # that then reads the words.
+    #
+    # Its position comes from the measured glyph box, not from line_h. Twice now
+    # a version computed it arithmetically — first at 90% of the font size, then
+    # at the end of the last line box — and both struck the text out, because a
+    # CJK glyph drawn by PIL extends past the 1.08×size the layout advances by.
+    # textbbox reports where the ink actually is, so it cannot drift.
     if len(lines) > 1:
-        w2 = d.textlength(lines[-1], font=f)
-        d.rectangle([66, y + 4, 66 + w2 + 14, y + 4 + BAR_H], fill=AMBER)
-        y += BAR_H + 22
+        bbox = d.textbbox((66, last_top), lines[-1], font=f)
+        bar_top = bbox[3] + 12
+        d.rectangle([66, bar_top, bbox[2] + 14, bar_top + BAR_H], fill=AMBER)
+        y = max(y, bar_top + BAR_H) + 22
 
-    if has_sub:
-        # Unreadable at 168px and barely there at 246px, so it is set for the
-        # larger preview only and given no space the headline could have used.
+    # Unreadable at 168px and barely there at 246px, so the subtitle is set for
+    # the larger preview only and given no space the headline could have used.
+    # The final check is against the real cursor rather than the estimate: the
+    # amber bar is placed from a measured glyph box, so the block can end lower
+    # than _block() predicted, and the difference was enough to lay the caption
+    # across the waveform.
+    if has_sub and y + SUB_H <= WAVE_Y - 40:
         d.text((70, y), subtitle.strip()[:22], font=_font(44, bold=False), fill=MUTED)
 
     _wave_band(img, WAVE_Y)
@@ -236,11 +274,11 @@ def make_thumbnail(text: str, out_path: str | Path, subtitle: str = "") -> Path:
 
 
 if __name__ == "__main__":
-    for i, (t, s) in enumerate([
-        ("その枕、高すぎ", "いびきと寝る姿勢の話"),
-        ("眠れないのは\n私の方", "いびきで起こされる家族へ"),
-        ("明日の朝、どう言う", "責めずに受診をすすめる"),
-        ("別室という選択", "関係と健康のバランス"),
+    for i, (t, s, b) in enumerate([
+        ("その枕、高すぎ", "いびきと寝る姿勢の話", ""),
+        ("眠れないのは\n私の方", "いびきで起こされる家族へ", "安眠ノイズ"),
+        ("明日の朝、どう言う", "責めずに受診をすすめる", "雨音"),
+        ("別室という選択", "関係と健康のバランス", "波の音"),
     ]):
-        p = make_thumbnail(t, f"output/_thumb_test_{i}.png", s)
+        p = make_thumbnail(t, f"output/_thumb_test_{i}.png", s, b)
         print(p, Image.open(p).size)
