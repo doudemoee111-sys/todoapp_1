@@ -125,3 +125,19 @@ https://www.youtube.com/watch?v=SOEBP2IRCyw&list=PLP9ausaDhr0Q
 
 #睡眠
 ```
+
+## [ ] 09/10 16:15 FQV7W_2kRvw（rain）
+
+```
+隣のいびきに、耳栓で対抗しようとして失敗したことがあります。
+
+耳栓とホワイトノイズは向き不向きが違います。どちらが自分の眠りに合うのか、選び方と限界を整理しました。
+
+後半は、雨音が2時間続きます。
+
+https://www.youtube.com/watch?v=FQV7W_2kRvw&list=PLP9ausaDhr0Q
+
+※一般的な情報の紹介です。気になる症状が続く場合は医療機関にご相談ください。
+
+#睡眠
+```
