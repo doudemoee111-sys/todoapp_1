@@ -113,6 +113,39 @@ def refresh_related(videos: list[dict], yt, write: bool = False) -> int:
     return changed
 
 
+def check_language(videos: list[dict], yt, fix: bool = False) -> int:
+    """Every video must declare Japanese. YouTube's guess is not reliable here.
+
+    Left unset, YouTube infers the audio language. An L3 is ten minutes of
+    narration followed by two hours of noise, so there is very little speech to
+    infer from, and it guessed wrong on 8 of the first 9 videos — one of them as
+    plain "en". A Japanese video offered to English speakers is shown to people
+    who will not watch it, and their immediate exit is what the algorithm reads
+    as the video's quality.
+
+    Cheap to check and cheap to fix, so it is checked every week rather than
+    trusted to stay right.
+    """
+    wrong = 0
+    for v in videos:
+        sn = v["snippet"]
+        cur = (sn.get("defaultLanguage"), sn.get("defaultAudioLanguage"))
+        if cur == ("ja", "ja"):
+            continue
+        wrong += 1
+        print(f"  [言語] {v['id']} {str(cur):<20} {sn['title'][:30]}")
+        if fix:
+            yt.videos().update(part="snippet", body={
+                "id": v["id"],
+                "snippet": {"title": sn["title"], "description": sn.get("description", ""),
+                            "categoryId": sn.get("categoryId", "26"),
+                            "tags": sn.get("tags") or [],
+                            "defaultLanguage": "ja", "defaultAudioLanguage": "ja"},
+            }).execute()
+            print("         → ja/ja に修正しました")
+    return wrong
+
+
 def findings_for(video: dict) -> list[tuple[str, compliance.Finding]]:
     sn = video["snippet"]
     hits: list[tuple[str, compliance.Finding]] = []
@@ -129,6 +162,16 @@ def audit(fix_tags: bool = False) -> int:
     from youtube_upload import _service
     yt = _service()
     videos = channel_videos(yt)
+
+    # Metadata first: a video nobody is shown cannot break any rule, but it also
+    # cannot earn anything, and this one is invisible from the description alone.
+    bad_lang = check_language(videos, yt, fix=fix_tags)
+    if bad_lang:
+        print(f"★ 言語が日本語になっていない動画が {bad_lang}本 あります"
+              + ("" if fix_tags else "（--fix-tags で修正できます）"))
+    else:
+        print("言語設定: 全動画 ja/ja")
+
     total = 0
     for v in videos:
         hits = findings_for(v)

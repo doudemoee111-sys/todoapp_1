@@ -331,6 +331,21 @@ def upload_video(video_path: str | Path, title: str, description: str, tags: lis
             "description": description,
             "tags": tags,
             "categoryId": category_id,
+            # Declare the language instead of letting YouTube guess it.
+            #
+            # It guesses from the audio, and an L3 is ten minutes of Japanese
+            # narration followed by two hours of noise — barely any speech as a
+            # share of the file. The 09/08 guide came back tagged "en" and took
+            # zero views in 48 hours, while the 09/05 explainer (tagged "ja")
+            # and the 08/27 guide both drew viewers. A Japanese video labelled
+            # English is offered to an audience that will not watch it, and the
+            # early retention that decides its distribution is spent on them.
+            #
+            # Two fields, because they answer different questions: what language
+            # the title and description are written in, and what language is
+            # spoken. Both are Japanese here.
+            "defaultLanguage": "ja",
+            "defaultAudioLanguage": "ja",
         },
         "status": {
             "privacyStatus": privacy,
