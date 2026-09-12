@@ -141,3 +141,17 @@ https://www.youtube.com/watch?v=FQV7W_2kRvw&list=PLP9ausaDhr0Q
 
 #睡眠
 ```
+
+## [ ] 09/12 16:10 aEnyVmdn-eI（L1）
+
+```
+いびきの話を切り出すと、なぜか自分が悪者になります。
+
+「うるさい」から始めると、相手には責められたようにしか届きません。何から話し、何を後回しにするか、順番のほうを整理しました。
+
+https://www.youtube.com/watch?v=aEnyVmdn-eI&list=PLP9ausaDhr0Q
+
+※一般的な情報の紹介です。気になる症状が続く場合は医療機関にご相談ください。
+
+#睡眠
+```
