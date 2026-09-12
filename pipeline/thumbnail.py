@@ -41,6 +41,9 @@ _GENRE_BG_HINT = {
                 "muted desaturated tones, fog and deep shadow, tense mysterious mood"),
     "urban": ("one eerie symbolic focal subject, moody atmospheric, dark cinematic tone, "
               "fog, dramatic shadows, film grain"),
+    "japan": ("one striking single subject of Japanese culture or daily life "
+              "(a spotless train platform, a craftsman's hands, a beautiful dish, a torii gate) "
+              "as the clear focal point, warm cinematic photoreal, bright and inviting"),
 }
 
 
