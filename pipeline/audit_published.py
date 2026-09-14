@@ -102,15 +102,40 @@ def refresh_related(videos: list[dict], yt, write: bool = False) -> int:
         print(f"\n■ {v['id']}  {sn['title'][:40]}")
         changed += 1
         if write:
-            yt.videos().update(part="snippet", body={
-                "id": v["id"],
-                "snippet": {"title": sn["title"], "description": fixed,
-                            "categoryId": sn.get("categoryId", "22"),
-                            "tags": sn.get("tags") or [],
-                            "defaultLanguage": sn.get("defaultLanguage", "ja")},
-            }).execute()
+            _write_snippet(yt, v, description=fixed)
             print("    → 更新しました")
     return changed
+
+
+def _write_snippet(yt, video: dict, **changes) -> None:
+    """Update a video's snippet, changing only what is named.
+
+    videos.update with part="snippet" REPLACES the snippet: every writable field
+    left out of the body is cleared. Three call sites here each hand-built a
+    body, and two of them omitted the language fields — so fixing a tag, or
+    repointing a related link, silently wiped defaultAudioLanguage. That is the
+    field we had just established decides whether the video is offered to a
+    Japanese audience at all.
+
+    The category default was wrong in the same way: two sites passed "22"
+    (People & Blogs) as the fallback for a channel that publishes under 26
+    (Howto & Style), so a video with no category would have been quietly
+    refiled.
+
+    Carrying the existing snippet forward and overriding by name removes the
+    whole class of mistake: a field nobody mentions keeps its value.
+    """
+    sn = video["snippet"]
+    body = {
+        "title": sn["title"],
+        "description": sn.get("description", ""),
+        "categoryId": sn.get("categoryId", "26"),
+        "tags": sn.get("tags") or [],
+        "defaultLanguage": sn.get("defaultLanguage") or "ja",
+        "defaultAudioLanguage": sn.get("defaultAudioLanguage") or "ja",
+    }
+    body.update(changes)
+    yt.videos().update(part="snippet", body={"id": video["id"], "snippet": body}).execute()
 
 
 def check_language(videos: list[dict], yt, fix: bool = False) -> int:
@@ -135,13 +160,7 @@ def check_language(videos: list[dict], yt, fix: bool = False) -> int:
         wrong += 1
         print(f"  [言語] {v['id']} {str(cur):<20} {sn['title'][:30]}")
         if fix:
-            yt.videos().update(part="snippet", body={
-                "id": v["id"],
-                "snippet": {"title": sn["title"], "description": sn.get("description", ""),
-                            "categoryId": sn.get("categoryId", "26"),
-                            "tags": sn.get("tags") or [],
-                            "defaultLanguage": "ja", "defaultAudioLanguage": "ja"},
-            }).execute()
+            _write_snippet(yt, v, defaultLanguage="ja", defaultAudioLanguage="ja")
             print("         → ja/ja に修正しました")
     return wrong
 
@@ -186,11 +205,7 @@ def audit(fix_tags: bool = False) -> int:
                 print(f"        …{f.excerpt.strip()[:60]}…")
         if fix_tags and any(w == "tags" for w, _ in hits):
             keep, drop = compliance.clean_tags(sn.get("tags") or [])
-            yt.videos().update(part="snippet", body={
-                "id": vid,
-                "snippet": {"title": sn["title"], "description": sn.get("description", ""),
-                            "categoryId": sn.get("categoryId", "22"), "tags": keep},
-            }).execute()
+            _write_snippet(yt, v, tags=keep)
             print(f"    → タグを {len(drop)} 件削除しました: {', '.join(drop)}")
 
     print(f"\n走査 {len(videos)}本 / 指摘 {total}件"
