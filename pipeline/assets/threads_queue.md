@@ -155,3 +155,19 @@ https://www.youtube.com/watch?v=aEnyVmdn-eI&list=PLP9ausaDhr0Q
 
 #睡眠
 ```
+
+## [ ] 09/15 16:09 mdNuRVX7znU（waves）
+
+```
+起こされる側の寝不足は、誰にも数えてもらえません。
+
+相手のいびきは今夜すぐには変わりません。その前提で、自分の側でできる休み方——昼寝の長さと時間帯、週末の戻し方を整理しました。
+
+後半は、10秒ごとにゆっくり寄せる波の音が2時間続きます。
+
+https://www.youtube.com/watch?v=mdNuRVX7znU&list=PLP9ausaDhr0Q
+
+※一般的な情報の紹介です。気になる症状が続く場合は医療機関にご相談ください。
+
+#睡眠
+```
