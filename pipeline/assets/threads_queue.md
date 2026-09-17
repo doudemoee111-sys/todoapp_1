@@ -171,3 +171,19 @@ https://www.youtube.com/watch?v=mdNuRVX7znU&list=PLP9ausaDhr0Q
 
 #睡眠
 ```
+
+## [ ] 09/17 16:10 fzauD4W4UQY（stream）
+
+```
+いびきの相談は、何科に行けばいいのか分かりません。
+
+耳鼻咽喉科か、睡眠外来か。受診前に何を記録して持っていくと話が早いのかまで、順番に整理しました。
+
+後半は、せせらぎの音が2時間続きます。
+
+https://www.youtube.com/watch?v=fzauD4W4UQY&list=PLP9ausaDhr0Q
+
+※一般的な情報の紹介です。気になる症状が続く場合は医療機関にご相談ください。
+
+#睡眠
+```
