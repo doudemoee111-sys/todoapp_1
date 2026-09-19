@@ -171,6 +171,12 @@ NG_PATTERNS: list[tuple[str, str]] = [
     # 「知人に相談する」のような助言は通す。
     (r"(知人|友人|知り合い|近所の方|ある男性|ある女性)の(体験|経験|ケース|話|例)",
      "存在しない第三者の体験（語りは生成）"),
+    # 体験談の第3形。医療広告ガイドラインは「治療内容・効果に関する体験談」を
+    # 明確に禁じており、成功体験・成功事例はその中心にある型。しかも語りは
+    # 生成なので、成功した人が実在しない。題名に入って公開直前まで来た。
+    (r"成功(体験|事例|例|談)", "治療効果の体験談（医療広告ガイドラインで禁止）／実在しない"),
+    (r"(改善|回復|克服)(事例|例|ストーリー)", "治療効果の体験談"),
+    (r"(治療|施術)(で|により|によって)[^。、]{0,12}(変わ|良くな|改善)", "治療効果の断定"),
     (r"(使ってみた|試してみた)(結果|ところ)", "体験した人がいない"),
     (r"口コミ(では|によると|で人気)", "体験談・口コミによる効果の訴求"),
     # 診断・治療の指示（YMYL：視聴者を診断してはいけない）
@@ -303,6 +309,17 @@ def review(pkg: dict, use_llm: bool = True) -> Report:
         if not text:
             continue
         rep.findings.extend(scan(text, where))
+    # Chapter headings. They reach the viewer as the 目次 in the description and
+    # as YouTube's key moments, but enforce() never read them — they are built
+    # into the description later, by run.py, long after this gate has run. So a
+    # heading only failed at the pre-upload check, which aborts a finished
+    # render, or at a human's eye. Three of the five phrases caught by hand in
+    # September were headings: 「知人の体験と選択」「治療選択の成功事例」
+    # 「実際の体験談」. Checked here, they cost one rewrite instead of a video.
+    for i, ch in enumerate(pkg.get("chapters") or []):
+        head = (ch.get("heading") or "").strip()
+        if head:
+            rep.findings.extend(scan(head, f"chapter{i}"))
     # Tags are viewer-facing and were missed for three weeks: a live video went
     # out carrying the tag 「いびき解消法」, which the dictionary would have
     # caught on sight. They are scanned one at a time so the excerpt names the
@@ -401,6 +418,9 @@ def writing_rules() -> str:
   **主語を他人に変えても同じ。** 「知人の体験」「友人のケース」「ある男性の話」も
   不可。このチャンネルに知人も友人もいない。章の見出しでも本文でも使わないこと。
   症例に触れるなら「〜学会の資料で報告されている例では」のように出典を示す。
+  **「成功体験」「成功事例」「改善事例」も同じ型。** 医療広告ガイドラインは
+  治療内容・効果に関する体験談を明確に禁じている。治療の話をするときは、
+  効果ではなく「どういう選択肢があり、どう決めるか」を書くこと。
 
 【代わりに使う言い方】
 - 「〜と報告されています」「〜という研究があります」「〜学会の資料では」
@@ -452,24 +472,40 @@ def enforce(pkg: dict, genre: dict, use_llm: bool = True) -> dict:
             break
         print(f"  [compliance] {len(rep.findings)}件の指摘 ({attempt}/{MAX_ROUNDS}):\n{rep.describe()}")
         if attempt == MAX_ROUNDS:
-            # Last resort before losing the day's video: cut the offending
-            # sentences out. Stricter than another rewrite, and the rest of the
-            # script is unaffected.
+            # Last resort before losing the day's video: cut the offending text
+            # out. Stricter than another rewrite, and the rest is unaffected.
+            #
+            # Headings first, and unconditionally. They used to be cleaned only
+            # inside the narration branch, so a script whose prose was clean but
+            # whose heading was not fell straight through to the abort — the one
+            # case this whole fallback exists for. An empty heading would break
+            # the 目次, so it falls back to a label that says nothing untrue.
+            for i, ch in enumerate(pkg.get("chapters") or []):
+                if ch.get("heading") and scan(ch["heading"], f"chapter{i}"):
+                    trimmed, _ = excise(ch["heading"])
+                    ch["heading"] = trimmed.strip() or "このあとの話"
+                    print(f"  [compliance] 第{i+1}章の見出しを整理: 「{ch['heading']}」")
+            for key in ("title", "description", "thumbnail_text"):
+                if pkg.get(key) and scan(pkg[key], key):
+                    fixed, _ = excise(pkg[key])
+                    pkg[key] = fixed.strip() or pkg[key]
+            pkg["tags"], _dropped_tags = clean_tags(pkg.get("tags") or [])
+            for t in _dropped_tags:
+                print(f"  [compliance] タグを除外: 「{t}」")
+
             before = len(pkg.get("narration", ""))
             cleaned, dropped = excise(pkg.get("narration", ""))
             if dropped and len(cleaned) >= before * 0.85:
-                print(f"  [compliance] {len(dropped)}文を削除して通過させます"
+                print(f"  [compliance] {len(dropped)}文を削除します"
                       f"（{before}字 → {len(cleaned)}字）:")
                 for d in dropped:
                     print(f"    - {d[:60]}")
                 pkg["narration"] = cleaned
-                for key in ("title", "description", "thumbnail_text"):
-                    if pkg.get(key):
-                        fixed, _ = excise(pkg[key])
-                        pkg[key] = fixed.strip() or pkg[key]
-                rep = review(pkg, use_llm=False)
-                if rep.ok:
-                    break
+
+            rep = review(pkg, use_llm=False)
+            if rep.ok:
+                print("  [compliance] 整理して通過させます")
+                break
             raise ComplianceError(
                 f"薬機法チェックを{MAX_ROUNDS}回のリライトと該当文の削除でも"
                 f"通過できませんでした。投稿を中断します。指摘内容:\n{rep.describe()}")
@@ -481,6 +517,11 @@ def enforce(pkg: dict, genre: dict, use_llm: bool = True) -> dict:
             fs = [f for f in rep.findings if f.where == where]
             if fs and pkg.get(key):
                 pkg[key] = rewrite(pkg[key], fs)
+        for i, ch in enumerate(pkg.get("chapters") or []):
+            fs = [f for f in rep.findings if f.where == f"chapter{i}"]
+            if fs and ch.get("heading"):
+                ch["heading"] = rewrite(ch["heading"], fs).strip().splitlines()[0][:40]
+                print(f"  [compliance] 第{i+1}章の見出しを書き換え: 「{ch['heading']}」")
         print("  [compliance] 指摘箇所をリライトして再審査します")
 
     return attach_disclaimer(pkg)
