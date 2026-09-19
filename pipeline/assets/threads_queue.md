@@ -187,3 +187,17 @@ https://www.youtube.com/watch?v=fzauD4W4UQY&list=PLP9ausaDhr0Q
 
 #睡眠
 ```
+
+## [ ] 09/19 16:12 jqC79tauiNg（L1）
+
+```
+検査を受けたあとのほうが、迷います。
+
+結果を渡されても、どれを選ぶかは自分たちで決めることになります。選択肢の並べ方と、家族の側が用意できることを整理しました。
+
+https://www.youtube.com/watch?v=jqC79tauiNg&list=PLP9ausaDhr0Q
+
+※一般的な情報の紹介です。気になる症状が続く場合は医療機関にご相談ください。
+
+#睡眠
+```
