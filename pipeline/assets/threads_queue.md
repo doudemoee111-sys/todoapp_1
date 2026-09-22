@@ -201,3 +201,19 @@ https://www.youtube.com/watch?v=jqC79tauiNg&list=PLP9ausaDhr0Q
 
 #睡眠
 ```
+
+## [ ] 09/22 16:10 kB2q4yiWMuk（drone）
+
+```
+いびきの原因が、鼻にあることもあります。
+
+鼻づまりや扁桃は、いびきの原因としてよく挙げられます。何がどう関わると言われているのか、どこでどう調べるのかを整理しました。
+
+後半は、低くたゆたう持続音が2時間続きます。
+
+https://www.youtube.com/watch?v=kB2q4yiWMuk&list=PLP9ausaDhr0Q
+
+※一般的な情報の紹介です。気になる症状が続く場合は医療機関にご相談ください。
+
+#睡眠
+```
