@@ -14,12 +14,17 @@ Returns a dict:
 from __future__ import annotations
 import json
 import os
+import random
 from openai import OpenAI
 
 from config import (SCRIPT_MODEL, NUM_IMAGES, NARRATION_TARGET_CHARS, GENRES,
                     SHORT_NUM_IMAGES, TEASER_TARGET_CHARS)
 
 _client = None
+
+# AI利用の開示（2025/7 ポリシー対応の一助）。概要欄に付ける。※Studioの「変更/合成コンテンツ」
+# フラグは別途手動設定が必要（APIでは確実に付与できないため）。
+_AI_DISCLOSURE = "\n\n※本動画はAI（音声合成・画像生成等）を活用して制作し、独自の解説・構成を加えています。"
 
 
 def _c() -> OpenAI:
@@ -79,8 +84,29 @@ def _is_duplicate(topic: str, avoid_titles: list[str]) -> bool:
         return False  # 判定に失敗したら重複扱いにせず続行(生成を止めない)
 
 
+# 量産テンプレ判定(2025/7 "inauthentic content" ポリシー)を避けるため、動画ごとに
+# 全体構成の"型"を変える。維持率が出る流れの候補群からランダムに選ぶ（ジャンルが
+# structure_hint を持てばそれを優先＝ジャンル固有の勝ち構成）。
+_STRUCTURE_VARIANTS = [
+    "結論先出し→根拠を一つずつ検証→意外な転換→独自の考察→まとめ",
+    "最大の謎の提示→時系列で追う→通説への反証→残る謎と独自見解→まとめ",
+    "象徴的な一場面→背景と歴史→複数の具体例を対比→なぜそうなるかの分析→まとめ",
+    "問いを立てる→具体例を順に提示→各例の“なぜ”を独自に解説→全体の結論→まとめ",
+]
+
+# ジャンルが title_style を持たない場合の既定タイトル仕様。
+_DEFAULT_TITLE_STYLE = (
+    "28文字以内の「単一テーマ深掘り」型。最重要ワード（事件名・場所・固有名詞・数字・謎の核心）を"
+    "前半20文字以内に置く。フック語は内容に即して1つだけ（なぜ／未だに／その真相／判明した／"
+    "衝撃の結末／消えた／説明できない 等）。先頭に【解説】等の形式タグ可。内容と乖離した過度な釣り・"
+    "虚偽は禁止（クリック後に離脱＝維持率で負け逆効果）。「○選」は使わない。スマホで途切れないよう長くしすぎない。"
+)
+
+
 def _outline(genre: dict, topic: str) -> dict:
     n_ch = 8
+    title_spec = genre.get("title_style", _DEFAULT_TITLE_STYLE)
+    structure = genre.get("structure_hint") or random.choice(_STRUCTURE_VARIANTS)
     user = f"""日本のYouTube長尺解説動画の構成案をJSONで作成してください。
 
 テーマ: {topic}
@@ -88,9 +114,9 @@ def _outline(genre: dict, topic: str) -> dict:
 トーン: {genre['narration_style']}
 
 要件:
-- chapters は{n_ch}個。導入(フック)→本編→まとめ→締め(登録誘導)の流れ。
-- 各chapterは heading(短い見出し) と summary(その章で語る内容の要点、2〜3文) を持つ。
-- title: 28文字以内の「単一テーマ深掘り」型タイトル。最重要ワード（事件名・場所・固有名詞・数字・謎の核心）を必ず前半20文字以内に置く。目安の型＝「具体的な題材 ＋ 引っかかる謎/フック」。フック語は内容に即して1つだけ（例: なぜ／未だに／その真相／判明した／衝撃の結末／消えた／説明できない）。任意で先頭に【解説】等の形式タグを付けてよい。禁止事項: 内容と乖離した過度な釣り・虚偽（クリック後に離脱され視聴維持で負け逆効果）。まとめ動画ではないので「○選」は使わない。スマホで途切れないよう長くしすぎない。
+- chapters は{n_ch}個。全体構成の"型"は【{structure}】に沿わせる。第1章＝強いフック、最終章＝まとめ＋登録誘導。
+- 各chapterは heading(短い見出し) と summary(その章で語る要点、2〜3文) を持つ。中盤の各章のsummaryは、単なる事実の要約でなく『具体例＋なぜそうなるか/どこが意外かの独自解説』を必ず含める（視聴維持と独自性のため）。
+- title: {title_spec}
 - thumbnail_text: サムネ用の特大テロップ。3〜4語・最大9文字程度に絞る（改行\\n可）。タイトル全文の縮小ではなく、最も引きの強い『一撃のワード』だけを置く。
 - thumbnail_prompt: サムネ背景の英語画像プロンプト。
 - description: 日本語200〜400文字（要約＋登録誘導）。
@@ -114,7 +140,12 @@ def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
              "(2)続く2〜3文で、具体的な固有名詞・数字・日付・矛盾点を最低1つ入れて『引っかかり』を作る"
              "（抽象的な煽りや一般論で埋めない）。"
              "(3)章の終わりに『そして最後に、〜が明らかになる』の形でオープンループ（最後まで見る理由）を1文張る。") if idx == 0
-            else "自然に前の章から続ける。" if idx < total - 1
+            else ("中盤の章＝視聴維持の勝負どころ。次を守る。"
+                  "(1)章の冒頭に『ここでは〜』と一言サインポストを置き、この章で何が分かるかを先に示す。"
+                  "(2)固有名詞・数字・具体例を最低1つ入れる（抽象論・一般論で埋めない）。"
+                  "(3)事実を並べるだけでなく、『なぜそうなるのか／どこが意外か』を書き手独自の視点で1〜2文analysisする"
+                  "（＝人間ならではの独自の付加価値。引用や要約の羅列にしない。これは維持率と、量産テンプレ判定回避の両方に効く）。"
+                  "(4)章末に次章への小さな引き（『では、なぜ〜なのか』等）を一文置く。") if idx < total - 1
             else "動画のまとめと、チャンネル登録・高評価のお願いで締める。")
     user = f"""次の動画の第{idx+1}章のナレーション本文だけを書いてください。
 
@@ -380,7 +411,7 @@ def generate_script(genre_key: str, topic: str | None = None,
         "image_prompts": image_prompts,
         "thumbnail_text": (outline.get("thumbnail_text") or title)[:24],
         "thumbnail_prompt": outline.get("thumbnail_prompt", genre["image_style"]),
-        "description": outline.get("description", ""),
+        "description": (outline.get("description", "") + _AI_DISCLOSURE),
         "tags": (outline.get("tags") or genre["tags"])[:15],
     }
 
