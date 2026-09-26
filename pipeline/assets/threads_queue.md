@@ -233,3 +233,17 @@ https://www.youtube.com/watch?v=JFYCT-lNUPI&list=PLP9ausaDhr0Q
 
 #睡眠
 ```
+
+## [ ] 09/26 16:09 ilhp89pFIsY（L1）
+
+```
+子どものいびきは、大人とは見るところが違います。
+
+毎晩続くのか、口が開いているか、日中に眠そうにしていないか。小児科学会の資料で挙げられている目安と、相談を考えるタイミングを整理しました。
+
+https://www.youtube.com/watch?v=ilhp89pFIsY&list=PLP9ausaDhr0Q
+
+※一般的な情報の紹介です。気になる症状が続く場合は医療機関にご相談ください。
+
+#睡眠
+```
