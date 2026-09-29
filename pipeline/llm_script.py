@@ -194,8 +194,22 @@ def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
     else:
         role = ("動画のまとめと、チャンネル登録・高評価のお願いで締める。"
                 "冒頭の問題提起を再現せず、ここまでで語った内容を受けてまとめる。")
-    from originality import editorial_note, TEMPLATE_TELLS
+    from originality import editorial_note, TEMPLATE_TELLS, avoid_bookends_block
     note = editorial_note()
+    # Past openings and closings, but only to the chapters that write them.
+    #
+    # This block was wired into the outline prompt only, and the outline does not
+    # write prose — it writes headings and summaries. The sentence a viewer
+    # actually hears first comes from here, and here had never seen it. The
+    # result was two consecutive videos opening with
+    # 「隣のいびきで夜中に目が覚めてしまう、そんな経験（を|は）ありませんか。」
+    # — five characters apart. Two videos that start with the same sentence is
+    # the templated-mass-production signal this whole module exists to avoid.
+    #
+    # Middle chapters are left alone: they open nothing, and padding every
+    # chapter prompt with the same list is how the opening instruction ended up
+    # repeated across all eight chapters once before.
+    bookends = avoid_bookends_block() if (idx == 0 or idx == total - 1) else ""
     # The compliance gate's own vocabulary, handed to the writer. Rewriting after
     # the fact costs a round trip each time and, three rounds in, costs the video.
     rules = ""
@@ -227,7 +241,7 @@ def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
 - 出典のある話は「〜という研究があります」「〜学会の資料では」と、根拠の所在を示す。
 
 【使ってはいけない言い回し】{banned}
-これらはどの生成動画にも出てくる言い方で、見た人にはすぐ分かる。別の言い方にすること。{voice}{rules}"""
+これらはどの生成動画にも出てくる言い方で、見た人にはすぐ分かる。別の言い方にすること。{bookends}{voice}{rules}"""
     out = _chat([{"role": "system", "content": "プロのナレーション脚本家。"},
                  {"role": "user", "content": user}], temperature=0.85)
     return out.strip()
