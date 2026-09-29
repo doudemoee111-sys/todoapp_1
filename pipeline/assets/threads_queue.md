@@ -247,3 +247,19 @@ https://www.youtube.com/watch?v=ilhp89pFIsY&list=PLP9ausaDhr0Q
 
 #睡眠
 ```
+
+## [ ] 09/29 16:49 E80utg9d2kA（rain）
+
+```
+眠れない家族へ。
+
+季節性アレルギーといびき：鼻づまりがもたらす睡眠の質低下と家族のための対策法
+
+後半は、雨音が2時間続きます。
+
+https://www.youtube.com/watch?v=E80utg9d2kA&list=PLP9ausaDhr0Q
+
+※一般的な情報の紹介です。気になる症状が続く場合は医療機関にご相談ください。
+
+#睡眠
+```
