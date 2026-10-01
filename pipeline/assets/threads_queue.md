@@ -263,3 +263,19 @@ https://www.youtube.com/watch?v=E80utg9d2kA&list=PLP9ausaDhr0Q
 
 #睡眠
 ```
+
+## [ ] 10/01 16:10 WNaXlROP68c（waves）
+
+```
+いびきと一緒に、咳が出る夜があります。
+
+どちらも気道が狭くなることと関係があると説明されています。何が起きているのか、受診を考えるならどこを見ておくのかを整理しました。
+
+後半は、10秒ごとにゆっくり寄せる波の音が2時間続きます。
+
+https://www.youtube.com/watch?v=WNaXlROP68c&list=PLP9ausaDhr0Q
+
+※一般的な情報の紹介です。気になる症状が続く場合は医療機関にご相談ください。
+
+#睡眠
+```
