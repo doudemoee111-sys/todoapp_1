@@ -4,6 +4,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SYMBOLS, WEB_DIR, loadAll } from "./lib.mjs";
+import { writeFeed } from "./build_mt4_feed.mjs";
 
 const TPL = join(import.meta.dirname, "templates");
 const core = readFileSync(join(TPL, "core.js"), "utf8");
@@ -33,3 +34,8 @@ writeFileSync(join(WEB_DIR, "fx_candlestick.html"), render("candlestick.html"));
 writeFileSync(join(WEB_DIR, "fx_dashboard.html"), render("dashboard.html"));
 console.log(`Built 2 pages from ${total} rows across ${SYMBOLS.length} symbols. Stamp: ${built}`);
 for (const s of SYMBOLS) console.log(`  ${s.key}: ${data[s.key].length} rows`);
+
+// Also refresh the MT4 overlay feed (fx/web/mt4_feed.{csv,json}), so the daily
+// Routine's existing `git add fx/web` publishes it with no extra step.
+const feed = writeFeed();
+console.log(`MT4 feed refreshed: ${feed.items.length} symbols.`);
