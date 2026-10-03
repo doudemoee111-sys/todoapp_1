@@ -279,3 +279,17 @@ https://www.youtube.com/watch?v=WNaXlROP68c&list=PLP9ausaDhr0Q
 
 #睡眠
 ```
+
+## [ ] 10/03 16:26 nxo2iYmp4Vw（L1）
+
+```
+眠れない夜の対策。
+
+パートナーのいびき記録を活用する：アプリと簡単な方法で受診時に役立てるために
+
+https://www.youtube.com/watch?v=nxo2iYmp4Vw&list=PLP9ausaDhr0Q
+
+※一般的な情報の紹介です。気になる症状が続く場合は医療機関にご相談ください。
+
+#睡眠
+```
