@@ -121,8 +121,16 @@ def _is_duplicate(topic: str, avoid_titles: list[str], genre: dict | None = None
         return False  # 判定に失敗したら重複扱いにせず続行(生成を止めない)
 
 
-def _outline(genre: dict, topic: str, shape: dict | None = None) -> dict:
+def _outline(genre: dict, topic: str, shape: dict | None = None,
+             measurement: dict | None = None) -> dict:
     from originality import editorial_note, avoid_bookends_block
+    from measurement import script_block
+
+    # The measured figures go to the outline, not only to the chapters that
+    # speak them: where the data sits in the running order is a structural
+    # decision. Put it in chapter 5 and the video is a lecture with a result
+    # attached; open on it and the whole thing is a report.
+    data = script_block(measurement)
 
     # Chapter count varies per video. A catalogue where every entry has exactly
     # eight chapters reads as a template even when each one is fine on its own.
@@ -136,18 +144,24 @@ def _outline(genre: dict, topic: str, shape: dict | None = None) -> dict:
              f"構成と語り口はこれに従ってください。一般論に流れそうになったら、"
              f"ここに書かれている立場に戻ること。\n{note}" if note else "")
 
+    data_shape = ("\n  **実測データがあるので、第1章は測った数字そのものから始め、"
+                  "第2章で測定の条件（日付・場所・機材・方法）と結果を全部報告する構成にすること。**"
+                  "数字を後ろに置かない。" if data else "")
+    title_rule = ("\n  ・**実測した数字か、測った対象を題名に入れる。**"
+                  "数字が入る題名は、どの動画にも書ける題名にはならない。" if data else "")
+
     user = f"""日本のYouTube長尺解説動画の構成案をJSONで作成してください。
 
 テーマ: {topic}
 ジャンル: {genre['label']}
-トーン: {genre['narration_style']}{voice}{rules}{avoid_bookends_block()}
+トーン: {genre['narration_style']}{voice}{rules}{avoid_bookends_block()}{data}
 
 要件:
-- chapters は{n_ch}個。導入(フック)→本編→まとめ→締めの流れ。
+- chapters は{n_ch}個。導入(フック)→本編→まとめ→締めの流れ。{data_shape}
 - 各chapterは heading(短い見出し) と summary(その章で語る内容の要点、2〜3文) を持つ。
 - **各章は、この動画でしか出てこない具体を必ず1つ含むこと。** 数値、検査や器具の
   正式名称、時刻や場面の描写など。どのいびき動画にも書ける一般論だけの章を作らない。
-- title: 100文字以内。テーマ固有の語を必ず入れる。次を守ること。
+- title: 100文字以内。テーマ固有の語を必ず入れる。次を守ること。{title_rule}
   ・**いびきをかく本人ではなく、隣で眠れない家族に向けて書く。**「いびき解消法」は
     本人が打つ検索語で、このチャンネルの視聴者のものではない。
   ・「知らないと危険」「衝撃の事実」のような、どの動画にも使える煽り文句は使わない。
@@ -178,7 +192,8 @@ JSON: {{{{"title":str,"chapters":[{{{{"heading":str,"summary":str}}}}],
 
 def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
                     heading: str, summary: str, prev_tail: str,
-                    per_chars: int | None = None) -> str:
+                    per_chars: int | None = None,
+                    measurement: dict | None = None) -> str:
     per = per_chars or max(420, genre.get("narration_target", NARRATION_TARGET_CHARS) // total)
     ctx = f"直前の章の終わり: {prev_tail[-120:]}" if prev_tail else "これは最初の章です。"
     # The opening instruction belongs to chapter 1 only. It used to live in
@@ -210,6 +225,13 @@ def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
     # chapter prompt with the same list is how the opening instruction ended up
     # repeated across all eight chapters once before.
     bookends = avoid_bookends_block() if (idx == 0 or idx == total - 1) else ""
+    # The full figures to the two chapters that report them (see _outline's
+    # data_shape), the fence to everyone else. Handing all eight chapters the
+    # full block makes the model recite the same readings eight times; handing
+    # none of them anything makes the ones without numbers invent some.
+    from measurement import script_block, guard_block
+    data = (script_block(measurement) if idx in (0, 1)
+            else guard_block(measurement))
     # The compliance gate's own vocabulary, handed to the writer. Rewriting after
     # the fact costs a round trip each time and, three rounds in, costs the video.
     rules = ""
@@ -241,7 +263,7 @@ def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
 - 出典のある話は「〜という研究があります」「〜学会の資料では」と、根拠の所在を示す。
 
 【使ってはいけない言い回し】{banned}
-これらはどの生成動画にも出てくる言い方で、見た人にはすぐ分かる。別の言い方にすること。{bookends}{voice}{rules}"""
+これらはどの生成動画にも出てくる言い方で、見た人にはすぐ分かる。別の言い方にすること。{bookends}{voice}{rules}{data}"""
     out = _chat([{"role": "system", "content": "プロのナレーション脚本家。"},
                  {"role": "user", "content": user}], temperature=0.85)
     return out.strip()
@@ -379,6 +401,41 @@ JSON: {{"narration": str, "title": str, "image_prompts": [str, ...], "hashtags":
     return teaser
 
 
+def _topic_from_measurement(genre: dict, rec: dict, avoid_titles: list[str],
+                            axis: int | None) -> str:
+    """Let the measurement choose the topic, instead of fitting one to it.
+
+    The other direction was tried first and is worse: pick a topic from the
+    rotation, then look for a reading that fits. It fits badly most weeks, and
+    the data ends up as a decoration in chapter 6 of a video that would have
+    existed without it. Starting here means the video is about the thing that
+    was measured, which is the only arrangement where the measurement carries
+    the video rather than the other way round.
+    """
+    axis_block = ""
+    if axis is not None and 0 <= axis < len(genre.get("topic_axes") or []):
+        axis_block = (f"\n\n【今回の切り口】{genre['topic_axes'][axis]}\n"
+                      "この観点に合うテーマにしてください。")
+    readings = "、".join(f"{v['label']} {v['value']}" for v in rec.get("readings") or [])
+    user = (
+        "次の実測データをもとに、日本のYouTube長尺解説動画のテーマを1つ提案してください。\n"
+        f"測ったもの: {rec['subject']}\n"
+        f"場所: {rec['where']}\n"
+        f"結果: {readings}\n"
+        f"測って分かったこと: {rec['finding']}\n\n"
+        "【最重要】この測定そのものを主題にしてください。"
+        "測定を話の一部として添えるのではなく、"
+        "『測ってみたらこうだった』が動画の背骨になるテーマにすること。\n"
+        "視聴者は『隣の人のいびきで眠れず、寝室をどうにかしたい40〜50代』です。\n"
+        "体への効果や症状を主題にしないこと。扱うのは部屋とモノです。\n"
+        "8〜10分で語れる具体的なテーマを、1行で。"
+        + axis_block + _avoid_block(avoid_titles))
+    topic = _chat([{"role": "system", "content": "YouTubeの企画者。出力はテーマ1行のみ。"},
+                   {"role": "user", "content": user}], temperature=0.7).strip()
+    print(f"  [topic] 実測データから: {topic}")
+    return topic
+
+
 def _select_topic(genre: dict, avoid_titles: list[str],
                   max_retries: int = 4) -> tuple[str, int | None]:
     """Pick a topic, re-picking if it duplicates a recent one (semantic check).
@@ -404,12 +461,18 @@ def _select_topic(genre: dict, avoid_titles: list[str],
 
 
 def generate_script(genre_key: str, topic: str | None = None,
-                    avoid_titles: list[str] | None = None) -> dict:
+                    avoid_titles: list[str] | None = None,
+                    measurement: dict | None = None) -> dict:
     genre = GENRES[genre_key]
     avoid_titles = avoid_titles or []
     # None when the topic was supplied by hand: the run is then outside the
     # rotation, so no link may claim it matches this video's subject.
     axis = None
+    if measurement is not None:
+        from measurement import axis_hint
+        axis = axis_hint(measurement)
+        if not topic:
+            topic = _topic_from_measurement(genre, measurement, avoid_titles, axis)
     if not topic:
         topic, axis = _select_topic(genre, avoid_titles)
 
@@ -419,7 +482,7 @@ def generate_script(genre_key: str, topic: str | None = None,
     print(f"  [originality] 構成 {shape['chapters']}章 / "
           f"{shape['narration_chars']}字 / 画像{shape['num_images']}枚")
 
-    outline = _outline(genre, topic, shape)
+    outline = _outline(genre, topic, shape, measurement)
     title = outline.get("title", topic)[:100]
     chapters_meta = outline.get("chapters", [])
     total = len(chapters_meta)
@@ -428,7 +491,8 @@ def generate_script(genre_key: str, topic: str | None = None,
     for i, cm in enumerate(chapters_meta):
         narration = _expand_chapter(genre, topic, title, i, total,
                                     cm.get("heading", ""), cm.get("summary", ""), prev_tail,
-                                    per_chars=max(420, shape["narration_chars"] // max(1, total)))
+                                    per_chars=max(420, shape["narration_chars"] // max(1, total)),
+                                    measurement=measurement)
         chapters.append({"heading": cm.get("heading", ""), "narration": narration})
         prev_tail = narration
 
@@ -454,6 +518,7 @@ def generate_script(genre_key: str, topic: str | None = None,
         "thumbnail_prompt": outline.get("thumbnail_prompt", genre["image_style"]),
         "description": outline.get("description", ""),
         "tags": (outline.get("tags") or genre["tags"])[:15],
+        "measurement_id": (measurement or {}).get("id"),
     }
 
 

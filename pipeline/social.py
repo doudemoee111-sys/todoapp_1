@@ -39,6 +39,9 @@ SOUND_LINE = {
     "waves":  "後半は、10秒ごとにゆっくり寄せる波の音が2時間続きます。",
     "stream": "後半は、せせらぎの音が2時間続きます。",
     "drone":  "後半は、低くたゆたう持続音が2時間続きます。",
+    # Generic fallback only. A field recording's whole value is that it has a
+    # date and a place, so the caller normally passes sound_line and says them.
+    "field":  "後半は、実際に録ってきた音が2時間続きます。合成音ではありません。",
 }
 
 FOOTER = "※一般的な情報の紹介です。気になる症状が続く場合は医療機関にご相談ください。"
@@ -53,6 +56,7 @@ def watch_url(video_id: str, playlist_id: str | None = None) -> str:
 
 def threads_post(hook: str, body: str, video_id: str,
                  playlist_id: str | None = None, texture: str | None = None,
+                 sound_line: str | None = None,
                  tag: str = TAG) -> str:
     """1投稿を組み立てる。500文字に収まらなければ本文側を削る。
 
@@ -61,8 +65,9 @@ def threads_post(hook: str, body: str, video_id: str,
     扱う以上つけない選択肢がない。
     """
     parts = [hook.strip(), body.strip()]
-    if texture and texture in SOUND_LINE:
-        parts.append(SOUND_LINE[texture])
+    line = sound_line or (SOUND_LINE.get(texture) if texture else None)
+    if line:
+        parts.append(line)
     tail = "\n\n".join([watch_url(video_id, playlist_id), FOOTER, tag])
 
     post = "\n\n".join(parts) + "\n\n" + tail
@@ -87,13 +92,15 @@ def check(post: str) -> list[str]:
 
 
 def render(hook: str, body: str, video_id: str, playlist_id: str | None = None,
-           texture: str | None = None) -> tuple[str, list[str]]:
-    post = threads_post(hook, body, video_id, playlist_id, texture)
+           texture: str | None = None,
+           sound_line: str | None = None) -> tuple[str, list[str]]:
+    post = threads_post(hook, body, video_id, playlist_id, texture, sound_line)
     return post, check(post)
 
 
 def from_package(pkg: dict, video_id: str, playlist_id: str | None = None,
-                 texture: str | None = None) -> tuple[str, list[str]]:
+                 texture: str | None = None, recording: dict | None = None,
+                 measurement: dict | None = None) -> tuple[str, list[str]]:
     """A post drafted from the script package, for the operator to edit and send.
 
     Deliberately not auto-posted. Threads has no API here, and more importantly
@@ -109,4 +116,17 @@ def from_package(pkg: dict, video_id: str, playlist_id: str | None = None,
     if not hook.endswith(("。", "？", "！")):
         hook += "。"
     body = (pkg.get("topic") or pkg.get("description", ""))[:110]
-    return render(hook, body, video_id, playlist_id, texture)
+
+    # A measured figure makes a far better hook than a thumbnail line, because
+    # it is the one thing in the post that could not have been written without
+    # doing the thing. Threads shows roughly the first line before the fold.
+    if measurement and (measurement.get("readings") or []):
+        r = measurement["readings"][0]
+        hook = f"{r['label']}、{r['value']}でした。"
+
+    # Provenance over a generic soundscape line, for the same reason.
+    sound_line = None
+    if recording:
+        sound_line = (f"後半の音は、{recording['date']}に{recording['where']}で録った"
+                      f"{recording['subject']}です。合成音ではありません。2時間続きます。")
+    return render(hook, body, video_id, playlist_id, texture, sound_line)

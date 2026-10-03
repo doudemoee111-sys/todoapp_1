@@ -212,6 +212,116 @@ GENRES = {
             "40代・50代向けに具体的にお話しします。\n"
         ),
     },
+
+    # --- Bedroom measurement (D-1) ------------------------------------------
+    # Same channel, same audience, different footing.
+    #
+    # Why this exists: the sleep genre above talks about a body — snoring, apnea,
+    # symptoms — and that put every script inside 薬機法 and the 医療広告
+    # ガイドライン. Four weeks of it cost nine dictionary patches, three aborted
+    # runs, and a steady pressure towards vague titles, because the only safe way
+    # to say "this helps you sleep" is to say nothing. 2 subscribers and 226 views
+    # over 17 videos is the result.
+    #
+    # This genre talks about a ROOM and the OBJECTS in it: decibels, lux, degrees,
+    # centimetres, newtons. None of that is a medical claim, so the gate stops
+    # firing — and, far more importantly, every video can carry a number the
+    # channel owner measured themselves. That measured number is the one thing a
+    # mass-produced catalogue cannot have, and it is the direct answer to the
+    # AI judgment this channel received in August.
+    #
+    # The compliance gate stays ON. Removing the pressure is not the same as
+    # removing the guard: "この枕でいびきが改善" is exactly the sentence a writer
+    # drifts into on axis 12, and it is still a 薬機法 violation here.
+    #
+    # ★ Same index contract as sleep: assets/affiliate_links.json targets.room
+    #   indexes into this list, pinned by keyword. affiliate.check_axis_map()
+    #   stops the run if they drift apart.
+    "room": {
+        "key": "room",
+        "label": "寝室の実測",
+        "publish_hour_jst": 21,
+        "youtube_category_id": "26",   # Howto & Style
+        "narration_target": 3200,
+        "compliance": "medical",
+        "channel_id": "UCrCoZaskQrz6nBkRmS1SAJQ",   # 睡眠・安眠チャンネル2
+        # Measured data is the point of this genre, so it must be visible: the
+        # instruments, the readings, the room. Brighter than the sleep genre's
+        # night imagery because a measurement video is watched awake, and the
+        # thumbnails moved to a bright palette for the same reason.
+        "image_style": (
+            "clean documentary photograph of a quiet Japanese bedroom and its "
+            "objects, soft daylight through a window, measuring instruments on a "
+            "nightstand, pale warm neutrals with muted teal accents, calm and "
+            "uncluttered, shallow depth of field, 8k, no text, no watermark, "
+            "no faces, no people"
+        ),
+        # 30 axes, coprime with 7, so the weekly schedule walks the whole list
+        # instead of revisiting six of them forever.
+        "topic_axes": [
+            "寝室の騒音を測る（測り方、単位、どの時間帯に何が鳴っているか）",
+            "壁・ドア・窓から入る音を、どこから入っているか測り分ける",
+            "隣の寝息やいびきが届く経路（壁越しと空気を伝わる分の違い）",
+            "耳栓の遮音値（NRR・SNR）の読み方と、実際に測った値との差",
+            "耳栓の素材ごとの付け心地と、一晩つけたあとの状態",
+            "ホワイトノイズ機器やアプリの音量を測る（何デシベルで何が覆われるか）",
+            "寝室の温度を測る（就寝時から朝までの推移）",
+            "寝室の湿度を測る（加湿器のあるなしでの推移）",
+            "エアコンの設定温度と、実際の枕元の温度の差",
+            "寝室の明るさを測る（ルクス、常夜灯・街灯・家電のランプ）",
+            "遮光カーテンの等級と、実際に入ってくる光の量",
+            "スマホや時計、家電の待機ランプの明るさと、置き場所",
+            "枕の高さを測る（仰向けと横向きでの首の角度の差）",
+            "枕の素材ごとの沈み込みと、朝までの復元",
+            "マットレスの硬さ（N値）と、沈み込みの実測",
+            "マットレスの経年（何年でどれだけへたるか、へたりの測り方）",
+            "敷きパッド・ベッドパッドで変わる寝床の温度",
+            "掛け布団の重さと、朝までの保温の実測",
+            "寝床内の温度と湿度（布団の中の環境を測る）",
+            "ベッドの配置と、壁や窓からの距離で変わる音と温度",
+            "ベッドを2台に分ける場合の、実際の置き方と寸法",
+            "寝返りに必要な幅を測る（シングル・セミダブルの実寸）",
+            "ベッドフレームやすのこのきしみ音を測る",
+            "加湿器の種類ごとの運転音と、実際の加湿量",
+            "空気清浄機・サーキュレーターの運転音（弱運転で何デシベルか）",
+            "間接照明と調光で、就寝前1時間の明るさをどう落とすか",
+            "寝室の空気（二酸化炭素濃度を測る、換気のあるなし）",
+            "季節で変わる寝室環境（夏と冬で何がどれだけ違うか）",
+            "集合住宅と戸建てで違う、寝室の音と温度",
+            "寝具を買う前に、自分の寝室で測っておくとよい数値",
+        ],
+        "topic_seed_prompt": (
+            "『寝室の環境を実際に測って確かめる』をテーマにした、"
+            "日本のYouTube長尺解説動画のテーマを1つ提案してください。\n"
+            "【最重要】扱うのは体ではなく、部屋とモノです。"
+            "音・光・温度・湿度・寸法・硬さなど、数字で測れるものを題材にしてください。"
+            "症状や体への効果を題材にしないこと。\n"
+            "視聴者は『隣の人のいびきで眠れず、寝室をどうにかしたいと思っている40〜50代』です。\n"
+            "8〜10分で語れる具体的なテーマにすること。"
+        ),
+        "opening_style": (
+            "冒頭は挨拶をせず、測った数字そのものか、測っている場面の描写から入る。"
+            "例:『枕元で測ったら、深夜1時の寝室は42デシベルありました。』"
+            "一般論の問題提起から入らない。"
+        ),
+        "narration_style": (
+            "落ち着いた低めのトーンで、測定結果を淡々と報告する語り口。"
+            "測った条件（いつ・どこで・何で測ったか）を必ず添える。"
+            "数字から言えることだけを言い、言えないことは『これは分かりません』とそのまま言う。"
+            "体への効果や症状の改善には踏み込まず、必要なら医療機関への相談に渡す。"
+            "専門用語は必ずかみ砕いて言い換える。"
+        ),
+        "tags": ["寝室", "睡眠環境", "快眠グッズ", "騒音", "デシベル", "遮光",
+                 "枕", "マットレス", "耳栓", "温湿度", "40代", "50代"],
+        "playlist_title": "寝室を測る — 睡眠環境の実測記録",
+        "playlist_description": (
+            "寝室の音・光・温度・寸法を実際に測った記録です。"
+            "体への効果ではなく、部屋とモノの数字だけを扱います。"
+        ),
+        "description_prefix": (
+            "寝室を実際に測った記録です。測定の条件は概要欄の最後に載せています。\n"
+        ),
+    },
 }
 
 # This branch drives ONE channel: 睡眠・安眠チャンネル2.
@@ -225,9 +335,9 @@ GENRES = {
 #
 # Consequently there is nothing to rotate between. --alternate and --rotate-date
 # still work; they resolve to the only genre there is.
-ROTATION = ["sleep"]
+ROTATION = ["room"]
 ROTATION_PHASE = int(os.environ.get("ROTATION_PHASE", "0"))
-DEFAULT_GENRE = "sleep"
+DEFAULT_GENRE = "room"
 
 # ---- Upload -----------------------------------------------------------------
 # "private" + publishAt => YouTube schedules it public at that time.

@@ -92,7 +92,20 @@ TEXTURE_LABEL = {
     "waves":  "波の音",
     "stream": "せせらぎ",
     "drone":  "音楽",
+    "field":  "実録音",
 }
+
+# "field" is a bed built from a recording somebody actually made (field_audio.py).
+# It is deliberately NOT in TEXTURES: the rotation picks the least-used texture,
+# and a texture that needs a file on disk cannot be picked by a counter — the
+# run would choose it and then have nothing to build from. A field recording is
+# chosen because one is available, never because it is its turn.
+#
+# It is in TEXTURE_LABEL because the label does the rest of the work: titled()
+# puts 【実録音】 on the video and used_textures() reads it back, so a field
+# recording counts in the comparison alongside the synthesised ones. That
+# comparison is the whole question D-2 exists to answer.
+ALL_TEXTURES = TEXTURES + ("field",)
 
 
 def titled(title: str, texture: str, limit: int = 100) -> str:
@@ -152,7 +165,7 @@ def used_textures() -> dict[str, int] | None:
     except Exception as e:  # noqa: BLE001
         print(f"  [ambient] チャンネルを読めませんでした（順番はローカルの控えを使います）: {e}")
         return None
-    counts = {t: 0 for t in TEXTURES}
+    counts = {t: 0 for t in ALL_TEXTURES}
     for t, label in TEXTURE_LABEL.items():
         marker = f"【{label}】"
         counts[t] = sum(1 for title in titles if title.startswith(marker))
@@ -186,7 +199,7 @@ def next_texture(advance: bool = True) -> str:
         return _fallback_texture(advance)
     texture = min(TEXTURES, key=lambda t: (counts[t], TEXTURES.index(t)))
     print("  [ambient] 公開済みの内訳 "
-          + " / ".join(f"{TEXTURE_LABEL[t]}{counts[t]}" for t in TEXTURES))
+          + " / ".join(f"{TEXTURE_LABEL[t]}{counts[t]}" for t in ALL_TEXTURES))
     return texture
 
 @dataclass
@@ -217,8 +230,8 @@ def variation(key: str, texture: str | None = None) -> NoiseParams:
     h = abs(int.from_bytes(raw[-8:].ljust(8, b"\0"), "big"))
     if texture is None:
         texture = next_texture()
-    if texture not in TEXTURES:
-        raise ValueError(f"未知のテクスチャ {texture!r}。選べるのは {', '.join(TEXTURES)}")
+    if texture not in ALL_TEXTURES:
+        raise ValueError(f"未知のテクスチャ {texture!r}。選べるのは {', '.join(ALL_TEXTURES)}")
     return NoiseParams(
         seed_l=h % 900_000 + 1_000,
         seed_r=(h // 7) % 900_000 + 100_000,
@@ -355,6 +368,25 @@ def synthesize_masking_noise(out_path: str | Path, seconds: int, params: NoisePa
             "-c:a", "aac", "-b:a", AMBIENT_AUDIO_BITRATE, str(out_path)]
     _run(cmd)
     return out_path
+
+
+def build_bed(out_path, seconds: int, params: NoiseParams,
+              recording: dict | None = None, fade_in: int = 20, fade_out: int = 30):
+    """The long bed, however it is made. One call site for both kinds.
+
+    Synthesised and recorded beds differ in everything except their contract:
+    `seconds` of 48 kHz stereo at -23 LUFS with the same fades. Keeping the
+    choice here rather than in run.py means the caller never has to know which
+    it got, and the two can never drift apart in level — which matters, because
+    a listener who falls asleep to one of these and is woken by the next one
+    does not come back.
+    """
+    if params.texture == "field":
+        if not recording:
+            raise ValueError("texture='field' には録音データが必要です（field_audio.take()）")
+        from field_audio import build_bed as _field_bed
+        return _field_bed(recording, out_path, seconds, fade_in, fade_out)
+    return synthesize_masking_noise(out_path, seconds, params, fade_in, fade_out)
 
 
 # ---- video ------------------------------------------------------------------

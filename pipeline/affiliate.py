@@ -40,55 +40,89 @@ def _load() -> dict:
         raise AffiliateError(f"assets/affiliate_links.json が壊れています: {e}") from e
 
 
+def _targets(link: dict, genre_key: str) -> tuple[list | None, list | None]:
+    """This link's (axes, axis_keys) for one genre.
+
+    Two genres now run on this channel and they number their axes differently —
+    "枕の高さ" is axis 7 under sleep and axis 12 under room. A single `axes`
+    list cannot mean both, and the failure would be silent: a mattress link
+    quietly appearing under a video about carbon dioxide.
+
+    So a link may carry `targets: {"<genre>": {"axes": [...], "axis_keys": [...]}}`.
+    A genre missing from `targets` gets nothing — deliberately. The reason a
+    link is gated at all is that it is wrong somewhere, and a genre nobody
+    thought about is exactly where "somewhere" lives.
+
+    `axes`/`axis_keys` at the top level stay valid and mean the sleep genre, so
+    a link written before this existed keeps working.
+    """
+    targets = link.get("targets")
+    if isinstance(targets, dict):
+        t = targets.get(genre_key)
+        if isinstance(t, dict):
+            return t.get("axes"), t.get("axis_keys")
+        return [], []          # gated, and this genre was not listed
+    return link.get("axes"), link.get("axis_keys")
+
+
 def check_axis_map(data: dict | None = None) -> None:
     """Verify every link's axes still point at the topic it was chosen for.
 
-    "axes" is a list of positions in config.GENRES["sleep"]["topic_axes"]. That
-    is a fragile thing to store: inserting one line into the axis list shifts
-    every index below it, and nothing about the resulting mismatch is visible —
-    the run succeeds, the description renders, and a mattress link quietly
-    appears under a video about talking to a reluctant partner. Nobody reviews
-    a description that looks fine.
+    "axes" is a list of positions in a genre's topic_axes. That is a fragile
+    thing to store: inserting one line into the axis list shifts every index
+    below it, and nothing about the resulting mismatch is visible — the run
+    succeeds, the description renders, and a mattress link quietly appears
+    under a video about talking to a reluctant partner. Nobody reviews a
+    description that looks fine.
 
     So each index is stored alongside a word that must appear in the axis text.
     The index can drift; the wording cannot drift the same way by accident. When
     they disagree we stop before uploading, because a mis-targeted advertisement
     on a medical channel is a compliance problem, not a cosmetic one.
 
+    Every genre is checked, not just the one about to run: a link is edited once
+    and published for months, so the moment to catch a bad index is while
+    somebody is looking at the file, not on the morning that genre comes round.
+
     Raises AffiliateError. Called from run.py's preflight.
     """
     from config import GENRES
-    axes = GENRES["sleep"]["topic_axes"]
     data = _load() if data is None else data
     problems: list[str] = []
-    for link in data.get("links") or []:
-        name = link.get("program") or link.get("label") or link.get("url", "")[:40]
-        idxs = link.get("axes")
-        if idxs is None:
+    for genre_key, genre in GENRES.items():
+        axes = genre.get("topic_axes")
+        if not axes:
             continue
-        keys = link.get("axis_keys")
-        if keys is None:
-            problems.append(f"{name}: axes はあるが axis_keys が無い（照合できない）")
-            continue
-        if len(keys) != len(idxs):
-            problems.append(
-                f"{name}: axes {len(idxs)}件 と axis_keys {len(keys)}件 の数が合わない")
-            continue
-        for i, key in zip(idxs, keys):
-            if not 0 <= i < len(axes):
-                problems.append(f"{name}: 切り口 {i} は存在しない（切り口は0〜{len(axes)-1}）")
-            elif key not in axes[i]:
+        for link in data.get("links") or []:
+            name = link.get("program") or link.get("label") or link.get("url", "")[:40]
+            where = f"[{genre_key}] {name}"
+            idxs, keys = _targets(link, genre_key)
+            if idxs is None:
+                continue
+            if keys is None:
+                problems.append(f"{where}: axes はあるが axis_keys が無い（照合できない）")
+                continue
+            if len(keys) != len(idxs):
                 problems.append(
-                    f"{name}: 切り口 {i} に「{key}」が無い。"
-                    f"現在の切り口{i}は「{axes[i][:28]}…」。"
-                    "切り口を並べ替えたなら axes を直すこと")
+                    f"{where}: axes {len(idxs)}件 と axis_keys {len(keys)}件 の数が合わない")
+                continue
+            for i, key in zip(idxs, keys):
+                if not 0 <= i < len(axes):
+                    problems.append(
+                        f"{where}: 切り口 {i} は存在しない（切り口は0〜{len(axes)-1}）")
+                elif key not in axes[i]:
+                    problems.append(
+                        f"{where}: 切り口 {i} に「{key}」が無い。"
+                        f"現在の切り口{i}は「{axes[i][:28]}…」。"
+                        "切り口を並べ替えたなら axes を直すこと")
     if problems:
         raise AffiliateError(
             "アフィリエイトリンクの切り口指定が、config.py の topic_axes とずれています。"
             "このまま投稿すると、無関係な回に広告が出ます:\n  - " + "\n  - ".join(problems))
 
 
-def active_links(axis: int | None = None, data: dict | None = None) -> list[dict]:
+def active_links(axis: int | None = None, data: dict | None = None,
+                 genre_key: str = "sleep") -> list[dict]:
     """Links allowed under this video's topic axis (see config.py topic_axes).
 
     A link with no "axes" key runs everywhere. A link WITH one runs only on the
@@ -96,13 +130,17 @@ def active_links(axis: int | None = None, data: dict | None = None) -> list[dict
     or an ambient video. Withholding is the safe default: the whole reason a link
     is gated is that it is wrong somewhere, and "somewhere" is exactly what an
     unknown axis cannot rule out.
+
+    `genre_key` selects which genre's numbering `axis` is counted in. Getting
+    this wrong is worse than showing no link at all, so it is a required part of
+    the caller's context rather than something guessed here.
     """
     data = _load() if data is None else data
     out = []
     for link in data.get("links") or []:
         if not link.get("enabled"):
             continue
-        allowed = link.get("axes")
+        allowed, _ = _targets(link, genre_key)
         if allowed is not None and (axis is None or axis not in allowed):
             continue
         if not (link.get("url") or "").strip():
@@ -197,10 +235,10 @@ def _check_labels(links: list[dict]) -> None:
             "（生成台本と違い、ここは自動リライトしません）")
 
 
-def description_block(axis: int | None = None) -> str:
+def description_block(axis: int | None = None, genre_key: str = "sleep") -> str:
     """The block to place near the top of a description. '' when unconfigured."""
     data = _load()
-    links = active_links(axis, data)
+    links = active_links(axis, data, genre_key)
     if not links:
         return ""
     _check_media(links, data)
@@ -216,18 +254,21 @@ def description_block(axis: int | None = None) -> str:
     return "\n".join(lines)
 
 
-def comment_block(axis: int | None = None) -> str:
+def comment_block(axis: int | None = None, genre_key: str = "sleep") -> str:
     """The same links for a pinned comment, where the fold does not apply."""
-    block = description_block(axis)
+    block = description_block(axis, genre_key)
     return f"{block}\n\n（リンクは予告なく変更・終了することがあります）" if block else ""
 
 
 if __name__ == "__main__":
     import sys
-    from config import GENRES
-    axes = GENRES["sleep"]["topic_axes"]
-    wanted = [int(a) for a in sys.argv[1:]] or list(range(len(axes)))
+    from config import GENRES, DEFAULT_GENRE
+    args = sys.argv[1:]
+    genre_key = args.pop(0) if args and args[0] in GENRES else DEFAULT_GENRE
+    axes = GENRES[genre_key]["topic_axes"]
+    wanted = [int(a) for a in args] or list(range(len(axes)))
+    print(f"### ジャンル: {genre_key}")
     for i in wanted:
-        out = description_block(i)
+        out = description_block(i, genre_key)
         print(f"\n=== 切り口 {i}: {axes[i]} ===")
         print(out or "（この回に出すリンクはありません）")

@@ -112,6 +112,27 @@ def preflight(do_upload: bool, need_tts: bool = True, genre: dict | None = None)
             raise PreflightError(str(e)) from e
         print("[preflight] アフィリエイトの切り口指定: topic_axes と一致")
 
+    # The two inputs a human fills in by hand. Validated here because a typo in
+    # either is cheap now and expensive twenty minutes into a render — and because
+    # preflight output is the one place the owner reliably reads.
+    #
+    # Low stock is a warning, never an abort. Stopping the day's video over a
+    # missing measurement would repeat the medical gate's worst failure mode: a
+    # day with nothing published and a pipeline nobody trusts. A gap is reported,
+    # recorded, and worked around.
+    import measurement
+    import field_audio
+    try:
+        measurement.check()
+        field_audio.check()
+    except (measurement.MeasurementError, field_audio.FieldAudioError) as e:
+        raise PreflightError(str(e)) from e
+    _m, _f = len(measurement.pending()), len(field_audio.pending())
+    print(f"[preflight] 実測データ {_m}件 / 実録音 {_f}件 が使えます")
+    for _w in (measurement.stock_warning(), field_audio.stock_warning()):
+        if _w:
+            print(f"[preflight] 警告: {_w}")
+
     # The dictionary itself has an expiry. Warned, never blocked: a stale review
     # is a reason to look at the law this week, not a reason to skip today's
     # video. It prints on every run so it cannot be quietly outlived.
@@ -145,7 +166,7 @@ def _next_genre(state: dict) -> str:
     return ROTATION[(ROTATION.index(last) + 1) % len(ROTATION)]
 
 
-def _date_genre(d: "date | None" = None) -> str:
+def _date_genre(d=None) -> str:   # d: datetime.date | None
     """Stateless daily rotation: pick the genre from the calendar day.
 
     Kept because --rotate-date is still a valid flag, but on this branch ROTATION
@@ -173,6 +194,22 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     t0 = time.time()
     print(f"== {genre['label']} == work dir: {work}")
 
+    # The measurement comes first, before anything is generated, because when
+    # one exists it chooses the topic — see llm_script._topic_from_measurement.
+    # Fitting a measurement to an already-chosen topic was the other option and
+    # it produces a video that would have existed without the data.
+    #
+    # None is a normal outcome, not an error. The video is then built without a
+    # measurement and says so in the runlog, the result file and the report. It
+    # is NOT built with an invented one: a fabricated primary source published
+    # under this channel's name is worse than no source at all.
+    import measurement as _meas
+    meas = _meas.take() if not narration else None
+    if meas:
+        print(f"[measurement] 実測データを使います: {meas['id']}（{meas['date']} {meas['subject']}）")
+    else:
+        print("[measurement] 実測データなしの回です（在庫0件）")
+
     # 1. Script
     if narration:
         # Provided (hand-written) script: use the narration as-is, generate only
@@ -187,7 +224,8 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
         avoid_titles = fetch_recent_titles() if topic is None else []
         if avoid_titles:
             print(f"      重複回避: 直近 {len(avoid_titles)} 件のタイトルを回避対象にします")
-        pkg = generate_script(genre_key, topic, avoid_titles=avoid_titles)
+        pkg = generate_script(genre_key, topic, avoid_titles=avoid_titles,
+                              measurement=meas)
 
     # 1b. Compliance gate — a no-op unless the genre declares compliance:
     # "medical". Runs before TTS so a flagged script is never voiced, and
@@ -232,8 +270,12 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     print("[5/6] thumbnail…")
     thumb = work / "thumbnail.png"
     try:
+        # The badge says what kind of video this is before anyone reads the
+        # headline — the same job 【雨音】 does on the ambient ones. On a
+        # measurement video it is the claim the channel is making.
         make_thumbnail(pkg["thumbnail_text"] or pkg["title"], thumb,
-                       subtitle=pkg.get("topic", ""))
+                       subtitle=pkg.get("topic", ""),
+                       badge="実測" if meas else "")
     except Exception as e:  # noqa: BLE001
         print(f"      thumbnail failed: {e}")
         thumb = None
@@ -241,6 +283,7 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     result = {"genre": genre_key, "mode": "narrated", "work_dir": str(work),
               "video": str(video), "title": pkg["title"], "topic": pkg["topic"],
               "axis": pkg.get("axis"), "thumbnail_text": pkg.get("thumbnail_text", ""),
+              "measurement_id": (meas or {}).get("id"),
               "duration_s": dur}
 
     # 6. Upload (scheduled)
@@ -254,13 +297,19 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
         playlist_id = (ensure_playlist(genre["playlist_title"],
                                        genre.get("playlist_description", ""))
                        if genre.get("playlist_title") else None)
-        _desc = _description(genre, pkg, sub_segments, related, playlist_id)
+        _desc = _description(genre, pkg, sub_segments, related, playlist_id,
+                             measurement_rec=meas)
         _final_check(pkg["title"], _desc, pkg["tags"])
         vid = upload_video(video, pkg["title"],
                            _desc, pkg["tags"],
                            genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
         result["video_id"] = vid
-        _threads_draft(result, pkg, playlist_id)
+        # Only after the upload succeeded. Marking it earlier would burn a
+        # measurement on a run that then failed, and there is no way to get it
+        # back — the owner would have to go and measure again.
+        if meas:
+            _meas.mark_used(meas["id"], vid)
+        _threads_draft(result, pkg, playlist_id, measurement=meas)
         result["publish_at_jst"] = pub.isoformat()
         if genre.get("playlist_title"):
             add_to_playlist(vid, genre["playlist_title"],
@@ -349,7 +398,14 @@ def push_runlog(message: str) -> bool:
     repo = config.ROOT.parent
     branch = "claude/youtube-sleep-content-automation-4k28y3"
     carried = [RUNLOG, THREADS_QUEUE, config.ASSETS_DIR / "bookends.json",
-               config.ASSETS_DIR / "ambient_rotation.json"]
+               config.ASSETS_DIR / "ambient_rotation.json",
+               # Both record which video consumed which hand-supplied input.
+               # If the push fails the record still exists in the published
+               # description, so this is the convenience copy, not the source
+               # of truth — but without it the next run re-offers the same
+               # measurement and the same recording.
+               config.ASSETS_DIR / "measurements.json",
+               config.ASSETS_DIR / "field_recordings.json"]
     rels = [str(p.relative_to(repo)) for p in carried if p.exists()]
     try:
         for attempt in range(3):
@@ -438,6 +494,7 @@ def append_runlog(result: dict, phase: str = "done") -> None:
                f"| {cell(result.get('title', ''))[:110 if phase == 'abort' else 34]} "
                f"| {cell(result.get('thumbnail_text', ''))[:14]} "
                f"| {cell(result.get('texture', '-'))} "
+               f"| {'✔' if result.get('measurement_id') else '—'} "
                f"| {result.get('duration_s', 0) / 60:.0f}分 "
                f"| {result.get('elapsed_s', 0) / 60:.0f}分 "
                f"| {cell(result.get('video_id', '(未投稿)'))} "
@@ -448,8 +505,8 @@ def append_runlog(result: dict, phase: str = "done") -> None:
                 "定期実行が残す唯一の証跡。リポジトリの外からは実行の成否が見えないため、\n"
                 "実行の開始時と完了時に1行ずつ追記し、その都度pushする。\n"
                 "**▶開始 の行があるのに ✔完了 の行が無ければ、その実行は途中で切られている。**\n\n"
-                "| 日時(JST) | 段階 | mode | 切口 | タイトル | サムネ | 音 | 尺 | 所要 | videoId | 公開予定 |\n"
-                "|---|---|---|---|---|---|---|---|---|---|---|\n", encoding="utf-8")
+                "| 日時(JST) | 段階 | mode | 切口 | タイトル | サムネ | 音 | 実測 | 尺 | 所要 | videoId | 公開予定 |\n"
+                "|---|---|---|---|---|---|---|---|---|---|---|---|\n", encoding="utf-8")
         with RUNLOG.open("a", encoding="utf-8") as f:
             f.write(row)
         print(f"  [runlog] {RUNLOG.name} に追記しました")
@@ -509,7 +566,9 @@ def _queue_threads(result: dict, post: str, problems: list[str]) -> None:
         print(f"  [threads] 追記に失敗（続行）: {e}")
 
 
-def _threads_draft(result: dict, pkg: dict, playlist_id: str | None) -> None:
+def _threads_draft(result: dict, pkg: dict, playlist_id: str | None,
+                   recording: dict | None = None,
+                   measurement: dict | None = None) -> None:
     """Print a Threads draft with the run report, and save it beside the video.
 
     External traffic is the one growth lever that is both free and counted:
@@ -524,7 +583,8 @@ def _threads_draft(result: dict, pkg: dict, playlist_id: str | None) -> None:
     try:
         import social
         post, problems = social.from_package(
-            pkg, result["video_id"], playlist_id, result.get("texture"))
+            pkg, result["video_id"], playlist_id, result.get("texture"),
+            recording=recording, measurement=measurement)
         (Path(result["work_dir"]) / "threads.txt").write_text(post, encoding="utf-8")
         _queue_threads(result, post, problems)
         print("\n[threads] 告知文の下書き（そのまま貼れます。手直し推奨）")
@@ -609,7 +669,9 @@ def _final_check(title: str, description: str, tags: list[str]) -> None:
 
 def _description(genre: dict, pkg: dict, sub_segments=None,
                  related: list[tuple[str, str]] | None = None,
-                 playlist_id: str | None = None) -> str:
+                 playlist_id: str | None = None,
+                 measurement_rec: dict | None = None,
+                 recording: dict | None = None) -> str:
     """Final description: lead block, chapters, summary, then links to siblings.
 
     The lead block goes first because YouTube folds the description after the
@@ -636,7 +698,7 @@ def _description(genre: dict, pkg: dict, sub_segments=None,
     # hand-written label stops the run rather than publishing it: the labels are
     # static, so a failure means the file needs an edit, not a retry.
     from affiliate import description_block
-    links = description_block(pkg.get("axis"))
+    links = description_block(pkg.get("axis"), genre["key"])
     if links:
         parts.append(links)
 
@@ -663,6 +725,17 @@ def _description(genre: dict, pkg: dict, sub_segments=None,
     if playlist_id:
         parts.append(f"▼ 続けて見る（再生リスト・自動で次が再生されます）\n"
                      f"{playlist_url(playlist_id)}")
+
+    # Provenance last, and never omitted when there is any. It is reference
+    # material rather than a hook, so it does not belong above the fold — but
+    # a measurement whose conditions are not published is just a number
+    # somebody typed, and a recording whose origin is not stated is worth no
+    # more than a synthesised one. Being checkable is the entire point of both.
+    from measurement import description_block as _meas_block
+    from field_audio import description_block as _field_block
+    for _b in (_meas_block(measurement_rec), _field_block(recording)):
+        if _b:
+            parts.append(_b)
 
     return "\n\n".join(parts).strip()
 
@@ -779,7 +852,7 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
     from llm_script import generate_script
     from tts import synthesize_timed, audio_duration
     from images import generate_images
-    from ambient import (variation, synthesize_masking_noise, titled, TEXTURE_LABEL,
+    from ambient import (variation, build_bed, titled, TEXTURE_LABEL,
                          combine_narration_and_ambient, assemble_guide, params_record)
     from thumbnail import make_thumbnail
 
@@ -791,12 +864,29 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
     t0 = time.time()
     print(f"== {genre['label']} / 入眠ガイド（解説＋{ambient_seconds/3600:.1f}h） == {work}")
 
+    # A recording, if one is waiting. This decides the soundscape before the
+    # script is written, because the soundscape is in the title — and because a
+    # recording that exists should be used: it was made by hand, it does not
+    # keep, and the whole reason D-2 exists is that a bed somebody recorded is
+    # not interchangeable with the next procedurally generated one.
+    import field_audio as _field
+    import measurement as _meas
+    recording = _field.take()
+    meas = _meas.take()
+    if recording:
+        print(f"[field] 実録音を使います: {recording['id']}"
+              f"（{recording['date']} {recording['subject']}）")
+    else:
+        print("[field] 実録音の在庫なし → 合成音で作ります")
+    if meas:
+        print(f"[measurement] 実測データを使います: {meas['id']}（{meas['subject']}）")
+
     print("[1/6] 台本生成…")
     avoid = []
     if do_upload:
         from youtube_upload import fetch_recent_titles
         avoid = fetch_recent_titles()
-    pkg = generate_script(genre_key, topic, avoid_titles=avoid)
+    pkg = generate_script(genre_key, topic, avoid_titles=avoid, measurement=meas)
 
     import compliance
     pkg = compliance.enforce(pkg, genre)
@@ -814,7 +904,7 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
     imgs = generate_images(pkg["image_prompts"][:config.GUIDE_NUM_IMAGES],
                            genre["image_style"], work / "img")
 
-    params = variation(pkg["title"])
+    params = variation(pkg["title"], texture="field" if recording else None)
     # Label the title after the seed is drawn, so the same topic keeps the same
     # sound parameters whether or not the prefix scheme changes later.
     pkg["title"] = titled(pkg["title"], params.texture)
@@ -822,8 +912,9 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
     if _label and _label not in (pkg.get("tags") or []):
         pkg.setdefault("tags", []).append(_label)
     print(f"  [ambient] 音風景: {params.texture} → 件名 「{pkg['title'][:40]}」")
-    print(f"[4/6] アンビエント合成 {ambient_seconds/3600:.1f}h…")
-    bed = synthesize_masking_noise(work / "bed.m4a", ambient_seconds, params, fade_in=2)
+    print(f"[4/6] 音の生成 {ambient_seconds/3600:.1f}h…")
+    bed = build_bed(work / "bed.m4a", ambient_seconds, params,
+                    recording=recording, fade_in=2)
     crossfade = 8
     combined = combine_narration_and_ambient(narration_audio, bed, work / "audio.m4a",
                                              crossfade=crossfade)
@@ -845,6 +936,8 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
 
     result = {"genre": genre_key, "mode": "guide", "work_dir": str(work),
               "texture": params.texture,
+              "recording_id": (recording or {}).get("id"),
+              "measurement_id": (meas or {}).get("id"),
               "axis": pkg.get("axis"), "thumbnail_text": pkg.get("thumbnail_text", ""),
               "video": str(video), "title": pkg["title"], "topic": pkg["topic"],
               "intro_s": intro_s, "ambient_s": ambient_seconds,
@@ -860,13 +953,21 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
         playlist_id = (ensure_playlist(genre["playlist_title"],
                                        genre.get("playlist_description", ""))
                        if genre.get("playlist_title") else None)
-        _desc = _description(genre, pkg, sub_segments, related, playlist_id)
+        _desc = _description(genre, pkg, sub_segments, related, playlist_id,
+                             measurement_rec=meas, recording=recording)
         _final_check(pkg["title"], _desc, pkg["tags"])
         vid = upload_video(video, pkg["title"],
                            _desc, pkg["tags"],
                            genre["youtube_category_id"], pub, thumb, UPLOAD_PRIVACY)
         result["video_id"] = vid
-        _threads_draft(result, pkg, playlist_id)
+        # After the upload, never before: a consumed input cannot be recovered
+        # if the run then fails, and both of these were made by hand.
+        if meas:
+            _meas.mark_used(meas["id"], vid)
+        if recording:
+            _field.mark_used(recording["id"], vid)
+        _threads_draft(result, pkg, playlist_id,
+                       recording=recording, measurement=meas)
         result["publish_at_jst"] = pub.isoformat()
         if genre.get("playlist_title"):
             add_to_playlist(vid, genre["playlist_title"],
