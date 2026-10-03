@@ -293,3 +293,17 @@ https://www.youtube.com/watch?v=nxo2iYmp4Vw&list=PLP9ausaDhr0Q
 
 #睡眠
 ```
+
+## [ ] 10/03 16:29 nxo2iYmp4Vw（L1）
+
+```
+「いびきがひどい」とだけ伝えても、診察では伝わりません。
+
+どのくらいの長さで、何時ごろ、どんな音なのか。スマホで録る方法と、受診のときに何を持っていくと話が早いのかを整理しました。
+
+https://www.youtube.com/watch?v=nxo2iYmp4Vw&list=PLP9ausaDhr0Q
+
+※一般的な情報の紹介です。気になる症状が続く場合は医療機関にご相談ください。
+
+#睡眠
+```
