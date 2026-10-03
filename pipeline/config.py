@@ -184,3 +184,67 @@ DEFAULT_GENRE = "space"   # ユーザー指定: まず宇宙・科学から
 # ---- Upload -----------------------------------------------------------------
 # "private" + publishAt => YouTube schedules it public at that time.
 UPLOAD_PRIVACY = "private"
+
+# ---- Long-session soundscape (作業用BGM / 環境音) ----------------------------
+# 戦略シフト(視聴時間効率): watch hours = 再生数 × 平均視聴時間。1〜3時間の環境音は
+# 1再生あたりの視聴“時間”が短尺雑学の20〜40倍で、言語の壁がなく evergreen。収益化の
+# 核心として最重要なのは「音源が完全自作（ffmpegのノイズ＋トーン合成）」である点——
+# 既存曲のContent-IDに一致しようがなく、作業用/集中/リラックスという実需の付加価値が
+# あるため、YouTube 2025「量産型」ポリシーにも抵触しにくい。毎回ミックスを乱数で振って
+# テンプレ複製化を避ける。画像はStability1枚（失敗時はffmpegグラデにフォールバック）。
+# これは「世界の雑学王」の長時間型転換用。睡眠チャンネル(別組織・別ブランチ)の
+# ambient/sleep ジャンルとは別物として、独立したキー soundscape で管理する。
+SOUNDSCAPE_CATEGORY_ID = os.environ.get("SOUNDSCAPE_CATEGORY_ID", "10")  # Music
+SOUNDSCAPE_PUBLISH_HOUR_JST = int(os.environ.get("SOUNDSCAPE_PUBLISH_HOUR_JST", "20"))
+SOUNDSCAPE_DEFAULT_SECONDS = int(os.environ.get("SOUNDSCAPE_SECONDS", "10800"))  # 3h
+SOUNDSCAPE_PLAYLIST_TITLE = "【作業用BGM・環境音】集中できる世界の音"
+SOUNDSCAPE_COMMON_TAGS = [
+    "作業用BGM", "環境音", "集中", "勉強用BGM", "リラックス", "睡眠用BGM",
+    "作業用", "ヒーリング", "癒し", "ambient", "白noise", "world sounds",
+]
+# theme: 音の処方(audio recipe)＋静止画プロンプト＋表示名。audio は soundscape.py が
+# このキーで ffmpeg フィルタグラフを組む。brand の橋渡しとして「世界の○○」に寄せる。
+SOUNDSCAPE_THEMES = {
+    "rain": {
+        "label": "雨音",
+        "title_core": "雨の音",
+        "image_prompt": ("rain streaming down a dark window at night, soft bokeh city "
+                         "lights beyond, cozy calm cinematic, moody blue tones"),
+        "tags": ["雨音", "雨の音", "rain sounds", "雨"],
+    },
+    "waves": {
+        "label": "波の音",
+        "title_core": "波の音",
+        "image_prompt": ("a calm ocean shore at dusk, gentle waves, soft golden and "
+                         "indigo sky, serene minimal cinematic, wide horizon"),
+        "tags": ["波の音", "海", "ocean waves", "波音"],
+    },
+    "fire": {
+        "label": "焚き火",
+        "title_core": "焚き火の音",
+        "image_prompt": ("a warm crackling campfire at night, glowing embers, soft "
+                         "bokeh, cozy cinematic, deep warm orange tones"),
+        "tags": ["焚き火", "焚き火の音", "campfire", "暖炉"],
+    },
+    "forest": {
+        "label": "森のせせらぎ",
+        "title_core": "森と小川の音",
+        "image_prompt": ("a misty green forest with a gentle clear stream, soft morning "
+                         "light through trees, tranquil cinematic, lush nature"),
+        "tags": ["森", "川のせせらぎ", "自然音", "forest"],
+    },
+    "night": {
+        "label": "夜の静けさ",
+        "title_core": "夜の虫の音",
+        "image_prompt": ("a quiet starry countryside night, silhouettes of grass and "
+                         "distant hills, deep blue calm sky, serene cinematic"),
+        "tags": ["夜の音", "虫の音", "night ambience", "安眠"],
+    },
+    "brown": {
+        "label": "ブラウンノイズ",
+        "title_core": "ブラウンノイズ（集中）",
+        "image_prompt": ("a minimalist calm abstract gradient, soft deep teal and navy, "
+                         "smooth subtle grain, serene distraction-free, cinematic"),
+        "tags": ["ブラウンノイズ", "brown noise", "集中音", "ホワイトノイズ"],
+    },
+}
