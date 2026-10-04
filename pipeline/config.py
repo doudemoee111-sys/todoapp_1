@@ -205,44 +205,47 @@ SOUNDSCAPE_COMMON_TAGS = [
 # theme: 音の処方(audio recipe)＋静止画プロンプト＋表示名。audio は soundscape.py が
 # このキーで ffmpeg フィルタグラフを組む。brand の橋渡しとして「世界の○○」に寄せる。
 SOUNDSCAPE_THEMES = {
+    # 各テーマに word(サムネ用の短い語)・bg(グラデ2色 上→下)・accent(テキスト差し色)を
+    # 持たせる。Stability残高切れ(402)でも、テーマごとに配色の違う静止画＋日本語テキスト
+    # 入りサムネを自前生成できるようにするため(=画像が毎回同じに見える問題の解消)。
     "rain": {
-        "label": "雨音",
-        "title_core": "雨の音",
+        "label": "雨音", "title_core": "雨の音", "word": "雨 の 音",
+        "bg": ("#0b1a2a", "#2a5c86"), "accent": "#9fd0ff",
         "image_prompt": ("rain streaming down a dark window at night, soft bokeh city "
                          "lights beyond, cozy calm cinematic, moody blue tones"),
         "tags": ["雨音", "雨の音", "rain sounds", "雨"],
     },
     "waves": {
-        "label": "波の音",
-        "title_core": "波の音",
+        "label": "波の音", "title_core": "波の音", "word": "波 の 音",
+        "bg": ("#07222e", "#1f6b7a"), "accent": "#aef0ee",
         "image_prompt": ("a calm ocean shore at dusk, gentle waves, soft golden and "
                          "indigo sky, serene minimal cinematic, wide horizon"),
         "tags": ["波の音", "海", "ocean waves", "波音"],
     },
     "fire": {
-        "label": "焚き火",
-        "title_core": "焚き火の音",
+        "label": "焚き火", "title_core": "焚き火の音", "word": "焚き火",
+        "bg": ("#160d07", "#7a3f18"), "accent": "#ffc489",
         "image_prompt": ("a warm crackling campfire at night, glowing embers, soft "
                          "bokeh, cozy cinematic, deep warm orange tones"),
         "tags": ["焚き火", "焚き火の音", "campfire", "暖炉"],
     },
     "forest": {
-        "label": "森のせせらぎ",
-        "title_core": "森と小川の音",
+        "label": "森のせせらぎ", "title_core": "森と小川の音", "word": "森 の 音",
+        "bg": ("#0c1f18", "#226b45"), "accent": "#b6f0c4",
         "image_prompt": ("a misty green forest with a gentle clear stream, soft morning "
                          "light through trees, tranquil cinematic, lush nature"),
         "tags": ["森", "川のせせらぎ", "自然音", "forest"],
     },
     "night": {
-        "label": "夜の静けさ",
-        "title_core": "夜の虫の音",
+        "label": "夜の静けさ", "title_core": "夜の虫の音", "word": "夜 の 静けさ",
+        "bg": ("#0b0e1c", "#35336b"), "accent": "#c7c3ff",
         "image_prompt": ("a quiet starry countryside night, silhouettes of grass and "
                          "distant hills, deep blue calm sky, serene cinematic"),
         "tags": ["夜の音", "虫の音", "night ambience", "安眠"],
     },
     "brown": {
-        "label": "ブラウンノイズ",
-        "title_core": "ブラウンノイズ（集中）",
+        "label": "ブラウンノイズ", "title_core": "ブラウンノイズ（集中）", "word": "集中 ノイズ",
+        "bg": ("#101214", "#3a3f48"), "accent": "#d8dde4",
         "image_prompt": ("a minimalist calm abstract gradient, soft deep teal and navy, "
                          "smooth subtle grain, serene distraction-free, cinematic"),
         "tags": ["ブラウンノイズ", "brown noise", "集中音", "ホワイトノイズ"],

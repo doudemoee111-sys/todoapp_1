@@ -163,21 +163,100 @@ def _stability_still(prompt: str, out_path: Path) -> bool:
     return False
 
 
-def _gradient_still(out_path: Path, rng: random.Random) -> None:
-    """落ち着いた2色グラデの静止画。ambient では十分に成立する(=Stability残高切れでも
-    動画が止まらない。narrated と違い「画像なし=破綻」ではない)。"""
-    palettes = [("0x0b1a2a", "0x244b6b"), ("0x1a1326", "0x3a2b55"),
-                ("0x0e1f1b", "0x24503f"), ("0x241a12", "0x5b3a24"),
-                ("0x101217", "0x2a2f3a")]
-    c0, c1 = rng.choice(palettes)
-    _run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
-          "-i", f"gradients=s={VIDEO_W}x{VIDEO_H}:c0={c0}:c1={c1}:x0=0:y0=0:"
-                f"x1={VIDEO_W}:y1={VIDEO_H}", "-frames:v", "1", str(out_path)])
+def _hex(c: str) -> tuple[int, int, int]:
+    c = c.removeprefix("#").removeprefix("0x")
+    return (int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16))
+
+
+def _vgradient(size: tuple[int, int], top: str, bottom: str):
+    """縦方向の2色グラデを PIL で描く(テーマ別配色。ffmpeg の gradients に依存しない)。"""
+    from PIL import Image
+    w, h = size
+    r0, g0, b0 = _hex(top)
+    r1, g1, b1 = _hex(bottom)
+    img = Image.new("RGB", (w, h))
+    px = img.load()
+    row = []
+    for y in range(h):
+        t = y / max(1, h - 1)
+        row.append((round(r0 + (r1 - r0) * t),
+                    round(g0 + (g1 - g0) * t),
+                    round(b0 + (b1 - b0) * t)))
+    for y in range(h):
+        c = row[y]
+        for x in range(w):
+            px[x, y] = c
+    return img
+
+
+def _gradient_still(theme: dict, out_path: Path) -> None:
+    """テーマ別配色の2色グラデ静止画(動画の背景。テキストは載せない=長時間視聴で邪魔に
+    ならない)。Stability残高切れでもテーマごとに色が変わる。"""
+    top, bottom = theme.get("bg", ("#0b1a2a", "#244b6b"))
+    _vgradient((VIDEO_W, VIDEO_H), top, bottom).save(out_path)
 
 
 def make_still(theme: dict, out_path: Path, rng: random.Random) -> Path:
     if not _stability_still(theme["image_prompt"], out_path):
-        _gradient_still(out_path, rng)
+        _gradient_still(theme, out_path)
+    return out_path
+
+
+_THUMB_FONTS = [
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+    "/usr/share/fonts/opentype/ipafont-gothic/ipagp.ttf",
+]
+
+
+def _font(size: int):
+    from PIL import ImageFont
+    for p in _THUMB_FONTS:
+        if os.path.exists(p):
+            try:
+                return ImageFont.truetype(p, size)
+            except Exception:  # noqa: BLE001
+                continue
+    return ImageFont.load_default()
+
+
+def make_thumbnail(theme: dict, seconds: int, out_path: Path, bg_still: Path | None = None) -> Path:
+    """クリックされるサムネ(1280x720)。テーマ別配色＋日本語テキスト(テーマ語/尺/作業用BGM)＋
+    チャンネル識別。Stability があればその写真を暗転して下敷きに、無ければテーマ別グラデ。
+    これで『画像が毎回同じ』を解消し、一覧でテーマが一目で分かる。"""
+    from PIL import Image, ImageDraw
+    W, H = 1280, 720
+    top, bottom = theme.get("bg", ("#0b1a2a", "#244b6b"))
+    if bg_still and bg_still.exists():
+        try:
+            base = Image.open(bg_still).convert("RGB").resize((W, H), Image.LANCZOS)
+            base = Image.blend(base, Image.new("RGB", (W, H), (0, 0, 0)), 0.45)
+        except Exception:  # noqa: BLE001
+            base = _vgradient((W, H), top, bottom)
+    else:
+        base = _vgradient((W, H), top, bottom)
+    d = ImageDraw.Draw(base)
+
+    accent = _hex(theme.get("accent", "#ffffff"))
+    dur = _hours_label(seconds)
+    word = theme.get("word", theme.get("label", ""))
+
+    def _centered(text, font, y, fill, stroke=6):
+        bb = d.textbbox((0, 0), text, font=font, stroke_width=stroke)
+        d.text(((W - (bb[2] - bb[0])) / 2 - bb[0], y), text, font=font, fill=fill,
+               stroke_width=stroke, stroke_fill=(0, 0, 0))
+
+    # 尺バッジ(上部・差し色)
+    _centered(f"— {dur} —", _font(60), 70, accent, stroke=5)
+    # テーマ語(中央・特大・白)
+    _centered(word, _font(150), 250, (255, 255, 255), stroke=8)
+    # 用途サブ(下)
+    _centered("作業用BGM・環境音", _font(66), 500, (235, 235, 235), stroke=6)
+    # チャンネル識別(最下部・差し色)
+    _centered("世界の雑学王", _font(40), 628, accent, stroke=4)
+
+    base.save(out_path)
     return out_path
 
 
@@ -301,6 +380,8 @@ def run(theme_key: str | None, seconds: int, do_upload: bool,
 
     audio = synth_audio(theme_key, seconds, work / "audio.wav", rng)
     still = make_still(theme, work / "still.png", rng)
+    thumb = make_thumbnail(theme, seconds, work / "thumbnail.png", bg_still=still)
+    print(f"  [thumb] テーマ別サムネ生成: {thumb.name}")
     video = render_video(still, audio, seconds, work / "video.mp4")
     audio.unlink(missing_ok=True)  # 大きい中間ファイルは即削除(ディスク節約)
     size_mb = video.stat().st_size / 1e6
@@ -317,14 +398,14 @@ def run(theme_key: str | None, seconds: int, do_upload: bool,
                                     ensure_playlist, add_to_playlist)
         if publish_now:
             vid = upload_video(video, meta["title"], meta["description"], meta["tags"],
-                               SOUNDSCAPE_CATEGORY_ID, None, str(still), "public")
+                               SOUNDSCAPE_CATEGORY_ID, None, str(thumb), "public")
             result["video_id"] = vid
             result["published"] = "public (即時公開)"
             print(f"  published NOW  https://youtu.be/{vid}")
         else:
             pub = next_publish_at(SOUNDSCAPE_PUBLISH_HOUR_JST)
             vid = upload_video(video, meta["title"], meta["description"], meta["tags"],
-                               SOUNDSCAPE_CATEGORY_ID, pub, str(still), UPLOAD_PRIVACY)
+                               SOUNDSCAPE_CATEGORY_ID, pub, str(thumb), UPLOAD_PRIVACY)
             result["video_id"] = vid
             result["publish_at_jst"] = pub.isoformat()
             print(f"  scheduled: {pub.isoformat()} (JST)  https://youtu.be/{vid}")
