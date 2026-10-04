@@ -431,11 +431,36 @@ def main() -> None:
     ap.add_argument("--publish-now", action="store_true",
                     help="予約せず即時 public で公開(evergreen を早く稼働させる場合)")
     ap.add_argument("--check-auth", action="store_true")
+    ap.add_argument("--rethumb", default=None,
+                    help="既存動画のサムネだけ差し替える（新規動画は作らない）。"
+                         "書式: 'VIDEOID:theme,VIDEOID:theme'（例 O9EroeX-SsE:waves,JymAdr2dcmc:forest）")
     args = ap.parse_args()
 
     if args.check_auth:
         from youtube_upload import check_auth
         print(f"[check-auth] OK — 投稿先チャンネル: 「{check_auth()}」")
+        return
+
+    if args.rethumb:
+        from youtube_upload import set_thumbnail, check_auth
+        print(f"[rethumb] 認証チャンネル確認: 「{check_auth()}」（世界の雑学王でなければ上で停止済み）")
+        done, failed = [], []
+        for item in [x.strip() for x in args.rethumb.split(",") if x.strip()]:
+            try:
+                vid, theme_key = item.split(":")
+            except ValueError:
+                print(f"[rethumb] 書式エラー: '{item}'（VIDEOID:theme 形式で）"); failed.append(item); continue
+            theme = SOUNDSCAPE_THEMES.get(theme_key.strip())
+            if not theme:
+                print(f"[rethumb] 未知テーマ: {theme_key}"); failed.append(item); continue
+            thumb = make_thumbnail(theme, args.seconds, OUTPUT_DIR / f"_rethumb_{vid.strip()}.png")
+            try:
+                set_thumbnail(vid.strip(), thumb)
+                print(f"[rethumb] ✅ {vid.strip()} ← {theme_key}（{theme.get('label')}）")
+                done.append(f"{vid.strip()}({theme_key})")
+            except Exception as e:  # noqa: BLE001
+                print(f"[rethumb] ❌ {vid.strip()}: {e}"); failed.append(item)
+        print(f"\n[rethumb] 完了: 成功 {len(done)}（{', '.join(done)}） / 失敗 {len(failed)}（{', '.join(failed)}）")
         return
 
     do_upload = not args.no_upload

@@ -177,6 +177,24 @@ def add_to_playlist(video_id: str, playlist_id: str) -> bool:
         return False
 
 
+def set_thumbnail(video_id: str, thumbnail_path: str | Path) -> None:
+    """Replace the thumbnail of an existing video (channel-guarded).
+
+    Used to re-skin already-uploaded videos in place without re-rendering them.
+    """
+    yt = _service()
+    try:
+        me = yt.channels().list(part="snippet", mine=True).execute()
+        _assert_expected_channel(me["items"][0]["snippet"]["title"])
+    except WrongChannelError:
+        raise
+    except Exception as e:  # noqa: BLE001
+        print(f"  [guard] チャンネル確認をスキップ（読み取り失敗: {e}）")
+    yt.thumbnails().set(videoId=video_id,
+                        media_body=MediaFileUpload(str(thumbnail_path))).execute()
+    print(f"  [thumb] set on {video_id}")
+
+
 def next_publish_at(hour_jst: int, min_lead_hours: int = 3) -> datetime:
     """Next occurrence of hour_jst (JST) that is at least min_lead_hours from now.
 
