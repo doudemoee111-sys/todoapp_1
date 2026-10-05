@@ -278,6 +278,14 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     # 1b. Compliance gate — a no-op unless the genre declares compliance:
     # "medical". Runs before TTS so a flagged script is never voiced, and
     # raises rather than publishing something it could not fix.
+    # Before the 薬機法 gate, because a rewrite is cheaper than a regeneration
+    # and because an invented measurement is not something the gate looks for.
+    if not narration:
+        pkg = _reject_fabricated_measurements(
+            pkg, genre, meas,
+            lambda: generate_script(genre_key, topic, avoid_titles=avoid_titles,
+                                    measurement=meas))
+
     import compliance
     pkg = compliance.enforce(pkg, genre)
     pkg["tags"], _dropped = compliance.clean_tags(pkg.get("tags") or [])
@@ -699,6 +707,55 @@ def _safe_related(related: list[tuple[str, str]] | None) -> list[tuple[str, str]
     return out
 
 
+def _reject_fabricated_measurements(pkg: dict, genre: dict, meas: dict | None,
+                                    regenerate) -> dict:
+    """Refuse a script that reports measurements when nobody measured anything.
+
+    The prompt change is the fix; this is the backstop, because the prompt is a
+    request and this is a condition. The first `room` script ever generated
+    without a reading invented three decibel figures and titled its chapters
+    「◯◯素材の結果」. The 薬機法 gate passed it — correctly, since an invented
+    decibel figure breaks no pharmaceutical law. It breaks something this
+    channel cannot afford to break: it publishes a primary source that does not
+    exist, in a series whose entire premise is that the numbers are real.
+
+    One regeneration, then stop. Stopping costs a day; publishing costs the
+    thing the genre was switched to for. Only ever runs when there is no
+    measurement — with one, the readings are real and reporting them is the job.
+    """
+    from measurement import fabrication_findings
+    if meas:
+        return pkg
+    for attempt in (1, 2):
+        text = "\n".join([pkg.get("title", ""), pkg.get("description", "")]
+                          + [c.get("heading", "") for c in pkg.get("chapters") or []]
+                          + [pkg.get("narration", "")])
+        findings = fabrication_findings(text)
+        if not findings:
+            if attempt > 1:
+                print("  [measurement] 書き直し後は捏造なし")
+            return pkg
+        print(f"  [measurement] ★ 実測していないのに測定結果を書いています（{len(findings)}件）")
+        for f in findings[:6]:
+            print(f"      - {f}")
+        if attempt == 2:
+            break
+        print("  [measurement] 台本を書き直します（1回だけ）")
+        pkg = regenerate()
+    raise compliance_fabrication_error(findings)
+
+
+def compliance_fabrication_error(findings: list[str]) -> Exception:
+    """A dedicated error so the runlog row says what actually went wrong."""
+    detail = "\n".join(f"  - {f}" for f in findings[:10])
+    return RuntimeError(
+        "実測データが無いのに、測定した結果として数値を書いています。"
+        "書き直しても直らなかったため、投稿を中断します。\n"
+        f"{detail}\n"
+        "  実測値を1件 assets/measurements.json に入れるか、"
+        "（入れられないなら）この回は『測り方』の回として作り直してください。")
+
+
 def _final_check(title: str, description: str, tags: list[str]) -> None:
     """Last gate, on exactly the three strings that are about to be uploaded.
 
@@ -941,6 +998,9 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
         from youtube_upload import fetch_recent_titles
         avoid = fetch_recent_titles()
     pkg = generate_script(genre_key, topic, avoid_titles=avoid, measurement=meas)
+    pkg = _reject_fabricated_measurements(
+        pkg, genre, meas,
+        lambda: generate_script(genre_key, topic, avoid_titles=avoid, measurement=meas))
 
     import compliance
     pkg = compliance.enforce(pkg, genre)

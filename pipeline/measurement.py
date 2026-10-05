@@ -35,6 +35,7 @@ trusting. A gap in the stock is a thing to report, not a thing to crash on.
 from __future__ import annotations
 
 import json
+import re
 from datetime import date
 from pathlib import Path
 
@@ -211,6 +212,134 @@ def guard_block(rec: dict | None) -> str:
             f"{vals}。\nこの章ではこれらを繰り返す必要はありません。"
             "ただし、ここに無い数値を新しく作らないこと。"
             "推定値・平均値・一般的な目安を、測った値のように書かないこと。")
+
+
+# Sources that make a number legitimate in a video with no measurement of its
+# own. A figure with one of these beside it is a citation; the same figure
+# without one is this channel claiming to have measured something it did not.
+_SOURCED = re.compile(
+    r"(メーカー|公称|カタログ|仕様|スペック|規格|JIS|ISO|NRR|SNR|SNR値|"
+    r"表示値|公開|資料|によると|によれば|とされ|と言われ|報告され|"
+    r"研究|調査|統計|基準|目安として|一般に|一般的に)")
+
+# Units whose value is a RESULT. A number attached to one of these reads as
+# something that was measured, which is the claim that needs backing.
+#
+# Lengths and weights are deliberately absent. 「枕元から30センチの位置に置く」
+# is an instruction about where to put the meter, not a finding, and flagging it
+# would train whoever reads these warnings to ignore them. A fabricated length
+# presented as a result still gets caught by the first-person pattern below.
+_UNIT = re.compile(
+    r"[0-9０-９]+(?:[\.．][0-9０-９]+)?\s*"
+    r"(?:dB|ｄＢ|デシベル|lx|ルクス|ルクス値|℃|°C|%|％|パーセント|"
+    r"ニュートン|ニュートン値|N値|ヘルツ|Hz)")
+
+# A claim that this channel measured something. Deliberately an explicit list
+# rather than a general pattern, because the first version was a general one and
+# it flagged a correct script into oblivion: a 「測り方」 video says 「測定するには」
+# and 「測定する際には」 constantly, and those are instructions, not claims. The
+# distinguishing feature is tense and person — 「測定する**には**」 teaches,
+# 「測定し**ました**」 asserts. Precision matters more than coverage here, because
+# the result-verb rule below catches what this list misses, and a check that
+# cries wolf on correct work gets switched off.
+_CLAIMED = re.compile(
+    "|".join([
+        r"(?:測定|計測|実測)し(?:まし た|た(?:ところ|結果))",
+        r"(?:測定|計測|実測)しました",
+        r"測って(?:みました|みた(?:ところ|結果)|みると)",
+        r"測りました",
+        r"測ったところ",
+        r"実験で(?:は|、)",
+        r"(?:実験|検証)し(?:た(?:結果|ところ)|てみた)",
+        r"検証していき",
+        r"(?:確認|観測)(?:され|でき)ました",
+        r"今回(?:は)?(?:実際に)?(?:測|計測|実測)",
+        r"実際に(?:測って|測定して|計測して)",
+        r"(?:当|本|この)(?:チャンネル|動画|番組)で(?:は)?(?:実際に)?(?:測|計測|実測)",
+    ]).replace(" ", ""))
+
+# A figure presented as an OUTCOME. 「42デシベルという値」 explains a number;
+# 「28デシベルまで下がりました」 reports one. Only the second needs backing,
+# and only the second is what a fabricated measurement looks like.
+_RESULT_VERB = re.compile(
+    "|".join([
+        r"まで(?:下が|上が|減)",
+        r"(?:下がり|上がり|減り|低減し|軽減し|増え)(?:まし た|た)",
+        r"という結果",
+        r"を記録",
+        r"(?:でし た|だっ た)$",
+    ]).replace(" ", ""))
+
+
+def fabrication_findings(text: str) -> list[str]:
+    """Places where a script with no measurement behind it claims one anyway.
+
+    Found the hard way. The first `room` script generated without a reading
+    produced chapters titled 「測定方法と条件」「ウレタン素材の結果」 and
+    sentences like 「測定すると、約35デシベルの音を減少させることが確認され
+    ました」. Nobody measured anything. The 薬機法 gate passed it, correctly —
+    inventing a decibel figure is not a 薬機法 violation. It is worse than one:
+    it is a fabricated primary source published under this channel's name, and
+    it is indistinguishable from the honest readings this genre exists to carry.
+
+    The guard in guard_block() only ever reached the model when a reading
+    existed. With none, nothing was said — and the genre's whole framing pushes
+    towards "report what you measured", so the model supplied what was missing.
+
+    Two things are flagged, sentence by sentence:
+      * a first-person measurement claim, anywhere; and
+      * a figure in one of this channel's units with no source beside it.
+
+    A figure WITH a source is fine: 「メーカー公称値で32デシベル」 is a citation,
+    not a claim. That distinction is the whole check.
+
+    Only used when there is no measurement. With one, the readings are real and
+    saying so is the point.
+    """
+    out: list[str] = []
+    for sentence in re.split(r"[。\n]", text or ""):
+        s = sentence.strip()
+        if not s:
+            continue
+        m = _CLAIMED.search(s)
+        if m:
+            out.append(f"自分で測ったように書いている（「{m.group(0)}」）: {s[:48]}")
+            continue
+        u = _UNIT.search(s)
+        if u and _RESULT_VERB.search(s) and not _SOURCED.search(s):
+            out.append(f"出典のない測定結果（「{u.group(0)}」）: {s[:48]}")
+    return out
+
+
+def no_data_block() -> str:
+    """What to write when there is no reading — instead of silence.
+
+    Silence is what produced the fabrication: the genre asks for a measurement
+    report, so a writer given no measurement writes one anyway. The fix is not
+    only to forbid the invention but to name the video this becomes without a
+    reading — a 「how to measure it, and how to read the number」 piece, which is
+    honest, useful, and happens to be the natural first episode of the series.
+    """
+    return (
+        "\n\n【この回には実測データがありません】\n"
+        "運営者は今回、何も測っていません。したがって **測定の報告にしてはいけません。**\n"
+        "\n"
+        "この回は『**測り方と、数字の読み方**』の回にしてください。\n"
+        "- どうやって測るのか（道具・置く位置・時間帯・条件の揃え方）\n"
+        "- その数字が何を意味するのか、どこからが大きい・小さいなのか\n"
+        "- メーカーや規格が公表している値は何か（必ず出典を示す）\n"
+        "- 視聴者が自分の家で測るときに気をつけること\n"
+        "\n"
+        "【禁止】\n"
+        "- 「測定しました」「測ってみると」「実験では」「検証した結果」など、"
+        "自分で測ったように書くこと。**一度も書かないこと。**\n"
+        "- 出典のない数値を書くこと。デシベル・ルクス・℃・N値・寸法などの数字を出すなら、"
+        "必ず同じ文の中に「メーカー公称値」「規格では」「〜という研究があります」など"
+        "出所を書くこと。出所を書けない数字は書かない。\n"
+        "- 「◯◯素材の結果」のような、測った結果を並べる構成にすること。\n"
+        "\n"
+        "数字が出せないことは弱点ではありません。"
+        "『測り方を先に揃えておく回』として最後まで成立させてください。")
 
 
 def description_block(rec: dict | None) -> str:

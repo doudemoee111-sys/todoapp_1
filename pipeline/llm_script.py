@@ -124,13 +124,13 @@ def _is_duplicate(topic: str, avoid_titles: list[str], genre: dict | None = None
 def _outline(genre: dict, topic: str, shape: dict | None = None,
              measurement: dict | None = None) -> dict:
     from originality import editorial_note, avoid_bookends_block
-    from measurement import script_block
+    from measurement import script_block, no_data_block
 
     # The measured figures go to the outline, not only to the chapters that
     # speak them: where the data sits in the running order is a structural
     # decision. Put it in chapter 5 and the video is a lecture with a result
     # attached; open on it and the whole thing is a report.
-    data = script_block(measurement)
+    data = script_block(measurement) if measurement else no_data_block()
 
     # Chapter count varies per video. A catalogue where every entry has exactly
     # eight chapters reads as a template even when each one is fine on its own.
@@ -144,11 +144,21 @@ def _outline(genre: dict, topic: str, shape: dict | None = None,
              f"構成と語り口はこれに従ってください。一般論に流れそうになったら、"
              f"ここに書かれている立場に戻ること。\n{note}" if note else "")
 
-    data_shape = ("\n  **実測データがあるので、第1章は測った数字そのものから始め、"
-                  "第2章で測定の条件（日付・場所・機材・方法）と結果を全部報告する構成にすること。**"
-                  "数字を後ろに置かない。" if data else "")
-    title_rule = ("\n  ・**実測した数字か、測った対象を題名に入れる。**"
-                  "数字が入る題名は、どの動画にも書ける題名にはならない。" if data else "")
+    if measurement:
+        data_shape = ("\n  **実測データがあるので、第1章は測った数字そのものから始め、"
+                      "第2章で測定の条件（日付・場所・機材・方法）と結果を全部報告する構成にすること。**"
+                      "数字を後ろに置かない。")
+        title_rule = ("\n  ・**実測した数字か、測った対象を題名に入れる。**"
+                      "数字が入る題名は、どの動画にも書ける題名にはならない。")
+    else:
+        # Without this, the outline writes 「測定方法と条件」「◯◯素材の結果」 and
+        # the chapters then fill those headings with numbers nobody measured.
+        data_shape = ("\n  **この回は実測していないので、測定結果を報告する構成にしないこと。**"
+                      "『◯◯の結果』『測定方法と条件』のような、測った報告の見出しを作らない。"
+                      "測り方・条件の揃え方・数字の読み方・公表値の調べ方で構成すること。")
+        title_rule = ("\n  ・**測ったように読める題名にしない。**"
+                      "『測ってみた』『徹底比較』『検証』は使わない。"
+                      "『〜の測り方』『〜をどう読むか』の形にする。")
 
     user = f"""日本のYouTube長尺解説動画の構成案をJSONで作成してください。
 
@@ -229,9 +239,14 @@ def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
     # data_shape), the fence to everyone else. Handing all eight chapters the
     # full block makes the model recite the same readings eight times; handing
     # none of them anything makes the ones without numbers invent some.
-    from measurement import script_block, guard_block
-    data = (script_block(measurement) if idx in (0, 1)
-            else guard_block(measurement))
+    from measurement import script_block, guard_block, no_data_block
+    # With no reading, every chapter gets the full no-data framing — not just
+    # the first two. The fabricated figures appeared in chapter 3 onwards, in
+    # the chapters that had been given nothing at all.
+    if not measurement:
+        data = no_data_block()
+    else:
+        data = script_block(measurement) if idx in (0, 1) else guard_block(measurement)
     # The compliance gate's own vocabulary, handed to the writer. Rewriting after
     # the fact costs a round trip each time and, three rounds in, costs the video.
     rules = ""
