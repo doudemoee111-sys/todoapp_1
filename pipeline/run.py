@@ -599,12 +599,18 @@ def _queue_threads(result: dict, post: str, problems: list[str]) -> None:
                 "動画1本につき1件、パイプラインが自動で追記する。**手直ししてから投稿すること。**\n"
                 "自動生成の見出しはサムネ文言、本文はテーマの流用で、読ませる文にはなっていない。\n"
                 "30秒だけ手を入れる価値がある場所で、そこを機械に任せる意味はない。\n\n"
-                "投稿したら見出しの `[ ]` を `[x]` に変える。\n\n"
-                "外部SNSからの流入は、ショートや広告と違って YPP の4,000時間に算入される。\n"
-                "無料で、かつ算入される導線はここだけなので、溜めずに出すこと。\n\n",
+                "**投稿は運営者がリポジトリの外で手作業（コピペ）で行っている。**\n"
+                "このファイルは下書きの控えであって、進捗表ではない。チェックボックスは置かない。\n"
+                "出したかどうかは YouTube Studio のアナリティクス（外部）で見る。\n\n",
                 encoding="utf-8")
         with THREADS_QUEUE.open("a", encoding="utf-8") as f:
-            f.write(f"\n## [ ] {jst} {result.get('video_id', '')}"
+            # No checkbox. One was here, and the posting happens outside this
+            # repository, so it was never ticked — which made the weekly review
+            # report "19 unposted" about drafts that had in fact all gone out.
+            # A progress marker nobody is standing next to does not measure
+            # progress; it manufactures a false alarm every week until someone
+            # stops believing the report.
+            f.write(f"\n## {jst} {result.get('video_id', '')}"
                     f"（{result.get('texture', 'L1')}）\n\n")
             if problems:
                 f.write(f"> ★ 送る前に直すこと: {' / '.join(problems)}\n\n")

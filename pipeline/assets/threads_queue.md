@@ -4,13 +4,18 @@
 自動生成の見出しはサムネ文言、本文はテーマの流用で、読ませる文にはなっていない。
 30秒だけ手を入れる価値がある場所で、そこを機械に任せる意味はない。
 
-投稿したら見出しの `[ ]` を `[x]` に変える。
+**投稿は運営者がリポジトリの外で手作業（コピペ）で行っている。**
+以前は見出しに `[ ]` を置き、投稿したら `[x]` に変える運用にしていたが、
+投稿する場所とチェックする場所が違うので一度も更新されなかった。
+その結果、週次レビューが「未投稿19件」と報告し続けた——実際には出ていたのに。
+**チェックボックスは廃止した。** このファイルは下書きの控えであって、進捗表ではない。
 
+出したかどうかを知りたいときに見るのは、ここではなく
+YouTube Studio → アナリティクス → **視聴者が見つけた方法 → 外部** の数字。
 外部SNSからの流入は、ショートや広告と違って YPP の4,000時間に算入される。
-無料で、かつ算入される導線はここだけなので、溜めずに出すこと。
+無料で、かつ算入される導線はここだけ。
 
-
-## [ ] 09/06 03:05 PtHX7a2Jq7k（L1）
+## 09/06 03:05 PtHX7a2Jq7k（L1）
 
 ```
 隣のいびきが止まって、静かになった瞬間にこちらが起きてしまう。
@@ -24,7 +29,7 @@ https://www.youtube.com/watch?v=PtHX7a2Jq7k&list=PLP9ausaDhr0Q
 #睡眠
 ```
 
-## [ ] 09/06 03:05 yKRhf9miDCI（L1）
+## 09/06 03:05 yKRhf9miDCI（L1）
 
 ```
 いびきの話を切り出すと、なぜか喧嘩になる。
@@ -38,7 +43,7 @@ https://www.youtube.com/watch?v=yKRhf9miDCI&list=PLP9ausaDhr0Q
 #睡眠
 ```
 
-## [ ] 09/06 03:05 xiu-cZc-4dU（L1）
+## 09/06 03:05 xiu-cZc-4dU（L1）
 
 ```
 その枕、高すぎるかもしれません。
@@ -52,7 +57,7 @@ https://www.youtube.com/watch?v=xiu-cZc-4dU&list=PLP9ausaDhr0Q
 #睡眠
 ```
 
-## [ ] 09/06 03:05 UCXsDThRh98（mask）
+## 09/06 03:05 UCXsDThRh98（mask）
 
 ```
 起こされる側の睡眠負債は、誰にも数えてもらえません。
@@ -68,7 +73,7 @@ https://www.youtube.com/watch?v=UCXsDThRh98&list=PLP9ausaDhr0Q
 #睡眠
 ```
 
-## [ ] 09/06 03:05 h-dKlW0kcLI（L1）
+## 09/06 03:05 h-dKlW0kcLI（L1）
 
 ```
 子どものいびきと、親のいびきは、見るところが違います。
@@ -82,7 +87,7 @@ https://www.youtube.com/watch?v=h-dKlW0kcLI&list=PLP9ausaDhr0Q
 #睡眠
 ```
 
-## [ ] 09/06 03:05 vzRV6R2OW6s（L1）
+## 09/06 03:05 vzRV6R2OW6s（L1）
 
 ```
 いびきには、放っておいていいものと、そうでないものがあります。
@@ -96,7 +101,7 @@ https://www.youtube.com/watch?v=vzRV6R2OW6s&list=PLP9ausaDhr0Q
 #睡眠
 ```
 
-## [ ] 09/06 03:05 DUlLFoWwkaU（L1）
+## 09/06 03:05 DUlLFoWwkaU（L1）
 
 ```
 別々の部屋で寝るのは、負けたということではありません。
@@ -110,7 +115,7 @@ https://www.youtube.com/watch?v=DUlLFoWwkaU&list=PLP9ausaDhr0Q
 #睡眠
 ```
 
-## [ ] 09/08 16:16 SOEBP2IRCyw（mask）
+## 09/08 16:16 SOEBP2IRCyw（mask）
 
 ```
 枕の高さを変えただけで、いびきが静かになる人がいます。
@@ -126,7 +131,7 @@ https://www.youtube.com/watch?v=SOEBP2IRCyw&list=PLP9ausaDhr0Q
 #睡眠
 ```
 
-## [ ] 09/10 16:16 FQV7W_2kRvw（rain）
+## 09/10 16:16 FQV7W_2kRvw（rain）
 
 ```
 耳栓をしても、いびきの低い音だけは通ってきます。
@@ -142,7 +147,7 @@ https://www.youtube.com/watch?v=FQV7W_2kRvw&list=PLP9ausaDhr0Q
 #睡眠
 ```
 
-## [ ] 09/12 16:10 aEnyVmdn-eI（L1）
+## 09/12 16:10 aEnyVmdn-eI（L1）
 
 ```
 いびきの話を切り出すと、なぜか自分が悪者になります。
@@ -156,7 +161,7 @@ https://www.youtube.com/watch?v=aEnyVmdn-eI&list=PLP9ausaDhr0Q
 #睡眠
 ```
 
-## [ ] 09/15 16:09 mdNuRVX7znU（waves）
+## 09/15 16:09 mdNuRVX7znU（waves）
 
 ```
 起こされる側の寝不足は、誰にも数えてもらえません。
@@ -172,7 +177,7 @@ https://www.youtube.com/watch?v=mdNuRVX7znU&list=PLP9ausaDhr0Q
 #睡眠
 ```
 
-## [ ] 09/17 16:10 fzauD4W4UQY（stream）
+## 09/17 16:10 fzauD4W4UQY（stream）
 
 ```
 いびきの相談は、何科に行けばいいのか分かりません。
@@ -188,7 +193,7 @@ https://www.youtube.com/watch?v=fzauD4W4UQY&list=PLP9ausaDhr0Q
 #睡眠
 ```
 
-## [ ] 09/19 16:12 jqC79tauiNg（L1）
+## 09/19 16:12 jqC79tauiNg（L1）
 
 ```
 検査を受けたあとのほうが、迷います。
@@ -202,7 +207,7 @@ https://www.youtube.com/watch?v=jqC79tauiNg&list=PLP9ausaDhr0Q
 #睡眠
 ```
 
-## [ ] 09/22 16:10 kB2q4yiWMuk（drone）
+## 09/22 16:10 kB2q4yiWMuk（drone）
 
 ```
 いびきの原因が、鼻にあることもあります。
@@ -218,7 +223,7 @@ https://www.youtube.com/watch?v=kB2q4yiWMuk&list=PLP9ausaDhr0Q
 #睡眠
 ```
 
-## [ ] 09/24 16:08 JFYCT-lNUPI（mask）
+## 09/24 16:08 JFYCT-lNUPI（mask）
 
 ```
 寝る前の一杯は、いびきと関係があると言われています。
@@ -234,7 +239,7 @@ https://www.youtube.com/watch?v=JFYCT-lNUPI&list=PLP9ausaDhr0Q
 #睡眠
 ```
 
-## [ ] 09/26 16:09 ilhp89pFIsY（L1）
+## 09/26 16:09 ilhp89pFIsY（L1）
 
 ```
 子どものいびきは、大人とは見るところが違います。
@@ -248,7 +253,7 @@ https://www.youtube.com/watch?v=ilhp89pFIsY&list=PLP9ausaDhr0Q
 #睡眠
 ```
 
-## [ ] 09/29 16:49 E80utg9d2kA（rain）
+## 09/29 16:49 E80utg9d2kA（rain）
 
 ```
 眠れない家族へ。
@@ -264,7 +269,7 @@ https://www.youtube.com/watch?v=E80utg9d2kA&list=PLP9ausaDhr0Q
 #睡眠
 ```
 
-## [ ] 10/01 16:10 WNaXlROP68c（waves）
+## 10/01 16:10 WNaXlROP68c（waves）
 
 ```
 いびきと一緒に、咳が出る夜があります。
@@ -280,7 +285,7 @@ https://www.youtube.com/watch?v=WNaXlROP68c&list=PLP9ausaDhr0Q
 #睡眠
 ```
 
-## [ ] 10/03 16:26 nxo2iYmp4Vw（L1）
+## 10/03 16:26 nxo2iYmp4Vw（L1）
 
 ```
 眠れない夜の対策。
