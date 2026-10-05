@@ -47,7 +47,41 @@ def _publish_at(genre: dict) -> datetime:
     return next_publish_at(genre["publish_hour_jst"])
 
 
-def preflight(do_upload: bool, need_tts: bool = True, genre: dict | None = None) -> None:
+def _check_image_credits(need_images: int) -> None:
+    """Stop before spending anything else when the image budget is already gone.
+
+    The cost is per image and the balance is a single number, so this is the one
+    resource in the pipeline whose exhaustion can be known in advance rather
+    than discovered. ~3 credits per image on Stability's core endpoint.
+    """
+    import os
+    key = os.environ.get("STABILITY_API_KEY")
+    if not key or not need_images:
+        return
+    need = need_images * 3
+    try:
+        import requests
+        r = requests.get("https://api.stability.ai/v1/user/balance",
+                         headers={"Authorization": f"Bearer {key}"}, timeout=20)
+        if r.status_code != 200:
+            print(f"[preflight] 警告: Stability 残高を読めません（HTTP {r.status_code}）。続行します")
+            return
+        credits = float(r.json().get("credits", 0))
+    except Exception as e:  # noqa: BLE001
+        print(f"[preflight] 警告: Stability 残高を読めません（{str(e)[:80]}）。続行します")
+        return
+    if credits < need:
+        raise PreflightError(
+            f"Stability の残高が足りません: {credits:.1f} クレジット / "
+            f"この動画に必要 約{need} クレジット（画像{need_images}枚）。\n"
+            "  台本もTTSもまだ動かしていないので、課金は発生していません。\n"
+            "  チャージしてから再実行してください。")
+    print(f"[preflight] Stability 残高 {credits:.1f} クレジット "
+          f"（この動画に必要 約{need}／画像{need_images}枚）")
+
+
+def preflight(do_upload: bool, need_tts: bool = True, genre: dict | None = None,
+              need_images: int = 0) -> None:
     """Fail fast, and loudly, if a prerequisite is missing.
 
     Scheduled runs execute in fresh, ephemeral sessions, so the whole
@@ -111,6 +145,20 @@ def preflight(do_upload: bool, need_tts: bool = True, genre: dict | None = None)
         except AffiliateError as e:
             raise PreflightError(str(e)) from e
         print("[preflight] アフィリエイトの切り口指定: topic_axes と一致")
+
+    # Image credits, before anything is generated.
+    #
+    # Added after 2026-10-05, when the balance was found at -1.0. Without this
+    # a run starts, writes its 開始 row, calls OpenAI for a full script, pays
+    # for TTS, and only then discovers it cannot draw — having spent money on a
+    # video that cannot be finished, and having burned whatever credits were
+    # left on a partial image set that is thrown away. Checking first costs one
+    # HTTP request and turns a 15-minute silent failure into one line.
+    #
+    # Not fatal when the balance cannot be read: a network blip on the balance
+    # endpoint is not a reason to skip the day's video, and the image step will
+    # report the real problem if there is one.
+    _check_image_credits(need_images)
 
     # The two inputs a human fills in by hand. Validated here because a typo in
     # either is cheap now and expensive twenty minutes into a render — and because
@@ -1172,7 +1220,12 @@ def main() -> None:
     # nothing anywhere reachable — the run simply vanished.
     start_runlog(genre_key, args.mode)
     try:
-        preflight(do_upload, need_tts=args.mode != "ambient", genre=GENRES[genre_key])
+        # ambient: 1 still. guide: GUIDE_NUM_IMAGES. narrated: NUM_IMAGES, which
+        # originality.variance() then varies by topic (22-34) — the upper bound
+        # is used so a run is never stopped halfway by a topic that drew 34.
+        _need_imgs = {"ambient": 1, "guide": config.GUIDE_NUM_IMAGES}.get(args.mode, 34)
+        preflight(do_upload, need_tts=args.mode != "ambient", genre=GENRES[genre_key],
+                  need_images=_need_imgs)
     except Exception as e:  # noqa: BLE001
         abort_runlog(args.mode, e)
         raise
