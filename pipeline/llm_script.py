@@ -130,7 +130,10 @@ def _outline(genre: dict, topic: str, shape: dict | None = None,
     # speak them: where the data sits in the running order is a structural
     # decision. Put it in chapter 5 and the video is a lecture with a result
     # attached; open on it and the whole thing is a report.
-    data = script_block(measurement) if measurement else no_data_block()
+    if not genre.get("measurement_based"):
+        data = ""                      # this genre does not deal in readings
+    else:
+        data = script_block(measurement) if measurement else no_data_block()
 
     # Chapter count varies per video. A catalogue where every entry has exactly
     # eight chapters reads as a template even when each one is fine on its own.
@@ -144,7 +147,9 @@ def _outline(genre: dict, topic: str, shape: dict | None = None,
              f"構成と語り口はこれに従ってください。一般論に流れそうになったら、"
              f"ここに書かれている立場に戻ること。\n{note}" if note else "")
 
-    if measurement:
+    if not genre.get("measurement_based"):
+        data_shape = title_rule = ""
+    elif measurement:
         data_shape = ("\n  **実測データがあるので、第1章は測った数字そのものから始め、"
                       "第2章で測定の条件（日付・場所・機材・方法）と結果を全部報告する構成にすること。**"
                       "数字を後ろに置かない。")
@@ -243,7 +248,9 @@ def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
     # With no reading, every chapter gets the full no-data framing — not just
     # the first two. The fabricated figures appeared in chapter 3 onwards, in
     # the chapters that had been given nothing at all.
-    if not measurement:
+    if not genre.get("measurement_based"):
+        data = ""
+    elif not measurement:
         data = no_data_block()
     else:
         data = script_block(measurement) if idx in (0, 1) else guard_block(measurement)

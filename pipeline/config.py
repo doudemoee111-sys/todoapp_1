@@ -244,6 +244,12 @@ GENRES = {
         "youtube_category_id": "26",   # Howto & Style
         "narration_target": 3200,
         "compliance": "medical",
+        # Turns on measurement.py. Without it the measurement machinery is
+        # inert — which is what the sleep genre needs, and what it did not get
+        # on 2026-10-06: the no-data framing was injected into every genre, so a
+        # sleep video came out as a decibel-methodology piece wearing a sleep
+        # description. The flag exists so that never depends on remembering.
+        "measurement_based": True,
         "channel_id": "UCrCoZaskQrz6nBkRmS1SAJQ",   # 睡眠・安眠チャンネル2
         # Measured data is the point of this genre, so it must be visible: the
         # instruments, the readings, the room. Brighter than the sleep genre's

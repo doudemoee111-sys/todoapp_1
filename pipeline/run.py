@@ -252,7 +252,7 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     # is NOT built with an invented one: a fabricated primary source published
     # under this channel's name is worse than no source at all.
     import measurement as _meas
-    meas = _meas.take() if not narration else None
+    meas = _meas.take() if (not narration and genre.get("measurement_based")) else None
     if meas:
         print(f"[measurement] 実測データを使います: {meas['id']}（{meas['date']} {meas['subject']}）")
     else:
@@ -724,7 +724,9 @@ def _reject_fabricated_measurements(pkg: dict, genre: dict, meas: dict | None,
     measurement — with one, the readings are real and reporting them is the job.
     """
     from measurement import fabrication_findings
-    if meas:
+    # Only a measurement-based genre can fabricate a measurement. Running this
+    # on a genre that never claims one is noise at best.
+    if meas or not genre.get("measurement_based"):
         return pkg
     for attempt in (1, 2):
         text = "\n".join([pkg.get("title", ""), pkg.get("description", "")]
@@ -983,7 +985,7 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
     import field_audio as _field
     import measurement as _meas
     recording = _field.take()
-    meas = _meas.take()
+    meas = _meas.take() if genre.get("measurement_based") else None
     if recording:
         print(f"[field] 実録音を使います: {recording['id']}"
               f"（{recording['date']} {recording['subject']}）")
