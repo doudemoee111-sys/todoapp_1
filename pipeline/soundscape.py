@@ -36,10 +36,13 @@ from datetime import datetime
 from pathlib import Path
 
 import config
-from config import (OUTPUT_DIR, VIDEO_W, VIDEO_H, FPS, SOUNDSCAPE_THEMES,
+from config import (OUTPUT_DIR, VIDEO_W, VIDEO_H, FPS, SHORT_W, SHORT_H, SOUNDSCAPE_THEMES,
                     SOUNDSCAPE_CATEGORY_ID, SOUNDSCAPE_PUBLISH_HOUR_JST,
                     SOUNDSCAPE_DEFAULT_SECONDS, SOUNDSCAPE_COMMON_TAGS,
                     SOUNDSCAPE_PLAYLIST_TITLE, STABILITY_ENDPOINT, UPLOAD_PRIVACY)
+
+# 送客ショートの尺（縦型・予告）。45〜60秒だと最後まで見られやすく、CTAも効く。
+SHORT_SECONDS = 50
 
 # 音源が自作(非著作権)であることとAI画像利用を明記する開示文(収益化ポリシー対応)。
 _DISCLOSURE = (
@@ -263,12 +266,13 @@ def make_thumbnail(theme: dict, seconds: int, out_path: Path, bg_still: Path | N
 # --------------------------------------------------------------------------- #
 # 3. 短い超低速ズームのクリップ → stream-loop で全尺に                          #
 # --------------------------------------------------------------------------- #
-def _kenburns_clip(still: Path, out: Path, clip_sec: int = 20) -> None:
+def _kenburns_clip(still: Path, out: Path, clip_sec: int = 20,
+                   w: int = VIDEO_W, h: int = VIDEO_H) -> None:
     frames = FPS * clip_sec
-    vf = (f"scale={VIDEO_W*2}:{VIDEO_H*2}:force_original_aspect_ratio=increase,"
-          f"crop={VIDEO_W*2}:{VIDEO_H*2},"
+    vf = (f"scale={w*2}:{h*2}:force_original_aspect_ratio=increase,"
+          f"crop={w*2}:{h*2},"
           f"zoompan=z='min(zoom+0.0004,1.12)':d={frames}:"
-          f"x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':s={VIDEO_W}x{VIDEO_H}:fps={FPS},"
+          f"x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':s={w}x{h}:fps={FPS},"
           f"setsar=1,format=yuv420p")
     # CRF 28: 近似静止のアンビエントでは画質劣化が体感できず、ループ全体の
     # ファイルサイズ(=クリップbytes×ループ回数)をほぼ半減できる。視聴時間が目的で
@@ -294,6 +298,75 @@ def render_video(still: Path, audio: Path, seconds: int, out_path: Path) -> Path
           "-t", str(seconds), "-movflags", "+faststart", str(out_path)])
     clip.unlink(missing_ok=True)
     return out_path
+
+
+# --------------------------------------------------------------------------- #
+# 3b. 送客ショート（縦型の予告→その日の長尺フルへ誘導）                        #
+# --------------------------------------------------------------------------- #
+def make_short_visual(theme: dict, dur_label: str, out_path: Path) -> Path:
+    """縦型(1080x1920)の予告ビジュアル。テーマ別配色＋焼き込みテキスト(テーマ語／用途／
+    『フルは概要欄』CTA／チャンネル名)。ショートはスクロールされるのでテキストを焼き込む。
+    音と同じく著作権クリア(自前生成)。"""
+    from PIL import ImageDraw
+    W, H = SHORT_W, SHORT_H
+    top, bottom = theme.get("bg", ("#0b1a2a", "#244b6b"))
+    base = _vgradient((W, H), top, bottom)
+    d = ImageDraw.Draw(base)
+    accent = _hex(theme.get("accent", "#ffffff"))
+    word = theme.get("word", theme.get("label", ""))
+
+    def _centered(text, font, y, fill, stroke=7):
+        bb = d.textbbox((0, 0), text, font=font, stroke_width=stroke)
+        d.text(((W - (bb[2] - bb[0])) / 2 - bb[0], y), text, font=font, fill=fill,
+               stroke_width=stroke, stroke_fill=(0, 0, 0))
+
+    _centered(word, _font(150), 430, (255, 255, 255), 10)        # テーマ語(特大)
+    _centered("作業用BGM・環境音", _font(70), 660, (235, 235, 235), 6)
+    _centered(f"▶ {dur_label}フルは", _font(72), 1180, accent, 7)  # CTA
+    _centered("概要欄・固定コメント", _font(66), 1290, accent, 7)
+    _centered("世界の雑学王", _font(50), 1760, accent, 5)         # チャンネル識別
+    base.save(out_path)
+    return out_path
+
+
+def _build_and_upload_short(theme_key: str, theme: dict, dur_label: str,
+                            long_video_id: str, publish_at, work: Path,
+                            publish_now: bool, rng: random.Random) -> dict:
+    """その日の長尺(long_video_id)への予告ショートを縦型で生成・投稿し、概要欄＋固定コメントで
+    フルへ送客する。音は自作環境音の抜粋(著作権クリア)、画像はテーマ別の縦型グラデ＋テキスト。"""
+    from youtube_upload import upload_video, post_comment
+    long_url = f"https://youtu.be/{long_video_id}"
+    sdir = work / "short"
+    sdir.mkdir(exist_ok=True)
+
+    audio = synth_audio(theme_key, SHORT_SECONDS, sdir / "audio.wav", rng)
+    still = make_short_visual(theme, dur_label, sdir / "still.png")
+    clip = sdir / "clip.mp4"
+    _kenburns_clip(still, clip, clip_sec=SHORT_SECONDS, w=SHORT_W, h=SHORT_H)
+    video = sdir / "short.mp4"
+    _run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+          "-i", str(clip), "-i", str(audio), "-map", "0:v", "-map", "1:a",
+          "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-ar", "44100",
+          "-t", str(SHORT_SECONDS), "-movflags", "+faststart", str(video)])
+    audio.unlink(missing_ok=True)
+    clip.unlink(missing_ok=True)
+
+    word = theme.get("word", theme.get("label", "")).replace(" ", "")
+    title = f"{word}で集中｜{dur_label}作業用BGM #Shorts"[:100]
+    desc = (f"{theme['title_core']}で作業・勉強・リラックス。\n\n"
+            f"▼ {dur_label}のフル版（途切れなし）はこちら\n{long_url}\n\n"
+            f"#Shorts #作業用BGM #環境音 #{theme.get('label','')}")
+    tags = list(dict.fromkeys(["Shorts", "作業用BGM", "環境音"] + (theme.get("tags") or [])[:4]))
+
+    if publish_now:
+        vid = upload_video(video, title, desc, tags, SOUNDSCAPE_CATEGORY_ID, None, None, "public")
+    else:
+        vid = upload_video(video, title, desc, tags, SOUNDSCAPE_CATEGORY_ID,
+                           publish_at, None, UPLOAD_PRIVACY)
+    post_comment(vid, f"▶ {dur_label}のフル版（作業用BGM・途切れなし）はこちら\n{long_url}")
+    url = f"https://youtu.be/{vid}"
+    print(f"  [short] 送客ショート {url} -> {long_url}")
+    return {"video_id": vid, "url": url, "title": title, "links_to": long_url}
 
 
 # --------------------------------------------------------------------------- #
@@ -357,7 +430,7 @@ def _pick_theme(avoid_titles: list[str]) -> str:
 
 
 def run(theme_key: str | None, seconds: int, do_upload: bool,
-        publish_now: bool = False) -> dict:
+        publish_now: bool = False, make_short: bool = True) -> dict:
     rng = random.Random()
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -396,6 +469,7 @@ def run(theme_key: str | None, seconds: int, do_upload: bool,
     if do_upload:
         from youtube_upload import (upload_video, next_publish_at,
                                     ensure_playlist, add_to_playlist)
+        pub = None
         if publish_now:
             vid = upload_video(video, meta["title"], meta["description"], meta["tags"],
                                SOUNDSCAPE_CATEGORY_ID, None, str(thumb), "public")
@@ -417,6 +491,17 @@ def run(theme_key: str | None, seconds: int, do_upload: bool,
         except Exception as e:  # noqa: BLE001
             print(f"  [playlist] スキップ: {e}")
 
+        # 送客ショート（縦型の予告→その日の長尺フルへ誘導）。失敗しても本編は投稿済みなので
+        # 握りつぶして続行（発見性の補助であり、本編の成否をブロックしない）。
+        if make_short:
+            try:
+                short = _build_and_upload_short(
+                    theme_key, theme, _hours_label(seconds), vid, pub, work,
+                    publish_now, rng)
+                result["short"] = short
+            except Exception as e:  # noqa: BLE001
+                print(f"  [short] 送客ショートの生成に失敗（本編は投稿済み）: {e}")
+
     (work / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
     return result
 
@@ -430,6 +515,8 @@ def main() -> None:
     ap.add_argument("--no-upload", action="store_true")
     ap.add_argument("--publish-now", action="store_true",
                     help="予約せず即時 public で公開(evergreen を早く稼働させる場合)")
+    ap.add_argument("--no-short", action="store_true",
+                    help="送客ショート(縦型の予告→長尺フルへ誘導)を作らない")
     ap.add_argument("--check-auth", action="store_true")
     ap.add_argument("--rethumb", default=None,
                     help="既存動画のサムネだけ差し替える（新規動画は作らない）。"
@@ -466,7 +553,8 @@ def main() -> None:
     do_upload = not args.no_upload
     _preflight(do_upload)
     t0 = time.time()
-    result = run(args.theme, args.seconds, do_upload=do_upload, publish_now=args.publish_now)
+    result = run(args.theme, args.seconds, do_upload=do_upload, publish_now=args.publish_now,
+                 make_short=not args.no_short)
     print(f"\nDONE in {time.time()-t0:.0f}s -> {result.get('video_id', '(not uploaded)')}")
 
 
