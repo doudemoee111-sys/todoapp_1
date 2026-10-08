@@ -319,7 +319,16 @@ GENRES = {
         ),
         "tags": ["寝室", "睡眠環境", "快眠グッズ", "騒音", "デシベル", "遮光",
                  "枕", "マットレス", "耳栓", "温湿度", "40代", "50代"],
-        "playlist_title": "寝室を測る — 睡眠環境の実測記録",
+        # The SAME playlist as the sleep genre, by id. Giving this genre its own
+        # title created a second playlist on 2026-10-08, which split a 20-video
+        # series from its continuation: the new videos' sibling links carried a
+        # &list= that did not contain the videos they pointed at, and a viewer
+        # finishing one got nothing to autoplay. To a viewer these are one
+        # series about one bedroom; the genre change is an internal matter.
+        # Pinned by id so the playlist can be renamed in Studio without
+        # splitting it again — only the id is load-bearing now.
+        "playlist_id": "PLP9ausaDhr0Q",
+        "playlist_title": "いびきに悩む家族のための睡眠ガイド",
         "playlist_description": (
             "寝室の音・光・温度・寸法を実際に測った記録です。"
             "体への効果ではなく、部屋とモノの数字だけを扱います。"

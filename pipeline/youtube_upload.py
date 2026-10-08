@@ -194,7 +194,8 @@ def fetch_recent_videos(max_results: int = 5) -> list[tuple[str, str]]:
         return []
 
 
-def ensure_playlist(playlist_title: str, description: str = "") -> str | None:
+def ensure_playlist(playlist_title: str, description: str = "",
+                    playlist_id: str | None = None) -> str | None:
     """The channel's playlist of this name, created if it does not exist yet.
 
     Split out from add_to_playlist because the id is needed BEFORE the upload,
@@ -205,13 +206,23 @@ def ensure_playlist(playlist_title: str, description: str = "") -> str | None:
     actually built from. Fetching it afterwards is too late to put in the
     description of the video being uploaded.
 
-    Looked up by title rather than a stored id because every scheduled run
-    starts from a fresh container with no local state. Best-effort: returns
-    None on any failure, and every caller treats that as "no playlist link".
+    `playlist_id` pins it outright, and a genre that has a playlist should set
+    it. Title lookup was the original design — a fresh container has no local
+    state, so the title was the only handle — but it makes the channel's series
+    depend on a string matching in two places that nobody keeps in sync. Both
+    halves of that have now gone wrong: renaming the genre's playlist_title on
+    2026-10-03 silently started a SECOND playlist, splitting a 20-video series
+    from its continuation; and renaming the playlist in Studio would do the same
+    in the other direction. An id cannot drift, and the title stays as the
+    fallback for a genre that has not been pinned.
+
+    Best-effort: returns None on any failure, and every caller treats that as
+    "no playlist link".
     """
     try:
         yt = _service()
-        playlist_id = None
+        if playlist_id:
+            return playlist_id
         req = yt.playlists().list(part="snippet", mine=True, maxResults=50)
         while req is not None and playlist_id is None:
             resp = req.execute()
@@ -234,7 +245,8 @@ def ensure_playlist(playlist_title: str, description: str = "") -> str | None:
         return None
 
 
-def add_to_playlist(video_id: str, playlist_title: str, description: str = "") -> str | None:
+def add_to_playlist(video_id: str, playlist_title: str, description: str = "",
+                    playlist_id: str | None = None) -> str | None:
     """Put the video in the channel's playlist of this name, creating it once.
 
     A playlist is the most direct suggested-video lever available from the API:
@@ -245,7 +257,7 @@ def add_to_playlist(video_id: str, playlist_title: str, description: str = "") -
     """
     try:
         yt = _service()
-        playlist_id = ensure_playlist(playlist_title, description)
+        playlist_id = ensure_playlist(playlist_title, description, playlist_id)
         if playlist_id is None:
             return None
 

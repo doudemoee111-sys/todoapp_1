@@ -314,3 +314,19 @@ https://www.youtube.com/watch?v=oySpFdVyCnA&list=PLP9ausaDhr0Q
 
 #睡眠
 ```
+
+## 10/08 16:15 eCTKwOzOt7o（drone）
+
+```
+加湿器をつけた夜、寝室は何デシベルになっているか測ったことがありますか。
+
+加湿器の音をどう測るか、湿度計をどこに置くか、出てきた数字をどう読むかをまとめました。メーカーが公表している運転音の値が何を指しているのかも扱っています。
+
+後半は、低くたゆたう持続音が2時間続きます。
+
+https://www.youtube.com/watch?v=eCTKwOzOt7o&list=PLP9ausaDhr0Q
+
+※一般的な情報の紹介です。気になる症状が続く場合は医療機関にご相談ください。
+
+#睡眠
+```

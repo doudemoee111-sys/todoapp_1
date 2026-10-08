@@ -351,7 +351,8 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
         related = fetch_recent_videos(3)
         # Resolved BEFORE the upload so the description can carry &list= links.
         playlist_id = (ensure_playlist(genre["playlist_title"],
-                                       genre.get("playlist_description", ""))
+                                       genre.get("playlist_description", ""),
+                                       genre.get("playlist_id"))
                        if genre.get("playlist_title") else None)
         _desc = _description(genre, pkg, sub_segments, related, playlist_id,
                              measurement_rec=meas)
@@ -369,7 +370,8 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
         result["publish_at_jst"] = pub.isoformat()
         if genre.get("playlist_title"):
             add_to_playlist(vid, genre["playlist_title"],
-                            genre.get("playlist_description", ""))
+                            genre.get("playlist_description", ""),
+                            genre.get("playlist_id"))
         _series_comment(vid, related, playlist_id)
         print(f"      scheduled publish: {pub.isoformat()} (JST)  https://youtu.be/{vid}")
 
@@ -928,7 +930,8 @@ def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> 
         related = fetch_recent_videos(3)
         # Resolved BEFORE the upload so the description can carry &list= links.
         playlist_id = (ensure_playlist(genre["playlist_title"],
-                                       genre.get("playlist_description", ""))
+                                       genre.get("playlist_description", ""),
+                                       genre.get("playlist_id"))
                        if genre.get("playlist_title") else None)
         _desc = _description(genre, pkg, None, related, playlist_id)
         _final_check(pkg["title"], _desc, pkg["tags"])
@@ -940,7 +943,8 @@ def run_ambient(genre_key: str, do_upload: bool, seconds: int | None = None) -> 
         result["publish_at_jst"] = pub.isoformat()
         if genre.get("playlist_title"):
             add_to_playlist(vid, genre["playlist_title"],
-                            genre.get("playlist_description", ""))
+                            genre.get("playlist_description", ""),
+                            genre.get("playlist_id"))
         _series_comment(vid, related, playlist_id)
         print(f"      scheduled publish: {pub.isoformat()} (JST)  https://youtu.be/{vid}")
     else:
@@ -1067,7 +1071,8 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
         related = fetch_recent_videos(3)
         # Resolved BEFORE the upload so the description can carry &list= links.
         playlist_id = (ensure_playlist(genre["playlist_title"],
-                                       genre.get("playlist_description", ""))
+                                       genre.get("playlist_description", ""),
+                                       genre.get("playlist_id"))
                        if genre.get("playlist_title") else None)
         _desc = _description(genre, pkg, sub_segments, related, playlist_id,
                              measurement_rec=meas, recording=recording)
@@ -1087,7 +1092,8 @@ def run_guide(genre_key: str, topic: str | None, do_upload: bool,
         result["publish_at_jst"] = pub.isoformat()
         if genre.get("playlist_title"):
             add_to_playlist(vid, genre["playlist_title"],
-                            genre.get("playlist_description", ""))
+                            genre.get("playlist_description", ""),
+                            genre.get("playlist_id"))
         _series_comment(vid, related, playlist_id)
         print(f"      scheduled publish: {pub.isoformat()} (JST)  https://youtu.be/{vid}")
     else:
