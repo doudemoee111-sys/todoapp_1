@@ -84,7 +84,9 @@ def _audio_filtergraph(theme_key: str, seconds: int, rng: random.Random) -> str:
         pad = True
     elif theme_key == "waves":
         color, hp, lp = "brown", 90, rng.randint(1400, 2000)
-        trem_f, trem_d = round(rng.uniform(0.07, 0.11), 3), 0.6   # ゆっくりした寄せ波
+        # ffmpeg tremolo の下限は 0.1Hz。0.07〜0.11 だと 0.1 未満に落ちて生成が失敗していた
+        # （実例 10/09 f=0.086 でエラー）。0.1〜0.13(周期 7.7〜10秒)の“ゆっくりした寄せ波”に是正。
+        trem_f, trem_d = round(rng.uniform(0.1, 0.13), 3), 0.6
         pad = True
     elif theme_key == "fire":
         color, hp, lp = "brown", 70, rng.randint(1700, 2400)
@@ -123,7 +125,9 @@ def _audio_filtergraph(theme_key: str, seconds: int, rng: random.Random) -> str:
 
     tail = mix
     if trem_f > 0:
-        tail += f",tremolo=f={trem_f}:d={trem_d}"
+        # 安全ガード: ffmpeg tremolo の有効範囲は 0.1〜20000Hz。どのテーマの乱数でも
+        # 0.1 を下回らないようクランプして、生成が落ちないようにする。
+        tail += f",tremolo=f={max(0.1, trem_f):.3f}:d={trem_d}"
     tail += (f",afade=t=in:d=4,afade=t=out:st={fade_out_st}:d=6,"
              f"loudnorm=I=-22:TP=-2:LRA=7[out]")
     parts.append(tail)
