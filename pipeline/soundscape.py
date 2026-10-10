@@ -96,6 +96,22 @@ def _audio_filtergraph(theme_key: str, seconds: int, rng: random.Random) -> str:
         color, hp, lp = "pink", rng.randint(200, 320), rng.randint(3800, 5200)
         trem_f, trem_d = round(rng.uniform(0.12, 0.2), 3), 0.3
         pad = True
+    elif theme_key == "wind":
+        color, hp, lp = "pink", rng.randint(120, 220), rng.randint(1800, 2600)
+        trem_f, trem_d = round(rng.uniform(0.1, 0.16), 3), 0.5     # 吹き寄せる風のうねり
+        pad = True
+    elif theme_key == "river":
+        color, hp, lp = "pink", rng.randint(500, 700), rng.randint(6000, 8000)
+        trem_f, trem_d = 0.0, 0.0                                  # 渓流は定常の明るい水音
+        pad = True
+    elif theme_key == "thunder":
+        color, hp, lp = "pink", rng.randint(260, 420), rng.randint(4800, 6800)
+        trem_f, trem_d = round(rng.uniform(0.12, 0.2), 3), 0.3     # 雨＋ゆっくりした遠雷のうねり
+        pad = True
+    elif theme_key == "snow":
+        color, hp, lp = "pink", rng.randint(80, 160), rng.randint(1200, 1800)
+        trem_f, trem_d = round(rng.uniform(0.1, 0.14), 3), 0.2     # 雪の夜の静かなうねり
+        pad = True
     else:  # night ほか
         color, hp, lp = "pink", rng.randint(150, 260), rng.randint(2600, 3600)
         trem_f, trem_d = round(rng.uniform(0.1, 0.16), 3), 0.3
@@ -254,12 +270,16 @@ def make_thumbnail(theme: dict, seconds: int, out_path: Path, bg_still: Path | N
         d.text(((W - (bb[2] - bb[0])) / 2 - bb[0], y), text, font=font, fill=fill,
                stroke_width=stroke, stroke_fill=(0, 0, 0))
 
+    # サブコピーは毎回振る＝同じテーマが再登場しても一覧で見分けがつく(重複感の緩和)。
+    subtitle = random.choice([
+        "作業用BGM・環境音", "集中・リラックス・睡眠", "勉強・作業のお供に",
+        "ノンストップで癒し", "睡眠導入・安眠に"])
     # 尺バッジ(上部・差し色)
     _centered(f"— {dur} —", _font(60), 70, accent, stroke=5)
     # テーマ語(中央・特大・白)
     _centered(word, _font(150), 250, (255, 255, 255), stroke=8)
-    # 用途サブ(下)
-    _centered("作業用BGM・環境音", _font(66), 500, (235, 235, 235), stroke=6)
+    # 用途サブ(下・毎回変化)
+    _centered(subtitle, _font(60), 505, (235, 235, 235), stroke=6)
     # チャンネル識別(最下部・差し色)
     _centered("世界の雑学王", _font(40), 628, accent, stroke=4)
 
@@ -423,14 +443,23 @@ def _preflight(do_upload: bool) -> None:
 
 
 def _pick_theme(avoid_titles: list[str]) -> str:
-    """直近の投稿タイトルに含まれていないテーマを優先的に選ぶ(連日同じ音を避ける)。"""
-    keys = list(SOUNDSCAPE_THEMES.keys())
-    random.shuffle(keys)
-    for k in keys:
+    """最も長く使っていないテーマ(LRU)を選ぶ＝全テーマを一巡してから再登場させる。
+
+    旧実装は「直近タイトルに無いテーマ」を探すだけで、カタログが直近N件に出揃うと
+    どれも“直近扱い”になり keys[0](実質ランダム)へ退化していた。その結果、同じテーマが
+    数日で重複し、グリッドで同じサムネが並ぶ原因になっていた。ここでは各テーマが直近
+    タイトル(新しい順)のどれだけ前に最後に出たかを見て、最も昔／未使用のものを選ぶ。
+    """
+    def recency(k: str) -> int:
         core = SOUNDSCAPE_THEMES[k]["title_core"]
-        if not any(core[:3] in t for t in avoid_titles):
-            return k
-    return keys[0]
+        word = (SOUNDSCAPE_THEMES[k].get("word") or "").replace(" ", "")
+        for i, t in enumerate(avoid_titles):           # avoid_titles は新しい順
+            if core[:3] in t or (word and word[:3] in t):
+                return i                               # 小さいほど最近使った
+        return len(avoid_titles) + 1                   # 一度も出ていない＝最優先
+    keys = list(SOUNDSCAPE_THEMES.keys())
+    random.shuffle(keys)                               # 同点(未使用同士)はランダムに
+    return max(keys, key=recency)
 
 
 def run(theme_key: str | None, seconds: int, do_upload: bool,

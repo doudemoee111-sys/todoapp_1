@@ -250,4 +250,33 @@ SOUNDSCAPE_THEMES = {
                          "smooth subtle grain, serene distraction-free, cinematic"),
         "tags": ["ブラウンノイズ", "brown noise", "集中音", "ホワイトノイズ"],
     },
+    # テーマを増やして、グリッドでの見た目の重複(同じサムネの連発)を減らす。
+    "wind": {
+        "label": "風の音", "title_core": "高原の風の音", "word": "風 の 音",
+        "bg": ("#0e1620", "#415a70"), "accent": "#cfe0ee",
+        "image_prompt": ("windswept grassy highland under a vast sky, soft moving clouds, "
+                         "serene cinematic, muted cool tones, gentle motion"),
+        "tags": ["風の音", "wind sounds", "自然音", "ホワイトノイズ"],
+    },
+    "river": {
+        "label": "渓流の音", "title_core": "渓流のせせらぎ", "word": "渓流",
+        "bg": ("#07211c", "#1f7a5e"), "accent": "#a9f0d8",
+        "image_prompt": ("a clear mountain stream rushing over mossy rocks, lush green, "
+                         "dappled sunlight, fresh vivid cinematic"),
+        "tags": ["渓流", "川の音", "water sounds", "自然音"],
+    },
+    "thunder": {
+        "label": "雨と雷", "title_core": "雨と遠雷の音", "word": "雨 と 雷",
+        "bg": ("#0a0e1a", "#2b3457"), "accent": "#aab6e0",
+        "image_prompt": ("rainy night cityscape with soft distant lightning glow on the "
+                         "clouds, moody atmospheric cinematic, deep blue tones"),
+        "tags": ["雨の音", "雷の音", "thunderstorm", "安眠"],
+    },
+    "snow": {
+        "label": "雪の夜", "title_core": "雪の降る夜の静けさ", "word": "雪 の 夜",
+        "bg": ("#111722", "#48546e"), "accent": "#dfe7f2",
+        "image_prompt": ("quiet snowfall at night over a still village, soft blue hush, "
+                         "serene cinematic, gentle falling snow, calm"),
+        "tags": ["雪の音", "ホワイトノイズ", "安眠", "冬"],
+    },
 }
