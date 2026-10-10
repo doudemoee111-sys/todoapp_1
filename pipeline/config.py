@@ -99,7 +99,9 @@ GENRES = {
         "youtube_category_id": "24",   # Entertainment
         # API実測(2026/10): 未解決事件の勝ち筋は中央32分、ヒットは20〜62分。15分では短い。
         # 自社の0:30保持率61%(風船おじさん事件)＝この形式が最も視聴者を掴めている実証あり。
-        "narration_target": 6000,      # ~23 min of JP narration
+        # 実測(2026/10/10 怪談 meOKMSYMVrA): 6,000字 → 音声17.3分。日本語TTSは約350字/分
+        # なので、20〜25分帯の下限を割らないよう7,600字に引き上げる。
+        "narration_target": 7600,      # ~22 min of JP narration
         "image_style": (
             "dark cinematic documentary illustration, moody atmospheric, muted "
             "desaturated tones, fog and deep shadow, film grain, tense mysterious "
@@ -183,7 +185,8 @@ GENRES = {
         "label": "怪談朗読（創作・記録調）",
         "publish_hour_jst": 22,        # 深夜帯＝作業用/睡眠用の需要が立つ時間
         "youtube_category_id": "24",   # Entertainment
-        "narration_target": 6000,      # ~23 min（勝者は16〜48分。まず20分級から）
+        # 初回(meOKMSYMVrA)は6,000字で17.3分＝目標20〜25分を下回った。350字/分換算で7,600字。
+        "narration_target": 7600,      # ~22 min（勝者は16〜48分。まず20分級から）
         "image_style": (
             "dark eerie Japanese night scene, desaturated muted tones, fog, dim "
             "streetlight, empty corridor or old apartment, unsettling stillness, "
@@ -201,6 +204,11 @@ GENRES = {
             "淡々と提示する“怪異記録アーカイブ”調にする。感情的な絶叫や過度な演技を前提にせず、"
             "事実を淡々と積み上げることで不気味さを出す。各話は『日常→わずかな違和感→"
             "説明のつかない事象→回収されない結末』で閉じ、次の話へ静かに移る。"
+            "★実話と誤認させないこと（初回 meOKMSYMVrA は「2023年10月5日、東京都内」のように"
+            "実在の年月日と実在の地名を事実として断定していた）。記録番号・曜日・時刻は具体的に"
+            "書いてよいが、年月日は「数年前の秋」「十月のある晩」のようにぼかし、地名は"
+            "『北関東のある県営団地』『私鉄沿線のS駅』のように架空化・匿名化する。実在の自治体名・"
+            "施設名・事件名は使わない。『これは実際にあった話です』等の実話主張も書かない。"
         ),
         "topic_seed_prompt": (
             "YouTubeの怪談朗読チャンネル向けに、完全オリジナルの創作怪談のテーマを1つ提案してください。"
