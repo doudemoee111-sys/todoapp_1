@@ -89,6 +89,31 @@ def preflight(do_upload: bool) -> None:
         if not shutil.which(tool):
             problems.append(f"{tool} が PATH にない → `bash pipeline/setup.sh` を先に実行")
 
+    # --- Stability 残高を先に確認（重要なコスト対策） -------------------------
+    # 画像生成は台本(OpenAI)とTTSの“後”に走るため、残高切れだと毎回それらを支払った後に
+    # ImagesMostlyFailedError で落ちる＝丸損。残高は無料で引けるのでここで先に弾く。
+    if do_upload and os.environ.get("STABILITY_API_KEY"):
+        try:
+            import requests
+            r = requests.get("https://api.stability.ai/v1/user/balance",
+                             headers={"Authorization": f"Bearer {os.environ['STABILITY_API_KEY']}"},
+                             timeout=20)
+            if r.status_code == 200:
+                credits = float(r.json().get("credits", 0) or 0)
+                if credits < 5:
+                    problems.append(
+                        f"Stability の残高不足（{credits:.1f} credits）→ 画像生成が全滅し、"
+                        "台本(OpenAI)とTTSを支払った後に中断してしまう。"
+                        "https://platform.stability.ai/account/credits で補充してから再実行")
+                else:
+                    print(f"[preflight] Stability 残高 OK（{credits:.1f} credits）")
+            elif r.status_code in (401, 403):
+                problems.append(f"Stability の認証に失敗（HTTP {r.status_code}）→ STABILITY_API_KEY を確認")
+            else:
+                print(f"[preflight] Stability 残高の確認をスキップ（HTTP {r.status_code}）")
+        except Exception as e:  # noqa: BLE001  残高確認の失敗自体では止めない
+            print(f"[preflight] Stability 残高の確認をスキップ（{e}）")
+
     if problems:
         raise PreflightError(
             "事前チェック(preflight)に失敗しました。以下を解消してから再実行してください:\n  - "
