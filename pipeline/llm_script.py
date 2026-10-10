@@ -411,7 +411,9 @@ def generate_script(genre_key: str, topic: str | None = None,
         "image_prompts": image_prompts,
         "thumbnail_text": (outline.get("thumbnail_text") or title)[:24],
         "thumbnail_prompt": outline.get("thumbnail_prompt", genre["image_style"]),
-        "description": (outline.get("description", "") + _AI_DISCLOSURE),
+        # genre固有の注記（例: 怪談は創作であることを明示し、実話と誤認させない）を先に付す。
+        "description": (outline.get("description", "")
+                        + genre.get("description_note", "") + _AI_DISCLOSURE),
         "tags": (outline.get("tags") or genre["tags"])[:15],
     }
 
