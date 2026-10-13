@@ -344,3 +344,19 @@ https://www.youtube.com/watch?v=x_ATGkqx6u4&list=PLP9ausaDhr0Q
 
 #睡眠
 ```
+
+## 10/13 17:01 vPQxiHZT1w4（mask）
+
+```
+枕の高さ正しく測る。
+
+寝室の枕：仰向けと横向きでの首の角度を数値で測る方法と最適なバランス探し
+
+後半は、いびきの帯域に合わせた安眠ノイズが2時間続きます。
+
+https://www.youtube.com/watch?v=vPQxiHZT1w4&list=PLP9ausaDhr0Q
+
+※一般的な情報の紹介です。気になる症状が続く場合は医療機関にご相談ください。
+
+#睡眠
+```
