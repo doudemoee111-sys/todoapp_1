@@ -103,8 +103,21 @@ _DEFAULT_TITLE_STYLE = (
 )
 
 
+def _chapter_count(genre: dict) -> int:
+    """How many chapters to ask for, derived from the narration target.
+
+    A chapter generation reliably lands around 800 JP chars no matter what
+    number the prompt asks for, so a long video has to come from more chapters
+    rather than longer ones: at narration_target=7600 over a fixed 8 chapters
+    the model was asked for 950 each and delivered ~820, landing 6,559 chars
+    (17.8 min) against a 20-25 min goal.
+    """
+    target = genre.get("narration_target", NARRATION_TARGET_CHARS)
+    return max(8, min(12, round(target / 800)))
+
+
 def _outline(genre: dict, topic: str) -> dict:
-    n_ch = 8
+    n_ch = _chapter_count(genre)
     title_spec = genre.get("title_style", _DEFAULT_TITLE_STYLE)
     structure = genre.get("structure_hint") or random.choice(_STRUCTURE_VARIANTS)
     user = f"""日本のYouTube長尺解説動画の構成案をJSONで作成してください。
@@ -380,6 +393,59 @@ def _select_topic(genre: dict, avoid_titles: list[str], max_retries: int = 4) ->
     return topic
 
 
+def _ensure_narration_length(genre: dict, topic: str, title: str,
+                             chapters: list[dict], max_passes: int = 2) -> list[dict]:
+    """Deepen the middle chapters until the whole narration reaches its target.
+
+    Watch time is the monetization gate, so a long-form that lands at 17.8 min
+    against a 20-25 min goal is a direct loss. Chapters are extended rather
+    than added, because the chapter list is already mirrored by the image
+    prompts and the outline's structure. The opening hook and the closing CTA
+    are left alone — those two carry retention and the subscribe ask.
+    """
+    target = genre.get("narration_target", NARRATION_TARGET_CHARS)
+    floor = int(target * 0.92)
+    total = len(chapters)
+    if total < 3:
+        return chapters
+    for _ in range(max_passes):
+        have = sum(len(c["narration"]) for c in chapters)
+        if have >= floor:
+            break
+        # 不足分を中盤の章に均等に割り振る（短い章から順に厚くする）。
+        middle = sorted(range(1, total - 1), key=lambda i: len(chapters[i]["narration"]))
+        if not middle:
+            break
+        add_each = max(150, (floor - have) // len(middle) + 1)
+        print(f"  [len] ナレーション {have}字 < 目標 {target}字 → 中盤{len(middle)}章を各+{add_each}字で増補")
+        for i in middle:
+            cur = chapters[i]["narration"]
+            prompt = f"""次の章のナレーションを、内容を足して約{len(cur) + add_each}文字まで厚くしてください。
+
+動画タイトル: {title}
+テーマ: {topic}
+この章の見出し: {chapters[i].get('heading', '')}
+
+現在の本文:
+{cur}
+
+条件:
+- 既にある内容は削らず、具体的な事実・数字・固有名詞・具体例を足して深掘りする。
+- 同じ内容の言い換え・抽象的な一般論・引き延ばしの相づちで字数を埋めない。1文ごとに新しい情報を足す。
+- {genre['narration_style']}
+- 箇条書き記号・見出し・絵文字は使わない。地の文の連続した語りにする。
+- 出力はナレーション本文だけ。"""
+            grown = _chat([{"role": "system", "content": "プロのナレーション脚本家。具体で厚くする。出力は本文のみ。"},
+                           {"role": "user", "content": prompt}], temperature=0.8).strip()
+            if len(grown) > len(cur):   # 退行防止
+                chapters[i]["narration"] = grown
+            if sum(len(c["narration"]) for c in chapters) >= floor:
+                break
+    final = sum(len(c["narration"]) for c in chapters)
+    print(f"  [len] ナレーション確定: {final}字（目標 {target}字 / 下限 {floor}字）")
+    return chapters
+
+
 def generate_script(genre_key: str, topic: str | None = None,
                     avoid_titles: list[str] | None = None) -> dict:
     genre = GENRES[genre_key]
@@ -399,6 +465,7 @@ def generate_script(genre_key: str, topic: str | None = None,
         chapters.append({"heading": cm.get("heading", ""), "narration": narration})
         prev_tail = narration
 
+    chapters = _ensure_narration_length(genre, topic, title, chapters)
     full_narration = "\n".join(c["narration"] for c in chapters).strip()
     headings = [c["heading"] for c in chapters]
     image_prompts = _image_prompts(genre, title, headings)
