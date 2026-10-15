@@ -102,6 +102,9 @@ GENRES = {
         # 実測(2026/10/10 怪談 meOKMSYMVrA): 6,000字 → 音声17.3分。日本語TTSは約350字/分
         # なので、20〜25分帯の下限を割らないよう7,600字に引き上げる。
         "narration_target": 7600,      # ~22 min of JP narration
+        # 実在する事件を事実として語るジャンル＝題材の実在検証が必須（verify_topic.py）。
+        # 検証できない題材では台本を書かない。怪談は創作なのでこのフラグを付けない。
+        "verify_real_world": True,
         "image_style": (
             "dark cinematic documentary illustration, moody atmospheric, muted "
             "desaturated tones, fog and deep shadow, film grain, tense mysterious "

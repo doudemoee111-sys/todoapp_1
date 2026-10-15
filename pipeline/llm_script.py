@@ -446,10 +446,56 @@ def _ensure_narration_length(genre: dict, topic: str, title: str,
     return chapters
 
 
+class TopicNotVerifiedError(RuntimeError):
+    """A genre that asserts real-world facts was given a topic we cannot confirm."""
+
+
+def _gate_real_world(genre: dict, topic: str, avoid_titles: list[str],
+                     topic_verified: str | None, max_picks: int = 3) -> str:
+    """For genres that state things as fact, refuse to write about what we cannot confirm.
+
+    The pipeline published two fabricated unsolved cases (2026-10-11, 10-12)
+    because nothing stood between "the model named a case" and "we narrate it as
+    real". This is that something. Either the caller supplies evidence it already
+    verified the subject (the routine can search the web; this container's egress
+    may not reach Wikipedia), or we check ja.wikipedia here. If neither confirms
+    it and the topic was auto-picked, pick again; if a topic was passed in
+    explicitly, stop rather than silently substitute a different subject.
+    """
+    import verify_topic
+    if not verify_topic.requires_verification(genre):
+        return topic
+    if topic_verified:
+        print(f"  [verify] 呼び出し側が実在を確認済み: {topic_verified}")
+        return topic
+
+    explicit = bool(topic)
+    for attempt in range(1, max_picks + 1):
+        if not topic:
+            topic = _select_topic(genre, avoid_titles)
+        ok, why = verify_topic.verify(topic)
+        if ok:
+            print(f"  [verify] {topic} -> {why}")
+            return topic
+        print(f"  [verify] 却下({attempt}/{max_picks}) {topic} -> {why}")
+        if explicit:
+            raise TopicNotVerifiedError(
+                f"題材「{topic}」の実在を確認できません。{why}\n"
+                "実在が確認できる著名事件を --topic で指定するか、"
+                "呼び出し側で検証した根拠を --topic-verified で渡してください。")
+        avoid_titles = avoid_titles + [topic]
+        topic = None
+    raise TopicNotVerifiedError(
+        f"実在を確認できる題材を{max_picks}回の試行で選べませんでした。"
+        "捏造した事件を実話として公開しないため、生成を中止します。")
+
+
 def generate_script(genre_key: str, topic: str | None = None,
-                    avoid_titles: list[str] | None = None) -> dict:
+                    avoid_titles: list[str] | None = None,
+                    topic_verified: str | None = None) -> dict:
     genre = GENRES[genre_key]
     avoid_titles = avoid_titles or []
+    topic = _gate_real_world(genre, topic, avoid_titles, topic_verified)
     if not topic:
         topic = _select_topic(genre, avoid_titles)
 

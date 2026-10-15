@@ -159,7 +159,8 @@ def _date_genre(d: "date | None" = None) -> str:
 
 def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
         narration: str | None = None, title: str | None = None,
-        make_teaser: bool = False, publish_now: bool = False) -> dict:
+        make_teaser: bool = False, publish_now: bool = False,
+        topic_verified: str | None = None) -> dict:
     from llm_script import generate_script, build_from_narration
     from tts import synthesize_timed, audio_duration
     from images import generate_images
@@ -186,7 +187,8 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
         avoid_titles = fetch_recent_titles() if topic is None else []
         if avoid_titles:
             print(f"      重複回避: 直近 {len(avoid_titles)} 件のタイトルを回避対象にします")
-        pkg = generate_script(genre_key, topic, avoid_titles=avoid_titles)
+        pkg = generate_script(genre_key, topic, avoid_titles=avoid_titles,
+                              topic_verified=topic_verified)
     (work / "script.json").write_text(json.dumps(pkg, ensure_ascii=False, indent=2))
     print(f"      topic: {pkg['topic']}")
     print(f"      title: {pkg['title']}")
@@ -374,6 +376,10 @@ def main() -> None:
     ap.add_argument("--rotate-date", action="store_true",
                     help="pick genre deterministically from the calendar day (stateless; use this for daily scheduled runs)")
     ap.add_argument("--topic", default=None)
+    ap.add_argument("--topic-verified", default=None,
+                    help="evidence that --topic names a real subject (e.g. a source URL). Genres marked "
+                         "verify_real_world refuse to write about a subject neither this nor ja.wikipedia "
+                         "can confirm; pass this when the caller already verified it by search")
     ap.add_argument("--no-upload", action="store_true")
     ap.add_argument("--no-subtitles", action="store_true")
     ap.add_argument("--check-auth", action="store_true",
@@ -438,9 +444,17 @@ def main() -> None:
             print(f"[intro] 初回シード台本でビルド: {args.intro_seed}（{len(narration)}字）")
 
     t0 = time.time()
-    result = run(genre_key, args.topic, do_upload=do_upload, subtitles=not args.no_subtitles,
-                 narration=narration, title=title_override, make_teaser=args.teaser,
-                 publish_now=args.publish_now)
+    try:
+        result = run(genre_key, args.topic, do_upload=do_upload, subtitles=not args.no_subtitles,
+                     narration=narration, title=title_override, make_teaser=args.teaser,
+                     publish_now=args.publish_now, topic_verified=args.topic_verified)
+    except Exception as e:  # noqa: BLE001
+        from llm_script import TopicNotVerifiedError
+        if isinstance(e, TopicNotVerifiedError):
+            # 実在しない事件を実話として公開するより、何も作らないほうがよい。
+            print(f"\n🚨 題材の実在検証に失敗したため生成を中止しました。\n{e}")
+            raise SystemExit(2)
+        raise
     state["last_genre"] = genre_key
     _save_state(state)
     print(f"\nDONE in {time.time()-t0:.0f}s -> {result.get('video_id', '(not uploaded)')}")
