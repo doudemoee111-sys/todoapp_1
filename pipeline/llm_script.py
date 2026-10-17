@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
 from openai import OpenAI
 
 from config import (SCRIPT_MODEL, NUM_IMAGES, NARRATION_TARGET_CHARS, GENRES,
@@ -490,6 +491,40 @@ def _gate_real_world(genre: dict, topic: str, avoid_titles: list[str],
         "捏造した事件を実話として公開しないため、生成を中止します。")
 
 
+_DATE_YMD = re.compile(r"(?:(?:19|20)\d{2}|令和\d{1,2}|平成\d{1,2}|昭和\d{1,2})年\s*(\d{1,2})月\s*(\d{1,2})日")
+_DATE_YM = re.compile(r"(?:(?:19|20)\d{2}|令和\d{1,2}|平成\d{1,2}|昭和\d{1,2})年\s*(\d{1,2})月")
+_DATE_Y = re.compile(r"(?:(?:19|20)\d{2}|令和\d{1,2}|平成\d{1,2}|昭和\d{1,2})年")
+
+
+def _blur_dates_in_fiction(genre: dict, text: str) -> str:
+    """Strip calendar dates out of an invented story, keeping its texture.
+
+    The kaidan scripts keep opening with a real-looking date — 「2023年10月5日、
+    東京都内」, then 「2019年10月1日」 the run after I told the prompt not to. The
+    genre is fiction and the description says so, but a narration that states a
+    date reads as a true account, and the generation prompt is the wrong place to
+    enforce that: the model agreed and did it anyway, twice.
+
+    So the date goes out deterministically. Month and 初旬/中旬/下旬 are kept
+    because the 記録調 lives on that kind of specificity; only the year — the
+    part that pins the story to the real calendar — is dropped.
+    """
+    if not genre.get("blur_real_dates"):
+        return text
+
+    def _ymd(m: re.Match) -> str:
+        day = int(m.group(2))
+        part = "初旬" if day <= 10 else ("中旬" if day <= 20 else "下旬")
+        return f"数年前の{int(m.group(1))}月{part}"
+
+    out = _DATE_YMD.sub(_ymd, text)
+    out = _DATE_YM.sub(lambda m: f"数年前の{int(m.group(1))}月", out)
+    out = _DATE_Y.sub("数年前", out)
+    if out != text:
+        print("  [fiction] 実在風の年月日をぼかしました（創作を実話として読ませないため）")
+    return out
+
+
 def generate_script(genre_key: str, topic: str | None = None,
                     avoid_titles: list[str] | None = None,
                     topic_verified: str | None = None) -> dict:
@@ -512,6 +547,8 @@ def generate_script(genre_key: str, topic: str | None = None,
         prev_tail = narration
 
     chapters = _ensure_narration_length(genre, topic, title, chapters)
+    for c in chapters:
+        c["narration"] = _blur_dates_in_fiction(genre, c["narration"])
     full_narration = "\n".join(c["narration"] for c in chapters).strip()
     headings = [c["heading"] for c in chapters]
     image_prompts = _image_prompts(genre, title, headings)
