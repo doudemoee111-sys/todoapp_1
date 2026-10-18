@@ -114,7 +114,10 @@ def _chapter_count(genre: dict) -> int:
     (17.8 min) against a 20-25 min goal.
     """
     target = genre.get("narration_target", NARRATION_TARGET_CHARS)
-    return max(8, min(12, round(target / 800)))
+    # 上限は30章。怪談の60分級(22,000字)で28章になる。ニッチ実測では長尺ほど
+    # 登録者あたりの再生が大きく(90分超の群は中央17,250登録で29,735再生)、尺は
+    # 視聴時間に線形に効くため、章数の天井が尺の天井になってはいけない。
+    return max(8, min(30, round(target / 800)))
 
 
 def _outline(genre: dict, topic: str) -> dict:
