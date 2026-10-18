@@ -149,7 +149,12 @@ JSON: {{"title":str,"chapters":[{{"heading":str,"summary":str}}],
 
 def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
                     heading: str, summary: str, prev_tail: str) -> str:
-    per = max(420, genre.get("narration_target", NARRATION_TARGET_CHARS) // total)
+    # 章ごとの依頼字数は、必要量より2割多く頼む。モデルは指定字数を一貫して
+    # 15〜17%下回るため（実測: 950字依頼→820字 / 785字依頼→648字）、必要量を
+    # そのまま頼むと合計もその分だけ足りなくなる。60分級の初号機は22,000字に対し
+    # 18,138字＝50.1分で着地した。
+    target = genre.get("narration_target", NARRATION_TARGET_CHARS)
+    per = max(420, int(target / total * 1.2))
     ctx = f"直前の章の終わり: {prev_tail[-120:]}" if prev_tail else "これは最初の章です。"
     role = (("最初の章＝冒頭30秒が動画の生死を分ける。次を厳守する。"
              "(1)最初の1文で、この動画で最も衝撃的な事実か最大の謎を『結論先出し』で提示する"
@@ -398,7 +403,7 @@ def _select_topic(genre: dict, avoid_titles: list[str], max_retries: int = 4) ->
 
 
 def _ensure_narration_length(genre: dict, topic: str, title: str,
-                             chapters: list[dict], max_passes: int = 2) -> list[dict]:
+                             chapters: list[dict], max_passes: int = 3) -> list[dict]:
     """Deepen the middle chapters until the whole narration reaches its target.
 
     Watch time is the monetization gate, so a long-form that lands at 17.8 min
@@ -420,7 +425,9 @@ def _ensure_narration_length(genre: dict, topic: str, title: str,
         middle = sorted(range(1, total - 1), key=lambda i: len(chapters[i]["narration"]))
         if not middle:
             break
-        add_each = max(150, (floor - have) // len(middle) + 1)
+        # ここも2割上乗せして頼む（増補の依頼字数も同じだけ下回るため。60分級の
+        # 初号機では2周しても22,000字に届かず18,138字で確定した）。
+        add_each = max(150, int(((floor - have) / len(middle) + 1) * 1.2))
         print(f"  [len] ナレーション {have}字 < 目標 {target}字 → 中盤{len(middle)}章を各+{add_each}字で増補")
         for i in middle:
             cur = chapters[i]["narration"]
