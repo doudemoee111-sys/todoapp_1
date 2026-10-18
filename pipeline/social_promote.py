@@ -14,6 +14,7 @@ APIリファレンス: https://developers.facebook.com/docs/threads
 """
 from __future__ import annotations
 import os
+import re
 
 from http_retry import request_with_retry
 
@@ -41,17 +42,36 @@ def _threads_post(text: str, link: str | None = None) -> str:
     return r2.json().get("id", "")
 
 
+_BRACKETS = re.compile(r"【[^】]*】")
+
+
 def craft_threads_text(title: str, url: str, pkg: dict | None = None,
-                       is_short: bool = False) -> str:
+                       is_short: bool = False, genre_key: str | None = None) -> str:
     """A curiosity-first Threads post: hook → 寸止め → link. Kept template-based
     (no LLM dependency) so promotion never fails on a model hiccup."""
-    hook = title.replace(" #Shorts", "").strip()
+    # 【】の中はYouTube検索用の飾り（【怪談朗読】【全9話／作業用／睡眠用BGM】等）で、
+    # Threadsのタイムラインでは邪魔なだけなので外し、題そのものをフックにする。
+    hook = _BRACKETS.sub("", title.replace(" #Shorts", "")).strip("　 ・|/")
+    if not hook:
+        hook = title.replace(" #Shorts", "").strip()
     teaser = ""
     if pkg and pkg.get("narration"):
-        first = pkg["narration"].split("。")[0].strip()
-        if 8 <= len(first) <= 60:
-            teaser = first + "…"
+        # 先頭1文に限らず、引きになる長さの最初の文を拾う。怪談の記録調は
+        # 「記録番号01。」のような短い宣言で始まるので、1文目固定では空になる。
+        for s in pkg["narration"].split("。")[:6]:
+            s = s.strip()
+            if 15 <= len(s) <= 60:
+                teaser = s + "…"
+                break
     tags = pkg.get("hashtags") if pkg else None
+    if not tags and genre_key:
+        # ジャンルのタグを流用する。既定値(#雑学/#宇宙)は怪談の投稿では的外れで、
+        # 無関係なタグはリーチを薄めるだけ。
+        try:
+            from config import GENRES
+            tags = ["#" + t.replace(" ", "") for t in (GENRES[genre_key].get("tags") or [])[:5]]
+        except Exception:  # noqa: BLE001
+            tags = None
     if not tags:
         tags = ["#雑学", "#ミステリー", "#都市伝説", "#宇宙"]
     tagline = " ".join(t for t in tags if t.startswith("#"))[:60]
@@ -65,14 +85,14 @@ def craft_threads_text(title: str, url: str, pkg: dict | None = None,
 
 
 def promote_published(title: str, video_id: str, pkg: dict | None = None,
-                      is_short: bool = False) -> dict:
+                      is_short: bool = False, genre_key: str | None = None) -> dict:
     """Post an ALREADY-PUBLIC video to Threads. Meant to be called at/after the
     video's publish time (so the link is live). Best-effort."""
     url = f"https://youtu.be/{video_id}"
     if not threads_enabled():
         return {"threads": "skip: THREADS_ACCESS_TOKEN/USER_ID 未設定"}
     try:
-        text = craft_threads_text(title, url, pkg, is_short)
+        text = craft_threads_text(title, url, pkg, is_short, genre_key)
         mid = _threads_post(text, link=url)
         print(f"  [threads] 投稿しました id={mid}")
         return {"threads": "posted", "media_id": mid, "url": url}
@@ -92,13 +112,14 @@ def _fmt_when(publish_at_jst) -> str:
 
 
 def build_draft(title: str, video_id: str, pkg: dict | None = None,
-                is_short: bool = False, publish_at_jst=None) -> dict:
+                is_short: bool = False, publish_at_jst=None,
+                genre_key: str | None = None) -> dict:
     """公開時に『手動で』投稿するための Threads 下書きを作って返す（投稿はしない）。
     ユーザー方針: 自動投稿ではなく、都度この下書きを確認して自分でThreadsへ貼る。"""
     url = f"https://youtu.be/{video_id}"
     return {
         "kind": "予告編ショート" if is_short else "長尺",
-        "draft_text": craft_threads_text(title, url, pkg, is_short),
+        "draft_text": craft_threads_text(title, url, pkg, is_short, genre_key),
         "url": url,
         "publish_at_jst": _fmt_when(publish_at_jst),
         "is_short": is_short,
@@ -127,9 +148,10 @@ def promote_everywhere(title: str, video_id: str, pkg: dict | None = None,
     from config import UPLOAD_PRIVACY
     is_short = "#Shorts" in (title or "")
     draft = build_draft(title, video_id, pkg, is_short=is_short,
-                        publish_at_jst=publish_at_jst)
+                        publish_at_jst=publish_at_jst, genre_key=genre_key)
     if UPLOAD_PRIVACY == "public":
-        posted = promote_published(title, video_id, pkg, is_short=is_short)
+        posted = promote_published(title, video_id, pkg, is_short=is_short,
+                                   genre_key=genre_key)
         return {**posted, **draft}  # 自動投稿の結果に下書きも同梱
     return {"threads": "draft", **draft}
 
