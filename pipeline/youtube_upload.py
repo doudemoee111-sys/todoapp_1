@@ -54,7 +54,9 @@ def check_auth() -> str:
             "投稿先チャンネルの Google アカウントで認可し直してください。")
     title = items[0]["snippet"]["title"]
     _assert_expected_channel(title)
-    return title
+    # channelId も返す: 表示名は変わる（「世界の雑学王」→「世界の雑学王_日本から各国へ」）
+    # ので、投稿先が本当に同じチャンネルかを照合できるのは id だけ。
+    return f"{title}（channelId: {items[0]['id']}）"
 
 
 class WrongChannelError(RuntimeError):
