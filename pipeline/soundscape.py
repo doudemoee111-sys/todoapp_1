@@ -78,6 +78,16 @@ def _audio_filtergraph(theme_key: str, seconds: int, rng: random.Random) -> str:
         color, hp, lp = "brown", 40, rng.randint(900, 1300)
         trem_f, trem_d = 0.0, 0.0        # 集中用は揺れなしのフラットなブラウンノイズ
         pad = False
+    elif theme_key == "white":
+        # 「ホワイトノイズ」は検索語として独立した需要がある（ブラウンノイズが
+        # 当チャンネル最大の視聴時間源＝推定44.6h だったのと同じ理由で追加）。
+        color, hp, lp = "white", 60, rng.randint(7000, 11000)
+        trem_f, trem_d = 0.0, 0.0
+        pad = False
+    elif theme_key == "pink":
+        color, hp, lp = "pink", 50, rng.randint(3000, 6000)
+        trem_f, trem_d = 0.0, 0.0
+        pad = False
     elif theme_key == "rain":
         color, hp, lp = "pink", rng.randint(300, 460), rng.randint(5500, 7500)
         trem_f, trem_d = round(rng.uniform(0.18, 0.28), 3), 0.25
@@ -151,12 +161,28 @@ def _audio_filtergraph(theme_key: str, seconds: int, rng: random.Random) -> str:
 
 
 def synth_audio(theme_key: str, seconds: int, out_path: Path, rng: random.Random) -> Path:
+    """Synthesize the bed. Long beds are written compressed, not as WAV.
+
+    PCM costs 176 kB/s: fine for a 50-second short, but 8 hours of it is 5.1 GB
+    of intermediate on a container whose writable space is a fixed allowance,
+    and the final upload is AAC anyway. So anything past a few minutes goes
+    straight to AAC (the source is synthesized noise — there is no generation
+    loss worth protecting here).
+    """
     graph = _audio_filtergraph(theme_key, seconds, rng)
     print(f"  [audio] 合成中… theme={theme_key} 尺={seconds}s ({seconds/3600:.2f}h)")
+    if seconds > 300:
+        # 最終出力と同じ 160k で書き、mux 側は再エンコードせず copy する
+        # （同じビットレートへの二重エンコードは時間を使うだけで何も買わない）。
+        out_path = out_path.with_suffix(".m4a")
+        codec = ["-c:a", "aac", "-b:a", "160k"]
+    else:
+        codec = ["-c:a", "pcm_s16le"]
     _run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
           "-filter_complex", graph, "-map", "[out]",
           "-t", str(seconds), "-ar", "44100", "-ac", "2",
-          "-c:a", "pcm_s16le", str(out_path)])
+          *codec, str(out_path)])
+    print(f"  [audio] 完成 {out_path.name} {out_path.stat().st_size/1e6:.0f} MB")
     return out_path
 
 
@@ -315,10 +341,12 @@ def render_video(still: Path, audio: Path, seconds: int, out_path: Path) -> Path
     print("  [video] 低速ズームのループ素材を作成…")
     _kenburns_clip(still, clip)
     print(f"  [video] stream-loop で {seconds}s に伸ばして音声をミックス…")
+    # 合成音が既に AAC 160k なら再エンコードせず copy（8時間だと差が大きい）。
+    acodec = (["-c:a", "copy"] if audio.suffix == ".m4a"
+              else ["-c:a", "aac", "-b:a", "160k", "-ar", "44100"])
     _run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
           "-stream_loop", "-1", "-i", str(clip), "-i", str(audio),
-          "-map", "0:v", "-map", "1:a", "-c:v", "copy",
-          "-c:a", "aac", "-b:a", "160k", "-ar", "44100",
+          "-map", "0:v", "-map", "1:a", "-c:v", "copy", *acodec,
           "-t", str(seconds), "-movflags", "+faststart", str(out_path)])
     clip.unlink(missing_ok=True)
     return out_path

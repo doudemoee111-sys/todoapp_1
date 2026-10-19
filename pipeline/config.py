@@ -299,7 +299,10 @@ UPLOAD_PRIVACY = "private"
 # ambient/sleep ジャンルとは別物として、独立したキー soundscape で管理する。
 SOUNDSCAPE_CATEGORY_ID = os.environ.get("SOUNDSCAPE_CATEGORY_ID", "10")  # Music
 SOUNDSCAPE_PUBLISH_HOUR_JST = int(os.environ.get("SOUNDSCAPE_PUBLISH_HOUR_JST", "20"))
-SOUNDSCAPE_DEFAULT_SECONDS = int(os.environ.get("SOUNDSCAPE_SECONDS", "10800"))  # 3h
+# 3h → 8h。視聴時間は尺に比例し、環境音は1再生あたりの視聴が長いほど効く
+# （実測: ブラウンノイズ3h×124再生で推定44.6h＝当チャンネル最大の算入視聴時間源）。
+# 中間音声はWAVではなくAACで書くので、8hでもディスクは1GB弱で収まる。
+SOUNDSCAPE_DEFAULT_SECONDS = int(os.environ.get("SOUNDSCAPE_SECONDS", "28800"))  # 8h
 SOUNDSCAPE_PLAYLIST_TITLE = "【作業用BGM・環境音】集中できる世界の音"
 SOUNDSCAPE_COMMON_TAGS = [
     "作業用BGM", "環境音", "集中", "勉強用BGM", "リラックス", "睡眠用BGM",
@@ -345,6 +348,23 @@ SOUNDSCAPE_THEMES = {
         "image_prompt": ("a quiet starry countryside night, silhouettes of grass and "
                          "distant hills, deep blue calm sky, serene cinematic"),
         "tags": ["夜の音", "虫の音", "night ambience", "安眠"],
+    },
+    # white / pink: ブラウンノイズ1本が推定44.6h（当チャンネルの算入視聴時間の最大源）
+    # だったことから、同じ「ノイズ系の検索需要」を拾う枠を増やす。自然音系は
+    # 1本あたり0.4〜9.7h どまりで、検索語の強さが桁を分けている。
+    "white": {
+        "label": "ホワイトノイズ", "title_core": "ホワイトノイズ（集中・睡眠）", "word": "ホワイト ノイズ",
+        "bg": ("#14161a", "#44484f"), "accent": "#e6e9ee",
+        "image_prompt": ("a minimalist calm abstract gradient, soft pale grey and cool "
+                         "silver, smooth fine grain, serene distraction-free, cinematic"),
+        "tags": ["ホワイトノイズ", "white noise", "集中音", "睡眠導入", "赤ちゃん 寝かしつけ"],
+    },
+    "pink": {
+        "label": "ピンクノイズ", "title_core": "ピンクノイズ（睡眠・集中）", "word": "ピンク ノイズ",
+        "bg": ("#191317", "#4a3b44"), "accent": "#efe2e8",
+        "image_prompt": ("a minimalist calm abstract gradient, muted dusty rose and deep "
+                         "plum, smooth subtle grain, serene distraction-free, cinematic"),
+        "tags": ["ピンクノイズ", "pink noise", "睡眠導入", "集中音", "作業用"],
     },
     "brown": {
         "label": "ブラウンノイズ", "title_core": "ブラウンノイズ（集中）", "word": "集中 ノイズ",
