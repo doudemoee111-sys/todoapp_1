@@ -26,6 +26,19 @@ fi
 echo "[deps] installing Python deps (always — cheap when cached)…"
 python3 -m pip install -q --user -r "$HERE/requirements.txt"
 
+# Pillow は apt の python3-pil と pip の Pillow が混ざると、PIL/__init__.py は
+# 読めるのに _imaging(C拡張) が見つからず `from PIL import Image` だけが落ちる。
+# 2026/10/20 の環境音がこれで死んだうえ、当時の検証は `import PIL` だけだったので
+# 壊れたまま「deps OK」と通していた。だから実際に使う名前で検証し、壊れていたら直す。
+if ! python3 -c "from PIL import Image, ImageDraw, ImageFont" >/dev/null 2>&1; then
+  echo "[deps] Pillow が壊れています（apt版とpip版の混在）。入れ直します…"
+  sudo apt-get remove -y -qq python3-pil python3-pil.imagetk 2>/dev/null || true
+  python3 -m pip install -q --user --force-reinstall --no-cache-dir pillow
+fi
+
 echo "[deps] verifying…"
 ffmpeg -version | head -1
-python3 -c "import openai, google.auth, googleapiclient, requests, PIL; print('[deps] python deps OK')"
+python3 -c "
+import openai, google.auth, googleapiclient, requests
+from PIL import Image, ImageDraw, ImageFont
+print('[deps] python deps OK')"

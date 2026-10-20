@@ -512,10 +512,13 @@ def run(theme_key: str | None, seconds: int, do_upload: bool,
     work.mkdir(parents=True, exist_ok=True)
     print(f"== 作業用BGM/環境音: {theme['label']} == work: {work}")
 
-    audio = synth_audio(theme_key, seconds, work / "audio.wav", rng)
+    # 画像を先に作る。8時間の音声合成は約28分かかるので、その後ろで画像工程が
+    # こけると（10/20: Pillowの壊れた混在インストールで ImportError: _imaging）
+    # 合成した582MBをまるごと捨てることになる。安い工程で落ちるものは先に落とす。
     still = make_still(theme, work / "still.png", rng)
     thumb = make_thumbnail(theme, seconds, work / "thumbnail.png", bg_still=still)
     print(f"  [thumb] テーマ別サムネ生成: {thumb.name}")
+    audio = synth_audio(theme_key, seconds, work / "audio.wav", rng)
     video = render_video(still, audio, seconds, work / "video.mp4")
     audio.unlink(missing_ok=True)  # 大きい中間ファイルは即削除(ディスク節約)
     size_mb = video.stat().st_size / 1e6
