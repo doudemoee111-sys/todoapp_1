@@ -104,20 +104,33 @@ _DEFAULT_TITLE_STYLE = (
 )
 
 
-def _chapter_count(genre: dict) -> int:
-    """How many chapters to ask for, derived from the narration target.
+CHARS_PER_CALL = 850      # 1回の生成でモデルが安定して書ける日本語の量
+_MAX_OUTLINE_CH = 12      # 構成案で安定して返ってくる章数の上限
 
-    A chapter generation reliably lands around 800 JP chars no matter what
-    number the prompt asks for, so a long video has to come from more chapters
-    rather than longer ones: at narration_target=7600 over a fixed 8 chapters
-    the model was asked for 950 each and delivered ~820, landing 6,559 chars
-    (17.8 min) against a 20-25 min goal.
+
+def _plan_length(genre: dict) -> tuple[int, int]:
+    """(chapters, parts-per-chapter) that multiply out to the narration target.
+
+    Asking one JSON call for 28 chapters is where this broke: the same 22,000
+    target produced 19,908 chars once, then 9,497 and 10,577, because the
+    outline returned far fewer chapters than asked and the length followed. So
+    the chapter count is held at a number the outline honours (<= 12) and the
+    length is made up with repeat calls per chapter, since a single call writes
+    about CHARS_PER_CALL no matter what number it is given.
+
+    Pick the smallest `parts` whose chapter count fits under the cap, so a
+    60-minute script is 9 chapters x 3 calls rather than 26 chapters x 1.
     """
     target = genre.get("narration_target", NARRATION_TARGET_CHARS)
-    # 上限は30章。怪談の60分級(22,000字)で28章になる。ニッチ実測では長尺ほど
-    # 登録者あたりの再生が大きく(90分超の群は中央17,250登録で29,735再生)、尺は
-    # 視聴時間に線形に効くため、章数の天井が尺の天井になってはいけない。
-    return max(8, min(30, round(target / 800)))
+    for parts in range(1, 9):
+        chapters = -(-target // (parts * CHARS_PER_CALL))   # ceil
+        if chapters <= _MAX_OUTLINE_CH:
+            return max(8, chapters), parts
+    return _MAX_OUTLINE_CH, 8
+
+
+def _chapter_count(genre: dict) -> int:
+    return _plan_length(genre)[0]
 
 
 def _outline(genre: dict, topic: str) -> dict:
@@ -148,14 +161,17 @@ JSON: {{"title":str,"chapters":[{{"heading":str,"summary":str}}],
 
 
 def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
-                    heading: str, summary: str, prev_tail: str) -> str:
-    # 章ごとの依頼字数は、必要量より2割多く頼む。モデルは指定字数を一貫して
-    # 15〜17%下回るため（実測: 950字依頼→820字 / 785字依頼→648字）、必要量を
-    # そのまま頼むと合計もその分だけ足りなくなる。60分級の初号機は22,000字に対し
-    # 18,138字＝50.1分で着地した。
-    target = genre.get("narration_target", NARRATION_TARGET_CHARS)
-    per = max(420, int(target / total * 1.2))
+                    heading: str, summary: str, prev_tail: str,
+                    part: int = 1, parts: int = 1) -> str:
+    # 1回の依頼は CHARS_PER_CALL 前後に保つ。これを超える量を1回で頼んでも
+    # モデルは書かない（実測: 950字依頼→820字 / 785字依頼→648字）。足りない分は
+    # 回数で稼ぐ。依頼値自体は2割上乗せして、下回り分を吸収する。
+    per = max(420, int(CHARS_PER_CALL * 1.2))
     ctx = f"直前の章の終わり: {prev_tail[-120:]}" if prev_tail else "これは最初の章です。"
+    if parts > 1:
+        ctx += (f"\n\n★この章は{parts}回に分けて書いており、今回はその{part}回目です。"
+                f"{'前回の続きから自然につなげ、同じ内容を繰り返さないこと。' if part > 1 else ''}"
+                f"{'この章の締めまで書き切ること。' if part == parts else 'まだ章を締めず、続きがある状態で止めること。'}")
     role = (("最初の章＝冒頭30秒が動画の生死を分ける。次を厳守する。"
              "(1)最初の1文で、この動画で最も衝撃的な事実か最大の謎を『結論先出し』で提示する"
              "（挨拶・自己紹介・『今日は』『皆さんは』『今回は』等の前置きは一切禁止。1文目からいきなり核心に入る）。"
@@ -425,9 +441,11 @@ def _ensure_narration_length(genre: dict, topic: str, title: str,
         middle = sorted(range(1, total - 1), key=lambda i: len(chapters[i]["narration"]))
         if not middle:
             break
-        # ここも2割上乗せして頼む（増補の依頼字数も同じだけ下回るため。60分級の
-        # 初号機では2周しても22,000字に届かず18,138字で確定した）。
-        add_each = max(150, int(((floor - have) / len(middle) + 1) * 1.2))
+        # 依頼量は CHARS_PER_CALL で上限を切る。10/20の26分版では不足が1万字あり、
+        # 1章あたり6,400字の増補を頼んで当然1文字も埋まらなかった。1回で書ける量を
+        # 超える依頼は、大きいほど効くのではなく、ただ無視される。
+        add_each = max(150, min(CHARS_PER_CALL,
+                                int(((floor - have) / len(middle) + 1) * 1.2)))
         print(f"  [len] ナレーション {have}字 < 目標 {target}字 → 中盤{len(middle)}章を各+{add_each}字で増補")
         for i in middle:
             cur = chapters[i]["narration"]
@@ -548,13 +566,32 @@ def generate_script(genre_key: str, topic: str | None = None,
     title = outline.get("title", topic)[:100]
     chapters_meta = outline.get("chapters", [])
     total = len(chapters_meta)
+    if not total:
+        raise RuntimeError("構成案が0章で返りました。生成を中止します。")
+
+    # 構成案が頼んだ章数を返さないことがある（10/20: 28章を頼んで4話ぶんしか
+    # 返らず、9,497字=26分で着地した）。章数が足りない分は、1章あたりの生成回数を
+    # 増やして埋める。1回の生成量は増やせないが、回数は確実に制御できる。
+    asked, planned_parts = _plan_length(genre)
+    target = genre.get("narration_target", NARRATION_TARGET_CHARS)
+    # 返ってきた章数で割り直す。少なく返ったら回数を増やし、多く返ったら減らす
+    # （planned_parts で下限を切ると、章が多く返った回が80分超に膨らんでしまう）。
+    parts = max(1, round(target / (max(1, total) * CHARS_PER_CALL)))
+    if total < asked:
+        print(f"  [script] 構成案が{total}章（{asked}章を依頼）。1章あたり{parts}回に分けて尺を確保します")
+    print(f"  [script] {total}章 × {parts}回 × 約{CHARS_PER_CALL}字 ≒ {total*parts*CHARS_PER_CALL:,}字 を目標に生成")
 
     chapters, prev_tail = [], ""
     for i, cm in enumerate(chapters_meta):
-        narration = _expand_chapter(genre, topic, title, i, total,
-                                    cm.get("heading", ""), cm.get("summary", ""), prev_tail)
+        pieces = []
+        for p in range(1, parts + 1):
+            piece = _expand_chapter(genre, topic, title, i, total,
+                                    cm.get("heading", ""), cm.get("summary", ""),
+                                    prev_tail, part=p, parts=parts)
+            pieces.append(piece)
+            prev_tail = piece
+        narration = "\n".join(pieces).strip()
         chapters.append({"heading": cm.get("heading", ""), "narration": narration})
-        prev_tail = narration
 
     chapters = _ensure_narration_length(genre, topic, title, chapters)
     for c in chapters:
