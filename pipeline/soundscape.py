@@ -579,8 +579,15 @@ def main() -> None:
     ap.add_argument("--no-upload", action="store_true")
     ap.add_argument("--publish-now", action="store_true",
                     help="予約せず即時 public で公開(evergreen を早く稼働させる場合)")
+    # 送客ショートは 2026/10/18 に廃止（ユーザー承認済み）。実測の転換率は3〜8%、
+    # 睡眠/作業用BGMと怪談のニッチ30chのショート比率は中央値0%、ショート比率と長尺
+    # 再生の相関は r=+0.07、そしてショート視聴は収益化の4,000h/8,000hに算入されない。
+    # 既定をオフにする。--short を明示した時だけ作る（10/21の環境音は既定オンのまま
+    # だったため、廃止したはずのショートが1本出てしまった）。
+    ap.add_argument("--short", action="store_true",
+                    help="送客ショートも作る（既定は作らない。廃止済みの導線）")
     ap.add_argument("--no-short", action="store_true",
-                    help="送客ショート(縦型の予告→長尺フルへ誘導)を作らない")
+                    help="（廃止済みの既定を明示するための後方互換フラグ。既定でオフ）")
     ap.add_argument("--check-auth", action="store_true")
     ap.add_argument("--rethumb", default=None,
                     help="既存動画のサムネだけ差し替える（新規動画は作らない）。"
@@ -618,7 +625,7 @@ def main() -> None:
     _preflight(do_upload)
     t0 = time.time()
     result = run(args.theme, args.seconds, do_upload=do_upload, publish_now=args.publish_now,
-                 make_short=not args.no_short)
+                 make_short=args.short and not args.no_short)
     print(f"\nDONE in {time.time()-t0:.0f}s -> {result.get('video_id', '(not uploaded)')}")
 
 
