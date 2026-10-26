@@ -317,20 +317,21 @@ def make_thumbnail(theme: dict, seconds: int, out_path: Path, bg_still: Path | N
 # 3. 短い超低速ズームのクリップ → stream-loop で全尺に                          #
 # --------------------------------------------------------------------------- #
 def _kenburns_clip(still: Path, out: Path, clip_sec: int = 20,
-                   w: int = VIDEO_W, h: int = VIDEO_H) -> None:
-    frames = FPS * clip_sec
+                   w: int = VIDEO_W, h: int = VIDEO_H,
+                   crf: int = 28, fps: int = FPS) -> None:
+    frames = fps * clip_sec
     vf = (f"scale={w*2}:{h*2}:force_original_aspect_ratio=increase,"
           f"crop={w*2}:{h*2},"
           f"zoompan=z='min(zoom+0.0004,1.12)':d={frames}:"
-          f"x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':s={w}x{h}:fps={FPS},"
+          f"x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':s={w}x{h}:fps={fps},"
           f"setsar=1,format=yuv420p")
-    # CRF 28: 近似静止のアンビエントでは画質劣化が体感できず、ループ全体の
-    # ファイルサイズ(=クリップbytes×ループ回数)をほぼ半減できる。視聴時間が目的で
-    # 視聴者は「聴く」ので、映像ビットレートは絞ってアップロードを軽くする。
+    # 視聴時間が目的で視聴者は「聴く」ので、映像ビットレートは絞ってよい。
+    # ループ全体のサイズ = クリップbytes × ループ回数 なので、クリップの圧縮が
+    # そのまま8時間ぶんに掛かる（crf28/30fpsでは2.19GBになり、実測の2,195MBと一致）。
     _run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-loop", "1",
           "-i", str(still), "-t", str(clip_sec), "-vf", vf,
-          "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
-          "-r", str(FPS), str(out)])
+          "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf),
+          "-r", str(fps), str(out)])
 
 
 def render_video(still: Path, audio: Path, seconds: int, out_path: Path) -> Path:
@@ -339,7 +340,10 @@ def render_video(still: Path, audio: Path, seconds: int, out_path: Path) -> Path
     組み合わせると停止しないことがあるため使わない)。動画は再エンコードしない＝安価。"""
     clip = out_path.with_name("_loop_clip.mp4")
     print("  [video] 低速ズームのループ素材を作成…")
-    _kenburns_clip(still, clip)
+    # 8時間の長尺は crf32 / 12fps。ほぼ静止のゆっくりズームなので体感差はなく、
+    # 完成ファイルが2.19GB→1.11GBに半減する（0.68GBという当初の見積りは平坦な
+    # グラデーションで測ったもので、Stabilityの写真的な静止画では16倍重かった）。
+    _kenburns_clip(still, clip, crf=32, fps=12)
     print(f"  [video] stream-loop で {seconds}s に伸ばして音声をミックス…")
     # 合成音が既に AAC 160k なら再エンコードせず copy（8時間だと差が大きい）。
     acodec = (["-c:a", "copy"] if audio.suffix == ".m4a"
