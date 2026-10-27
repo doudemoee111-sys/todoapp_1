@@ -185,6 +185,17 @@ def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
                   "（＝人間ならではの独自の付加価値。引用や要約の羅列にしない。これは維持率と、量産テンプレ判定回避の両方に効く）。"
                   "(4)章末に次章への小さな引き（『では、なぜ〜なのか』等）を一文置く。") if idx < total - 1
             else "動画のまとめと、チャンネル登録・高評価のお願いで締める。")
+    # オムニバスのジャンル（怪談）は「章」＝独立した1話。上の role は解説動画用で、
+    # 章同士をつなぐ引きを要求するため、9話のはずが1つの話を9章に引き延ばした
+    # 代物になった（10/27 U_lYwMX4roU）。話を跨がせない指示に差し替える。
+    if genre.get("chapters_are_standalone"):
+        last = (idx == total - 1)
+        role = (f"★この章は独立した第{idx+1}話（全{total}話のオムニバス）であり、前の話の続きではない。"
+                "冒頭に『記録番号』と場所・時刻を淡々と置き、この話の中だけで始まり終わらせる。"
+                "前の話の人物・場所・怪異を引き継がない。次の話への引きも作らない。"
+                + ("最後に一言だけ、チャンネル登録の案内を添えて締める。" if last else
+                   "話の結末まで書き切る（説明しきらず、回収されない違和感を残して閉じる）。"))
+
     user = f"""次の動画の第{idx+1}章のナレーション本文だけを書いてください。
 
 動画タイトル: {title}
@@ -524,6 +535,32 @@ _DATE_YM = re.compile(r"(?:(?:19|20)\d{2}|令和\d{1,2}|平成\d{1,2}|昭和\d{1
 _DATE_Y = re.compile(r"(?:(?:19|20)\d{2}|令和\d{1,2}|平成\d{1,2}|昭和\d{1,2})年")
 
 
+_PLACEHOLDER = r"(?:〇〇+|○○+|●●+|××+|ＸＸ+|XX+|\*\*+|＊＊+|◯◯+|□□+)"
+_PH_WITH_NOUN = re.compile(_PLACEHOLDER + r"(市|町|村|区|県|駅|小学校|中学校|高校|大学|病院|団地|荘|"
+                                          r"マンション|アパート|トンネル|峠|山|川|湖|神社|寺|公園|工場|社宅|寮)")
+# 名詞を伴わない裸のプレースホルダ。後続の助詞で人か場所かを見分ける
+# （「そのは何も語らなかった」のような非文を作らないため）。
+_PH_PERSON = re.compile(_PLACEHOLDER + r"(?=[はがもをにとへ])")
+_PH_BARE = re.compile(_PLACEHOLDER)
+
+
+def _scrub_placeholders(text: str) -> str:
+    """Replace literal fill-in blanks before TTS reads them out loud.
+
+    Telling the model to anonymise place names made it emit the blanks instead:
+    the 10/27 kaidan script carried 「〇〇市」 and 「**市」, which the narration
+    then voiced. Anonymising is right; leaving a template marker in the audio is
+    not, and no prompt wording reliably prevents it, so it gets substituted here.
+    """
+    out = _PH_WITH_NOUN.sub(lambda m: ("ある地方都市" if m.group(1) == "市"
+                                       else "ある" + m.group(1)), text)
+    out = _PH_PERSON.sub("その人物", out)
+    out = _PH_BARE.sub("ある場所", out)
+    if out != text:
+        print("  [scrub] 台本の穴埋めプレースホルダ（〇〇市 等）を具体語に置換しました")
+    return out
+
+
 def _blur_dates_in_fiction(genre: dict, text: str) -> str:
     """Strip calendar dates out of an invented story, keeping its texture.
 
@@ -595,7 +632,7 @@ def generate_script(genre_key: str, topic: str | None = None,
 
     chapters = _ensure_narration_length(genre, topic, title, chapters)
     for c in chapters:
-        c["narration"] = _blur_dates_in_fiction(genre, c["narration"])
+        c["narration"] = _scrub_placeholders(_blur_dates_in_fiction(genre, c["narration"]))
     full_narration = "\n".join(c["narration"] for c in chapters).strip()
     headings = [c["heading"] for c in chapters]
     image_prompts = _image_prompts(genre, title, headings)

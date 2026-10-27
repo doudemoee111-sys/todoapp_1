@@ -250,6 +250,9 @@ GENRES = {
         ),
         "tags": ["怪談", "怪談朗読", "作業用BGM", "睡眠用BGM", "怖い話", "都市伝説",
                  "ホラー", "朗読", "オリジナル怪談"],
+        # 「章」＝独立した1話。これが無いと、1つの話を章数ぶん引き延ばした
+        # 「全9話」が出来る（10/27 U_lYwMX4roU）。llm_script が章ごとの指示を差し替える。
+        "chapters_are_standalone": True,
         # 創作なので、台本に残った実在風の年月日はコード側で機械的にぼかす
         # （生成プロンプトでの指示は2回守られなかった。llm_script._blur_dates_in_fiction）。
         "blur_real_dates": True,
