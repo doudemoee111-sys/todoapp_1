@@ -6,12 +6,18 @@ publishes it automatically at the scheduled time (JST peak hour).
 """
 from __future__ import annotations
 import os
+import random
+import socket
+import ssl
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import httplib2
 from google.oauth2.credentials import Credentials
 from google.auth.exceptions import RefreshError
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 
 JST = timezone(timedelta(hours=9))
@@ -197,6 +203,58 @@ def set_thumbnail(video_id: str, thumbnail_path: str | Path) -> None:
     print(f"  [thumb] set on {video_id}")
 
 
+# 転送中の一時的な通信断。これで全体を落とさない。
+# TimeoutError は Python 3.10 以降 socket.timeout の別名だが、両方書いておく。
+_TRANSIENT = (TimeoutError, socket.timeout, ssl.SSLError, ConnectionError,
+              BrokenPipeError, socket.gaierror, httplib2.HttpLib2Error)
+_RETRYABLE_STATUS = (408, 429, 500, 502, 503, 504)
+
+
+def _pump_resumable(req, label: str = "upload", max_attempts: int = 8):
+    """Drive a resumable upload to completion, resuming after transient faults.
+
+    2026/10/30: 完成した1,292MBの環境音が、アップロード71%で
+    `TimeoutError: The read operation timed out` に当たって消えた。生成は
+    22分かけて成功していたのに、再開を試みる処理が無かったため全部捨てている。
+    再開可能アップロードはセッションが残っているので、同じ地点から押し直せば続く。
+    一過性の通信断で1日ぶんの在庫を失わないために、ここで吸収する。
+    """
+    resp = None
+    attempts = 0
+    last_pct = -1
+    while resp is None:
+        try:
+            status, resp = req.next_chunk(num_retries=3)
+        except HttpError as e:
+            code = getattr(getattr(e, "resp", None), "status", None)
+            attempts += 1
+            if code not in _RETRYABLE_STATUS or attempts >= max_attempts:
+                raise
+            wait = min(60.0, 2.0 ** attempts) + random.uniform(0, 1)
+            print(f"  [{label}] HTTP {code}。{wait:.0f}秒後に同じ地点から再開します"
+                  f"（{attempts}/{max_attempts}）")
+            time.sleep(wait)
+            continue
+        except _TRANSIENT as e:
+            attempts += 1
+            if attempts >= max_attempts:
+                raise RuntimeError(
+                    f"アップロードを{max_attempts}回再開しても完了しませんでした"
+                    f"（最後の障害: {type(e).__name__}: {e}）") from e
+            wait = min(60.0, 2.0 ** attempts) + random.uniform(0, 1)
+            print(f"  [{label}] 通信が切れました（{type(e).__name__}: {e}）。"
+                  f"{wait:.0f}秒後に同じ地点から再開します（{attempts}/{max_attempts}）")
+            time.sleep(wait)
+            continue
+        attempts = 0
+        if status:
+            pct = int(status.progress() * 100)
+            if pct != last_pct:
+                print(f"  [{label}] {pct}%")
+                last_pct = pct
+    return resp
+
+
 def next_publish_at(hour_jst: int, min_lead_hours: int = 3) -> datetime:
     """Next occurrence of hour_jst (JST) that is at least min_lead_hours from now.
 
@@ -241,11 +299,7 @@ def upload_video(video_path: str | Path, title: str, description: str, tags: lis
     }
     media = MediaFileUpload(str(video_path), mimetype="video/*", resumable=True, chunksize=8 * 1024 * 1024)
     req = yt.videos().insert(part="snippet,status", body=body, media_body=media)
-    resp = None
-    while resp is None:
-        status, resp = req.next_chunk()
-        if status:
-            print(f"  [upload] {int(status.progress() * 100)}%")
+    resp = _pump_resumable(req, "upload")
     video_id = resp["id"]
     print(f"  [upload] done videoId={video_id} privacy={privacy} publishAt={publish_at_utc or '(即時)'}")
 

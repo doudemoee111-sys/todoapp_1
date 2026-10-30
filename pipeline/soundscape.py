@@ -318,7 +318,8 @@ def make_thumbnail(theme: dict, seconds: int, out_path: Path, bg_still: Path | N
 # --------------------------------------------------------------------------- #
 def _kenburns_clip(still: Path, out: Path, clip_sec: int = 20,
                    w: int = VIDEO_W, h: int = VIDEO_H,
-                   crf: int = 28, fps: int = FPS) -> None:
+                   crf: int = 28, fps: int = FPS,
+                   maxrate_k: int | None = None) -> None:
     frames = fps * clip_sec
     vf = (f"scale={w*2}:{h*2}:force_original_aspect_ratio=increase,"
           f"crop={w*2}:{h*2},"
@@ -328,9 +329,14 @@ def _kenburns_clip(still: Path, out: Path, clip_sec: int = 20,
     # 視聴時間が目的で視聴者は「聴く」ので、映像ビットレートは絞ってよい。
     # ループ全体のサイズ = クリップbytes × ループ回数 なので、クリップの圧縮が
     # そのまま8時間ぶんに掛かる（crf28/30fpsでは2.19GBになり、実測の2,195MBと一致）。
+    # crf だけだと絵柄次第でサイズが数倍ぶれる。実測: 同じ crf32/12fps で
+    # ブラウンノイズの静止画は約24kbps(映像85MB)、焚き火の写真は約197kbps(映像711MB)
+    # ＝完成1,292MBでアップロードが落ちた。VBVで上限を与えて最悪値を抑える。
+    cap = (["-maxrate", f"{maxrate_k}k", "-bufsize", f"{maxrate_k * 2}k"]
+           if maxrate_k else [])
     _run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-loop", "1",
           "-i", str(still), "-t", str(clip_sec), "-vf", vf,
-          "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf),
+          "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf), *cap,
           "-r", str(fps), str(out)])
 
 
@@ -343,7 +349,9 @@ def render_video(still: Path, audio: Path, seconds: int, out_path: Path) -> Path
     # 8時間の長尺は crf32 / 12fps。ほぼ静止のゆっくりズームなので体感差はなく、
     # 完成ファイルが2.19GB→1.11GBに半減する（0.68GBという当初の見積りは平坦な
     # グラデーションで測ったもので、Stabilityの写真的な静止画では16倍重かった）。
-    _kenburns_clip(still, clip, crf=32, fps=12)
+    # 上限110kbps＝8時間で映像396MBまで。通常の絵柄は24kbps前後なので影響せず、
+    # 写真的で細かい絵柄（焚き火・木の葉）だけが上限に当たって抑えられる。
+    _kenburns_clip(still, clip, crf=32, fps=12, maxrate_k=110)
     print(f"  [video] stream-loop で {seconds}s に伸ばして音声をミックス…")
     # 合成音が既に AAC 160k なら再エンコードせず copy（8時間だと差が大きい）。
     acodec = (["-c:a", "copy"] if audio.suffix == ".m4a"
