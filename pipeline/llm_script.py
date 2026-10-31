@@ -536,8 +536,13 @@ _DATE_Y = re.compile(r"(?:(?:19|20)\d{2}|令和\d{1,2}|平成\d{1,2}|昭和\d{1,
 
 
 _PLACEHOLDER = r"(?:〇〇+|○○+|●●+|××+|ＸＸ+|XX+|\*\*+|＊＊+|◯◯+|□□+)"
-_PH_WITH_NOUN = re.compile(_PLACEHOLDER + r"(市|町|村|区|県|駅|小学校|中学校|高校|大学|病院|団地|荘|"
+_PH_WITH_NOUN = re.compile(_PLACEHOLDER + r"(市立|町立|村立|区立|県立|都立|"
+                                          r"市|町|村|区|県|駅|小学校|中学校|高校|大学|病院|団地|荘|"
                                           r"マンション|アパート|トンネル|峠|山|川|湖|神社|寺|公園|工場|社宅|寮)")
+# 置換後の継ぎ目を整える。「**市立〇〇小学校」は素朴に置くと
+# 「ある地方都市立ある小学校」になり、読み上げでそのまま不自然に響く。
+_PH_SEAM = ((re.compile(r"ある地方都市立"), "ある市立"),
+            (re.compile(r"(ある(?:市|町|村|区|県|都)立)ある"), r"\1"))
 # 名詞を伴わない裸のプレースホルダ。後続の助詞で人か場所かを見分ける
 # （「そのは何も語らなかった」のような非文を作らないため）。
 _PH_PERSON = re.compile(_PLACEHOLDER + r"(?=[はがもをにとへ])")
@@ -556,6 +561,8 @@ def _scrub_placeholders(text: str) -> str:
                                        else "ある" + m.group(1)), text)
     out = _PH_PERSON.sub("その人物", out)
     out = _PH_BARE.sub("ある場所", out)
+    for pat, repl in _PH_SEAM:
+        out = pat.sub(repl, out)
     if out != text:
         print("  [scrub] 台本の穴埋めプレースホルダ（〇〇市 等）を具体語に置換しました")
     return out
