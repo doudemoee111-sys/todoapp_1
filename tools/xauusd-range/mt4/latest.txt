@@ -1,0 +1,87 @@
+V2
+META|generated_at|2026-11-03T14:27:02Z
+META|symbol|XAUUSD
+INFO|nyclose|broker|Axiory
+INFO|nyclose|session|2026-11-03
+INFO|nyclose|session_jst|11/03 07:00 - 11/04 07:00 JST
+INFO|nyclose|prev_close|3946.38
+INFO|nyclose|sigma|85.36
+INFO|nyclose|atr14|79.90
+INFO|nyclose|elapsed_hours|13
+INFO|nyclose|data_end_jst|11/03 20:00
+INFO|nyclose|range_median|77.53
+LEVEL|nyclose|box_high|50|50% HIGH|4009.79
+LEVEL|nyclose|box_low|50|50% LOW|3891.37
+LEVEL|nyclose|box_high|70|70% HIGH|4027.80
+LEVEL|nyclose|box_low|70|70% LOW|3872.48
+LEVEL|nyclose|box_high|80|80% HIGH|4044.15
+LEVEL|nyclose|box_low|80|80% LOW|3856.83
+LEVEL|nyclose|box_high|90|90% HIGH|4067.49
+LEVEL|nyclose|box_low|90|90% LOW|3828.01
+LEVEL|nyclose|prev_high|0|PREV HIGH|3970.07
+LEVEL|nyclose|prev_low|0|PREV LOW|3869.05
+LEVEL|nyclose|prev_close|0|PREV CLOSE|3946.38
+LEVEL|nyclose|pivot|0|PIVOT|3928.50
+LEVEL|nyclose|pivot|0|R1|3987.95
+LEVEL|nyclose|pivot|0|S1|3886.94
+LEVEL|nyclose|pivot|0|R2|4029.51
+LEVEL|nyclose|pivot|0|S2|3827.49
+LEVEL|nyclose|pivot|0|R3|4088.96
+LEVEL|nyclose|pivot|0|S3|3785.93
+LEVEL|nyclose|swing_high|0|20D HIGH|4216.89
+LEVEL|nyclose|swing_low|0|20D LOW|3869.05
+INFO|nyclose|realized_high|3964.24
+INFO|nyclose|realized_low|3895.28
+INFO|nyclose|realized_range|68.96
+INFO|nyclose|p_high_set|43.3
+INFO|nyclose|p_low_set|48.9
+LEVEL|nyclose|cond_high|50|COND 50% HIGH|3988.58
+LEVEL|nyclose|cond_low|50|COND 50% LOW|3874.06
+LEVEL|nyclose|cond_high|70|COND 70% HIGH|4002.30
+LEVEL|nyclose|cond_low|70|COND 70% LOW|3858.60
+LEVEL|nyclose|cond_high|80|COND 80% HIGH|4013.46
+LEVEL|nyclose|cond_low|80|COND 80% LOW|3846.89
+LEVEL|nyclose|cond_high|90|COND 90% HIGH|4032.71
+LEVEL|nyclose|cond_low|90|COND 90% LOW|3820.26
+INFO|utc|broker|Exness
+INFO|utc|session|2026-11-03
+INFO|utc|session_jst|11/03 09:00 - 11/04 09:00 JST
+INFO|utc|prev_close|3947.78
+INFO|utc|sigma|83.99
+INFO|utc|atr14|77.82
+INFO|utc|elapsed_hours|11
+INFO|utc|data_end_jst|11/03 20:00
+INFO|utc|range_median|75.67
+LEVEL|utc|box_high|50|50% HIGH|4008.73
+LEVEL|utc|box_low|50|50% LOW|3890.39
+LEVEL|utc|box_high|70|70% HIGH|4026.42
+LEVEL|utc|box_low|70|70% LOW|3871.74
+LEVEL|utc|box_high|80|80% HIGH|4039.65
+LEVEL|utc|box_low|80|80% LOW|3856.00
+LEVEL|utc|box_high|90|90% HIGH|4068.45
+LEVEL|utc|box_low|90|90% LOW|3831.88
+LEVEL|utc|prev_high|0|PREV HIGH|3970.07
+LEVEL|utc|prev_low|0|PREV LOW|3890.91
+LEVEL|utc|prev_close|0|PREV CLOSE|3947.78
+LEVEL|utc|pivot|0|PIVOT|3936.25
+LEVEL|utc|pivot|0|R1|3981.59
+LEVEL|utc|pivot|0|S1|3902.43
+LEVEL|utc|pivot|0|R2|4015.41
+LEVEL|utc|pivot|0|S2|3857.09
+LEVEL|utc|pivot|0|R3|4060.75
+LEVEL|utc|pivot|0|S3|3823.27
+LEVEL|utc|swing_high|0|20D HIGH|4216.89
+LEVEL|utc|swing_low|0|20D LOW|3869.98
+INFO|utc|realized_high|3964.24
+INFO|utc|realized_low|3895.28
+INFO|utc|realized_range|68.96
+INFO|utc|p_high_set|41.8
+INFO|utc|p_low_set|47.9
+LEVEL|utc|cond_high|50|COND 50% HIGH|3989.74
+LEVEL|utc|cond_low|50|COND 50% LOW|3872.82
+LEVEL|utc|cond_high|70|COND 70% HIGH|4004.82
+LEVEL|utc|cond_low|70|COND 70% LOW|3857.01
+LEVEL|utc|cond_high|80|COND 80% HIGH|4015.27
+LEVEL|utc|cond_low|80|COND 80% LOW|3846.02
+LEVEL|utc|cond_high|90|COND 90% HIGH|4035.50
+LEVEL|utc|cond_low|90|COND 90% LOW|3818.46
