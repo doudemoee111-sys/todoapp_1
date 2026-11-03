@@ -65,7 +65,9 @@ input color  InpColClose         = clrGray;         // Previous close
 input color  InpColPivot         = clrSeaGreen;     // Pivot / R / S
 input color  InpColSwing         = clrSlateGray;    // 20-day high/low
 input int    InpLabelShiftBars   = 2;          // Label offset to the right (bars)
-input int    InpLabelColumnBars  = 9;          // Extra offset for a crowded label (bars)
+input bool   InpShortLabels      = true;       // Short labels (80%H instead of 80% HIGH)
+input int    InpLabelColumnBars  = 10;         // Step between label columns (bars)
+input int    InpLabelColumns     = 3;          // How many label columns to spread into
 input int    InpFontSize         = 8;          // Label font size
 input bool   InpShowStatus       = true;       // Show status in the chart comment
 
@@ -80,6 +82,7 @@ datetime g_last_ok = 0;
 // levels gathered during a parse, drawn after, so labels can be laid out
 string g_lv_id[];
 string g_lv_label[];
+string g_lv_short[];
 double g_lv_price[];
 color  g_lv_col[];
 int    g_lv_style[];
@@ -172,6 +175,7 @@ void Refresh()
    ArrayResize(g_lv_price, 0);
    ArrayResize(g_lv_id, 0);
    ArrayResize(g_lv_label, 0);
+   ArrayResize(g_lv_short, 0);
    ArrayResize(g_lv_col, 0);
    ArrayResize(g_lv_style, 0);
    ArrayResize(g_lv_width, 0);
@@ -257,15 +261,47 @@ int Parse(const string body)
          int    width = 1;
          if(!Wanted(kind, cov, clr, style, width))
             continue;
-         Collect(kind + "_" + IntegerToString(cov), label, price, clr, style, width);
+         Collect(kind + "_" + IntegerToString(cov), label,
+                 ShortLabel(kind, cov, label), price, clr, style, width);
         }
      }
    return(DrawCollected());
   }
 
 //+------------------------------------------------------------------+
-void Collect(const string id, const string label, const double price,
-             const color clr, const int style, const int width)
+//| A compact label. The long text is wider than the gap between      |
+//| label columns, so two columns still overlap on a crowded chart;   |
+//| "C80H 4013.46" fits where "COND 80% HIGH 4013.46" does not.       |
+//+------------------------------------------------------------------+
+string ShortLabel(const string kind, const int cov, const string label)
+  {
+   string c = IntegerToString(cov);
+   if(kind == "box_high")
+      return(c + "%H");
+   if(kind == "box_low")
+      return(c + "%L");
+   if(kind == "cond_high")
+      return("C" + c + "H");
+   if(kind == "cond_low")
+      return("C" + c + "L");
+   if(kind == "prev_high")
+      return("PH");
+   if(kind == "prev_low")
+      return("PL");
+   if(kind == "prev_close")
+      return("PC");
+   if(kind == "swing_high")
+      return("20DH");
+   if(kind == "swing_low")
+      return("20DL");
+   if(kind == "pivot")
+      return(label == "PIVOT" ? "P" : label);
+   return(label);
+  }
+
+//+------------------------------------------------------------------+
+void Collect(const string id, const string label, const string shortLabel,
+             const double price, const color clr, const int style, const int width)
   {
    // Pivot rows share one kind, so the inner/outer split is decided here.
    if(StringFind(id, "pivot_") == 0)
@@ -279,12 +315,14 @@ void Collect(const string id, const string label, const double price,
    int k = ArraySize(g_lv_price);
    ArrayResize(g_lv_id, k + 1);
    ArrayResize(g_lv_label, k + 1);
+   ArrayResize(g_lv_short, k + 1);
    ArrayResize(g_lv_price, k + 1);
    ArrayResize(g_lv_col, k + 1);
    ArrayResize(g_lv_style, k + 1);
    ArrayResize(g_lv_width, k + 1);
    g_lv_id[k] = id;
    g_lv_label[k] = label;
+   g_lv_short[k] = shortLabel;
    g_lv_price[k] = price;
    g_lv_col[k] = clr;
    g_lv_style[k] = style;
@@ -292,9 +330,12 @@ void Collect(const string id, const string label, const double price,
   }
 
 //+------------------------------------------------------------------+
-//| Draw highest first and step a label into a second column when it  |
-//| sits too close to the one above, so neighbouring prices stay      |
-//| readable. MT4 objects do not move out of each other's way.        |
+//| Draw highest first, putting each label in a column that is clear  |
+//| at that price. MT4 objects do not move out of each other's way,   |
+//| and alternating between two columns is not enough: three crowded  |
+//| levels in a row put the first and third back in the same column.  |
+//| So each column remembers the price of its last label, and a level |
+//| takes the first column whose last label is far enough above it.   |
 //+------------------------------------------------------------------+
 int DrawCollected()
   {
@@ -316,19 +357,46 @@ int DrawCollected()
            }
 
    double span = g_lv_price[idx[0]] - g_lv_price[idx[n - 1]];
-   double near = (span > 0.0) ? span * 0.028 : 0.0;
+   double gap  = (span > 0.0) ? span * 0.030 : 0.0;
 
-   int drawn = 0, col = 0;
-   double prev = 0.0;
+   int ncols = InpLabelColumns;
+   if(ncols < 1)
+      ncols = 1;
+   if(ncols > 6)
+      ncols = 6;
+
+   double taken[];                          // last label's price per column
+   ArrayResize(taken, ncols);
+   for(int c = 0; c < ncols; c++)
+      taken[c] = g_lv_price[idx[0]] + span + 1.0;   // nothing placed yet
+
+   int drawn = 0;
    for(int i = 0; i < n; i++)
      {
       int j = idx[i];
-      if(i > 0 && near > 0.0 && (prev - g_lv_price[j]) < near)
-         col = 1 - col;                    // step aside from the line above
-      else
+      double price = g_lv_price[j];
+
+      int col = -1;
+      for(int c = 0; c < ncols; c++)
+         if((taken[c] - price) >= gap)
+           {
+            col = c;
+            break;
+           }
+      if(col < 0)                           // every column is crowded here
+        {
          col = 0;
-      prev = g_lv_price[j];
-      if(DrawLevel(g_lv_id[j], g_lv_label[j], g_lv_price[j],
+         double best = taken[0] - price;
+         for(int c = 1; c < ncols; c++)
+            if((taken[c] - price) > best)
+              {
+               best = taken[c] - price;
+               col = c;
+              }
+        }
+      taken[col] = price;
+
+      if(DrawLevel(g_lv_id[j], g_lv_label[j], g_lv_short[j], price,
                    g_lv_col[j], g_lv_style[j], g_lv_width[j], col))
          drawn++;
      }
@@ -399,11 +467,12 @@ bool Wanted(const string kind, const int cov, color &clr, int &style, int &width
   }
 
 //+------------------------------------------------------------------+
-bool DrawLevel(const string id, const string label, const double price,
-               const color clr, const int style, const int width, const int column)
+bool DrawLevel(const string id, const string label, const string shortLabel,
+               const double price, const color clr, const int style,
+               const int width, const int column)
   {
    string lname = PREFIX + "L_" + id + "_" + label;
-   string tname = PREFIX + "T_" + id + "_" + label + (column == 1 ? "#1" : "#0");
+   string tname = PREFIX + "T_" + id + "_" + label + "#" + IntegerToString(column);
 
    if(!ObjectCreate(0, lname, OBJ_HLINE, 0, 0, price))
       return(false);
@@ -415,7 +484,8 @@ bool DrawLevel(const string id, const string label, const double price,
    ObjectSetInteger(0, lname, OBJPROP_HIDDEN, true);
    ObjectSetString(0, lname, OBJPROP_TEXT, label);
 
-   string text = label + "  " + DoubleToString(price, Digits);
+   string text = (InpShortLabels ? shortLabel : label)
+                 + "  " + DoubleToString(price, Digits);
    if(ObjectCreate(0, tname, OBJ_TEXT, 0, LabelTime(column), price))
      {
       ObjectSetString(0, tname, OBJPROP_TEXT, text);
@@ -446,15 +516,15 @@ datetime LabelTime(const int column = 0)
 //+------------------------------------------------------------------+
 void ShiftLabels()
   {
-   datetime t0 = LabelTime(0), t1 = LabelTime(1);
    int total = ObjectsTotal(0, -1, OBJ_TEXT);
    for(int i = total - 1; i >= 0; i--)
      {
       string name = ObjectName(0, i, -1, OBJ_TEXT);
       if(StringFind(name, PREFIX + "T_") != 0)
          continue;
-      bool second = (StringFind(name, "#1") == StringLen(name) - 2);
-      ObjectSetInteger(0, name, OBJPROP_TIME, 0, second ? t1 : t0);
+      int h = StringFind(name, "#");
+      int col = (h >= 0) ? (int)StringToInteger(StringSubstr(name, h + 1)) : 0;
+      ObjectSetInteger(0, name, OBJPROP_TIME, 0, LabelTime(col));
      }
    ChartRedraw();
   }

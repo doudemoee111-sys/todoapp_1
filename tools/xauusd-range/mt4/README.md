@@ -72,10 +72,24 @@ forces either set.
   80%, the conditional 80% box, previous session high/low/close, and
   pivot/R1/S1. The 70% and 90% boxes, R2/R3/S2/S3 and the 20-day high/low are
   off until switched on.
+- `InpShortLabels` — compact labels (`80%H`, `C80H`, `PH`, `20DL`) instead of
+  the long form. On by default: the long text is wider than the gap between
+  label columns, so a crowded chart overlaps even with the columns.
 - `InpLabelShiftBars` — how far right of the newest bar the labels sit.
-- `InpLabelColumnBars` — extra offset for a label that would collide with the
-  one above it. MT4 objects do not move out of each other's way, so levels
-  within 2.8% of the drawn span step into a second column.
+- `InpLabelColumns` / `InpLabelColumnBars` — how many columns labels spread
+  into, and the step between them. MT4 objects do not move out of each other's
+  way, so levels within 3% of the drawn span are placed in whichever column is
+  clear at that price.
+
+### Short label key
+
+| short | meaning |
+|---|---|
+| `50%H` … `90%L` | forecast box bound at that coverage |
+| `C80H` / `C80L` | conditional box for the rest of the session |
+| `PH` / `PL` / `PC` | previous session high / low / close |
+| `P`, `R1`…`R3`, `S1`…`S3` | pivot and its levels |
+| `20DH` / `20DL` | 20-day high / low |
 
 `WebRequest` is synchronous, so each refresh blocks the terminal's EA thread
 for up to `InpTimeoutMs`. The default 5 s timeout every 15 minutes is not
