@@ -568,6 +568,32 @@ def _scrub_placeholders(text: str) -> str:
     return out
 
 
+_EPISODE_COUNT = re.compile(r"全\s*[0-9０-９]+\s*話")
+
+
+def _fix_episode_count(genre: dict, title: str, total: int) -> str:
+    """Make 「全◯話」 in the title agree with the chapters actually written.
+
+    The model writes the title and the outline in one JSON, so it commits to an
+    episode count before the outline is finished: on 2026/11/03 it shipped
+    「全4話」 over nine stories. The viewer sees that mismatch on the thumbnail,
+    and no prompt wording fixes a number the model guessed too early — the real
+    count is only known here, after the chapters exist.
+    """
+    if not genre.get("chapters_are_standalone"):
+        return title
+    fixed, n = _EPISODE_COUNT.subn(f"全{total}話", title)
+    if n:
+        if fixed != title:
+            print(f"  [title] 話数の表記を実際の章数に合わせました: {title} → {fixed}")
+        return fixed
+    tag = f"【全{total}話】"
+    if len(title) + len(tag) <= 100:
+        print(f"  [title] 話数の表記が無かったので付けました: {tag}")
+        return title + tag
+    return title
+
+
 def _blur_dates_in_fiction(genre: dict, text: str) -> str:
     """Strip calendar dates out of an invented story, keeping its texture.
 
@@ -638,6 +664,7 @@ def generate_script(genre_key: str, topic: str | None = None,
         chapters.append({"heading": cm.get("heading", ""), "narration": narration})
 
     chapters = _ensure_narration_length(genre, topic, title, chapters)
+    title = _fix_episode_count(genre, title, len(chapters))
     for c in chapters:
         c["narration"] = _scrub_placeholders(_blur_dates_in_fiction(genre, c["narration"]))
     full_narration = "\n".join(c["narration"] for c in chapters).strip()
