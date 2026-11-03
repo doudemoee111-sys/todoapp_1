@@ -81,19 +81,27 @@ def fetch_minutes(days: list[dt.date], workers: int = 4) -> pd.DataFrame:
     return df.drop_duplicates("ts").sort_values("ts").reset_index(drop=True)
 
 
-def session_label(ts_utc: pd.Series) -> pd.Series:
-    """Trading day under the NY 17:00 close convention, DST handled by tz rules.
-
-    A bar at or after NY 17:00 belongs to the NEXT trading day:
-    NY 17:00 + 7h = 00:00 of the following date.
-    """
-    ny = ts_utc.dt.tz_convert(NY)
-    return (ny + pd.Timedelta(hours=7)).dt.date
+#: Daily-bar boundary per broker server clock.
+#:   nyclose -- server GMT+2/+3 with US DST (Axiory and most MT4/MT5 brokers):
+#:              server midnight == NY 17:00, the standard FX day.
+#:   utc     -- server GMT+0 fixed, no DST (Exness): boundary at 00:00 UTC,
+#:              which is 09:00 JST, two hours later than nyclose in winter.
+CONVENTIONS = ("nyclose", "utc")
 
 
-def to_daily(hourly: pd.DataFrame) -> pd.DataFrame:
+def session_label(ts_utc: pd.Series, convention: str = "nyclose") -> pd.Series:
+    """Trading-day label for each bar under the chosen boundary."""
+    if convention == "utc":
+        return ts_utc.dt.tz_convert(UTC).dt.date
+    if convention != "nyclose":
+        raise ValueError(f"unknown convention {convention!r}")
+    # a bar at or after NY 17:00 belongs to the NEXT trading day
+    return (ts_utc.dt.tz_convert(NY) + pd.Timedelta(hours=7)).dt.date
+
+
+def to_daily(hourly: pd.DataFrame, convention: str = "nyclose") -> pd.DataFrame:
     h = hourly.copy()
-    h["day"] = session_label(h["ts"])
+    h["day"] = session_label(h["ts"], convention)
     g = h.groupby("day")
     d = pd.DataFrame({
         "open":  g["open"].first(),

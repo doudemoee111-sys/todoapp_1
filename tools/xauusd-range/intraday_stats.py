@@ -10,7 +10,7 @@ from duka import session_label, JST, OUT
 BLOCKS = [("アジア", 7, 16), ("ロンドン", 16, 22), ("NY", 22, 7)]
 
 
-def _hourly() -> pd.DataFrame:
+def _hourly(convention: str = "nyclose") -> pd.DataFrame:
     frames = [pd.read_csv(OUT / "hourly.csv", parse_dates=["ts"])]
     try:
         frames.append(pd.read_csv(OUT / "hourly_recent.csv", parse_dates=["ts"]))
@@ -18,7 +18,7 @@ def _hourly() -> pd.DataFrame:
         pass
     h = (pd.concat(frames, ignore_index=True)
            .drop_duplicates("ts", keep="last").sort_values("ts"))
-    h["day"] = session_label(h["ts"])
+    h["day"] = session_label(h["ts"], convention)
     h["jst"] = h["ts"].dt.tz_convert(JST).dt.hour
     return h
 
@@ -32,9 +32,9 @@ def block_of(hr: int) -> str:
     return "?"
 
 
-def stats(lookback: int = 250) -> dict:
-    h = _hourly()
-    d = pd.read_csv(OUT / "daily_clean.csv", parse_dates=["date"])
+def stats(lookback: int = 250, convention: str = "nyclose") -> dict:
+    h = _hourly(convention)
+    d = pd.read_csv(OUT / f"daily_clean_{convention}.csv", parse_dates=["date"])
     full = set(d.loc[d.bars >= 20, "date"].dt.date)
     hh = h[h["day"].isin(full)]
     g = hh.groupby("day")

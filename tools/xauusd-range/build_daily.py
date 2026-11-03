@@ -3,7 +3,7 @@ import sys, pandas as pd
 sys.path.insert(0, '.')
 from duka import session_label, OUT
 
-def build() -> pd.DataFrame:
+def build(convention: str = "nyclose"):
     frames = [pd.read_csv(OUT / "hourly.csv", parse_dates=["ts"])]
     try:
         frames.append(pd.read_csv(OUT / "hourly_recent.csv", parse_dates=["ts"]))
@@ -11,7 +11,7 @@ def build() -> pd.DataFrame:
         pass
     h = (pd.concat(frames, ignore_index=True)
            .drop_duplicates("ts", keep="last").sort_values("ts").reset_index(drop=True))
-    h["day"] = session_label(h["ts"])
+    h["day"] = session_label(h["ts"], convention)
     g = h.groupby("day")
     d = pd.DataFrame({"open": g["open"].first(), "high": g["high"].max(),
                       "low": g["low"].min(), "close": g["close"].last(),
@@ -21,11 +21,14 @@ def build() -> pd.DataFrame:
     # real sessions only: Mon-Fri label, non-zero range, non-zero activity
     d = d[(d["date"].dt.dayofweek < 5) & (d["high"] > d["low"]) & (d["vol"] > 0)]
     d = d.sort_values("date").reset_index(drop=True)
-    d.to_csv(OUT / "daily_clean.csv", index=False)
+    d.to_csv(OUT / f"daily_clean_{convention}.csv", index=False)
     return d, h
 
 if __name__ == "__main__":
-    d, h = build()
+    import sys
+    conv = sys.argv[1] if len(sys.argv) > 1 else "nyclose"
+    d, h = build(conv)
+    print(f"convention: {conv}")
     print(f"hourly  : {len(h):,}  -> {h.ts.max()}")
     print(f"sessions: {len(d):,}  {d.date.min().date()} -> {d.date.max().date()}")
     print("\nlast 8 sessions (NY-close convention):")

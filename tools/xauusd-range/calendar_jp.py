@@ -87,6 +87,13 @@ def session_events(page: str, session_date: dt.date) -> list[dict]:
     return sorted(out, key=lambda e: e["when"])
 
 
+def session_events_window(page: str, start, end) -> list[dict]:
+    """Gold-relevant events inside an explicit [start, end) JST window."""
+    out = [e for e in parse(page)
+           if e["when"] and start <= e["when"] < end and gold_relevant(e)]
+    return sorted(out, key=lambda e: e["when"])
+
+
 if __name__ == "__main__":
     page = fetch()
     today = dt.datetime.now(JST).date()

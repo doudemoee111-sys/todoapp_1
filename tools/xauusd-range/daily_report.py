@@ -23,15 +23,44 @@ from build_daily import build
 REPORTS = Path(__file__).parent / "reports"; REPORTS.mkdir(exist_ok=True)
 LEVELS = (0.50, 0.70, 0.80, 0.90)
 
+# Which broker clock each boundary corresponds to, and when its bar turns over.
+BROKERS = {
+    "nyclose": ("Axiory 方式", "NY 17:00クローズ（サーバー GMT+2/+3）",
+                "冬 07:00 JST / 夏 06:00 JST"),
+    "utc": ("Exness 方式", "00:00 UTC（サーバー GMT+0 固定・DSTなし）",
+            "通年 09:00 JST"),
+}
 
-def session_now(now=None) -> dt.date:
+
+def session_bounds(sess: dt.date, convention: str):
+    if convention == "utc":
+        a = dt.datetime.combine(sess, dt.time(0), tzinfo=UTC)
+    else:
+        a = dt.datetime.combine(sess - dt.timedelta(days=1), dt.time(17), tzinfo=NY)
+    return a.astimezone(JST), (a + dt.timedelta(days=1)).astimezone(JST)
+
+
+def session_now(convention: str, now=None) -> dt.date:
     now = now or dt.datetime.now(UTC)
+    if convention == "utc":
+        return now.astimezone(UTC).date()
     return (now.astimezone(NY) + dt.timedelta(hours=7)).date()
 
 
-def session_bounds(sess: dt.date):
-    a = dt.datetime.combine(sess - dt.timedelta(days=1), dt.time(17), tzinfo=NY)
-    return a.astimezone(JST), (a + dt.timedelta(days=1)).astimezone(JST)
+def target_session(convention: str, now=None):
+    """The session to forecast.
+
+    A session with under 3 hours left is nearly over, so the next one is the
+    useful target. Its previous close is only known once the boundary passes,
+    so a report for the `utc` boundary cannot be produced before 09:00 JST --
+    see HANDOFF in the README.
+    """
+    now = now or dt.datetime.now(UTC)
+    sess = session_now(convention, now)
+    _, end = session_bounds(sess, convention)
+    if (end - now.astimezone(JST)).total_seconds() < 3 * 3600:
+        return sess + dt.timedelta(days=1), True
+    return sess, False
 
 
 def conditional(d_hist, hourly, full_days, elapsed_hours, ph, pl, sigma):
@@ -68,85 +97,79 @@ def conditional(d_hist, hourly, full_days, elapsed_hours, ph, pl, sigma):
     return out
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--no-update", action="store_true")
-    a = ap.parse_args()
+def render(convention: str, lines: list) -> dict | None:
+    """Append one convention's full report block. Returns summary info."""
+    P = lines.append
+    label, boundary, turnover = BROKERS[convention]
 
-    if not a.no_update:
-        from update import update_history, update_recent
-        update_history(); update_recent()
-
-    d_all, hourly = build()
+    d_all, hourly = build(convention)
     hourly = hourly.copy()
     hourly["jst"] = hourly["ts"].dt.tz_convert(JST).dt.hour
-    sess = session_now()
+    sess, rolled = target_session(convention)
     comp = d_all[(d_all["bars"] >= 20) & (d_all["date"].dt.date < sess)].reset_index(drop=True)
+    if comp.empty:
+        P(f"## {label}\n\n前セッションが未確定のためレポートを生成できません。\n")
+        return None
     prev = comp.iloc[-1]
-    f = fc.build(prev["date"])
-
-    cur = d_all[d_all["date"].dt.date == sess]
-    s_start, s_end = session_bounds(sess)
+    s_start, s_end = session_bounds(sess, convention)
     now_jst = dt.datetime.now(JST)
-    # elapsed must follow the DATA, not the wall clock: the feed lags by an hour
-    # or more, and the conditional model conditions on the hours actually covered.
+
+    # the previous close must already have printed
+    if prev["date"].date() != sess - dt.timedelta(days=1) and not rolled:
+        pass
+    if s_start > now_jst:
+        P(f"## {label}（{boundary}）\n")
+        P(f"対象セッションは {s_start:%m/%d %H:%M} JST 開始で、前セッションの終値が未確定です。")
+        P(f"この方式のレポートは **{turnover} 以降**に生成してください。\n")
+        return None
+
+    f = fc.build(prev["date"], convention)
+    cur = d_all[d_all["date"].dt.date == sess]
     cur_h = hourly[hourly["day"] == sess]
     if len(cur_h):
         data_end = cur_h["ts"].max().tz_convert(JST) + dt.timedelta(hours=1)
         elapsed = max(0, int((min(data_end, s_end) - s_start).total_seconds() // 3600))
     else:
-        elapsed = 0
-        data_end = s_start
+        elapsed, data_end = 0, s_start
 
-    # economic calendar
-    try:
-        evs = cal.session_events(cal.fetch(), sess)
-    except Exception as e:
-        evs = []; print(f"[warn] calendar unavailable: {e}", file=sys.stderr)
+    P(f"## {label}\n")
+    P(f"- **日足区切り**: {boundary} / バー切替 {turnover}")
+    P(f"- **対象セッション**: {s_start:%m/%d %H:%M} JST 〜 {s_end:%m/%d %H:%M} JST")
+    P(f"- **データ終端**: {data_end:%m/%d %H:%M} JST（経過 {elapsed}時間）")
+    P(f"- **実セッション**: {len(comp):,}本（{comp.date.min():%Y-%m-%d}〜{comp.date.max():%Y-%m-%d}）\n")
 
-    st = ist.stats(250)
-    L = []
-    P = L.append
-    P(f"# XAU/USD デイリーレンジ予測\n")
-    P(f"## {sess.strftime('%Y年%-m月%-d日')}（{'月火水木金土日'[sess.weekday()]}）セッション\n")
-    P(f"- **セッション**: {s_start:%m/%d %H:%M} JST 〜 {s_end:%m/%d %H:%M} JST（NY 17:00クローズ基準）")
-    P(f"- **作成時刻**: {now_jst:%Y-%m-%d %H:%M} JST ／ データ終端 {data_end:%H:%M} JST（経過 {elapsed}時間）")
-    P(f"- **データ**: Dukascopy XAU/USD bid 1時間足 / 実セッション {len(comp):,}本 "
-      f"（{comp.date.min():%Y-%m-%d}〜{comp.date.max():%Y-%m-%d}）\n")
-
-    P(f"## 1. 前セッション（{prev['date']:%m/%d}）\n")
+    P(f"### 前セッション（{prev['date']:%m/%d}）\n")
     P("| 始値 | 高値 | 安値 | 終値 | 値幅 |")
     P("|---|---|---|---|---|")
     P(f"| {prev.open:.2f} | {prev.high:.2f} | {prev.low:.2f} | **{prev.close:.2f}** | ${prev.high-prev.low:.2f} |\n")
     P(f"σ(EWMA 半減期20日) **${f['sigma']:.2f}** / ATR14(Wilder) **${f['atr14']:.2f}**\n")
 
-    P("## 2. 想定値幅（高値−安値）\n")
+    P("### 想定値幅（高値−安値）\n")
     P("| 25% | 中位 | 75% | 90% |")
     P("|---|---|---|---|")
     P("| " + " | ".join(f"${v:.2f}" for v in f["range_q"]) + " |\n")
 
-    P(f"## 3. 高値・安値レンジ（基準：前日終値 {prev.close:.2f}）\n")
+    P(f"### 高値・安値レンジ（基準：前日終値 {prev.close:.2f}）\n")
     P("| 被覆率 | 高値 上限 | 安値 下限 | 箱幅 |")
     P("|---|---|---|---|")
     for b in f["boxes"]:
-        bold = "**" if b["target"] == 0.80 else ""
-        P(f"| {bold}{b['target']*100:.0f}%{bold} | {bold}{b['high']:.2f}{bold} | "
-          f"{bold}{b['low']:.2f}{bold} | ${b['high']-b['low']:.2f} |")
+        bd = "**" if b["target"] == 0.80 else ""
+        P(f"| {bd}{b['target']*100:.0f}%{bd} | {bd}{b['high']:.2f}{bd} | {bd}{b['low']:.2f}{bd} | ${b['high']-b['low']:.2f} |")
     P("")
 
     if len(cur) and elapsed >= 2:
         c = cur.iloc[0]
-        P(f"## 4. 実測（{s_start:%H:%M} 〜 {data_end:%H:%M} JST、{elapsed}時間経過）\n")
+        P(f"### 実測（{s_start:%H:%M} 〜 {data_end:%H:%M} JST、{elapsed}時間経過）\n")
         P("| 高値 | 安値 | 現在値 | 値幅 |")
         P("|---|---|---|---|")
         P(f"| **{c.high:.2f}** | **{c.low:.2f}** | {c.close:.2f} | ${c.high-c.low:.2f} |\n")
-        inside = [b['target'] for b in f["boxes"] if c.high <= b["high"] and c.low >= b["low"]]
-        P(f"判定：{'最小' + f'{min(inside)*100:.0f}' + '%箱の内側' if inside else '90%箱を逸脱'}\n")
+        inside = [b["target"] for b in f["boxes"] if c.high <= b["high"] and c.low >= b["low"]]
+        P(f"判定：{f'最小 {min(inside)*100:.0f}%箱の内側' if inside else '90%箱を逸脱'}\n")
         full_days = set(comp["date"].dt.date)
         hrs = sorted({(s_start + dt.timedelta(hours=i)).hour for i in range(elapsed)})
         cd = conditional(comp, hourly, full_days, hrs, c.high, c.low, f["sigma"])
         if cd:
-            P(f"### 残りセッションの条件付き予測\n")
+            P("### 残りセッションの条件付き予測\n")
             P(f"- 高値がすでに確定している確率 **{cd['p_high_set']*100:.1f}%**")
             P(f"- 安値がすでに確定している確率 **{cd['p_low_set']*100:.1f}%**\n")
             P("| 被覆率 | 最終高値 上限 | 最終安値 下限 |")
@@ -155,10 +178,9 @@ def main():
                 P(f"| {b['target']*100:.0f}% | {b['high']:.2f} | {b['low']:.2f} |")
             P("")
 
-    P("## 5. 主要節目\n")
-    piv = f["piv"]
+    P("### 主要節目\n")
     rows = [("前セッション高値", prev.high), ("前セッション安値", prev.low)]
-    rows += [(k, v) for k, v in piv.items()]
+    rows += list(f["piv"].items())
     w20 = comp.tail(20)
     rows += [("直近20日高値", w20.high.max()), ("直近20日安値", w20.low.min())]
     P("| 区分 | 水準 |"); P("|---|---|")
@@ -166,7 +188,8 @@ def main():
         P(f"| {k} | {v:.2f} |")
     P("")
 
-    P(f"## 6. 高値・安値の形成時刻（直近{st['n_recent']}セッション）\n")
+    st = ist.stats(250, convention)
+    P(f"### 高値・安値の形成時刻（直近{st['n_recent']}セッション）\n")
     P("| セッション | JST | 高値形成 | 安値形成 |"); P("|---|---|---|---|")
     for name, a_, b_ in ist.BLOCKS:
         P(f"| {name} | {a_:02d}–{b_:02d} | {st['block_high_recent'].get(name,0)*100:.1f}% "
@@ -176,25 +199,65 @@ def main():
     P(f"- アジア高値が日中高値として残る **{st['asia_hi_held']*100:.1f}%** / "
       f"安値が残る **{st['asia_lo_held']*100:.1f}%** / 両端を破る **{st['asia_both_broken']*100:.1f}%**\n")
 
-    P("## 7. イベント注記（本セッション内）\n")
+    try:
+        evs = cal.session_events_window(cal.fetch(), s_start, s_end)
+    except Exception as e:
+        evs = None
+        print(f"[warn] calendar unavailable: {e}", file=sys.stderr)
+    P("### イベント注記（本セッション内）\n")
     if evs:
         P("| 時刻 JST | 重要度 | 国 | 指標 | 予想 | 結果 |"); P("|---|---|---|---|---|---|")
         for e in evs:
             P(f"| {e['when']:%m/%d %H:%M} | {'★'*e['importance']} | {e['country']} | "
               f"{e['name']} | {e['forecast'] or '-'} | {e['actual'] or '-'} |")
+    elif evs is None:
+        P("カレンダー取得に失敗したため、イベント情報は含まれていません。")
     else:
         P("本セッション内に金相場に影響する主要指標はありません。")
     P("")
+    return {"box80": f["boxes"][2], "sess": sess}
 
-    P("## 8. 制約事項\n")
-    P(f"1. 80%箱の幅は ${f['boxes'][2]['high']-f['boxes'][2]['low']:.0f} で、平均的な1日はその4割強しか使いません。"
-      "エントリー根拠ではなく「この外側で逆張りしない」線として使ってください。")
-    P("2. Dukascopyのbidレート。業者間でヒゲが数ドル〜十数ドル違うため、許容を持たせてください。")
-    P("3. 22:00 UTC はロールオーバー休止でフィードが歯抜けになります。")
-    P("4. 本レポートは定量分析であり、投資助言ではありません。")
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--no-update", action="store_true")
+    ap.add_argument("--convention", default="nyclose",
+                    choices=["nyclose", "utc", "both"])
+    a = ap.parse_args()
+
+    if not a.no_update:
+        from update import update_history, update_recent
+        update_history(); update_recent()
+
+    convs = ["nyclose", "utc"] if a.convention == "both" else [a.convention]
+    L = [f"# XAU/USD デイリーレンジ予測", ""]
+    L.append(f"作成 {dt.datetime.now(JST):%Y-%m-%d %H:%M} JST / "
+             f"データ Dukascopy XAU/USD bid 1時間足\n")
+    if len(convs) > 1:
+        L.append("業者のサーバー時間で日足の区切りが異なるため、方式別に算出しています。"
+                 "直近250セッションでは高安が両方式で一致するのは54.0%のみです。\n")
+    info = {}
+    for c in convs:
+        info[c] = render(c, L)
+        L.append("---\n")
+
+    L.append("## 制約事項\n")
+    for c in convs:
+        if info.get(c):
+            b = info[c]["box80"]
+            L.append(f"- {BROKERS[c][0]}：80%箱の幅は ${b['high']-b['low']:.0f}。"
+                     "平均的な1日はその4割強しか使いません。エントリー根拠ではなく"
+                     "「この外側で逆張りしない」線として使ってください。")
+    L.append("- 当データは **bid**。MT4/MT5のチャートもbid表示なので一致しますが、"
+             "買いの決済・逆指値は **ask** で約定するため、上側は実効的に "
+             "`高値 + スプレッド` になります。業者のゴールドのスプレッドを加味してください。")
+    L.append("- 22:00 UTC はロールオーバー休止でフィードが歯抜けになります。")
+    L.append("- 本レポートは定量分析であり、投資助言ではありません。")
 
     txt = "\n".join(L)
-    out = REPORTS / f"XAUUSD_{sess:%Y%m%d}.md"
+    tag = a.convention if a.convention != "both" else "both"
+    sess = next((i["sess"] for i in info.values() if i), dt.date.today())
+    out = REPORTS / f"XAUUSD_{sess:%Y%m%d}_{tag}.md"
     out.write_text(txt, encoding="utf-8")
     print(txt)
     print(f"\n[saved] {out}", file=sys.stderr)

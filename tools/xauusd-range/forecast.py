@@ -46,8 +46,8 @@ def pivots(h, l, c):
             "R3": h + 2 * (p - l), "S3": l - 2 * (h - p)}
 
 
-def build(asof_date=None):
-    d_all = pd.read_csv(OUT / "daily_clean.csv", parse_dates=["date"])
+def build(asof_date=None, convention: str = "nyclose"):
+    d_all = pd.read_csv(OUT / f"daily_clean_{convention}.csv", parse_dates=["date"])
     comp = d_all[d_all["bars"] >= 20].reset_index(drop=True)
     if asof_date is not None:
         comp = comp[comp["date"] <= pd.Timestamp(asof_date)].reset_index(drop=True)
