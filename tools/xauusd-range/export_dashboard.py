@@ -22,10 +22,17 @@ def main():
         d_all, hourly = build(conv)
         hourly = hourly.copy(); hourly["jst"] = hourly["ts"].dt.tz_convert(JST).dt.hour
         sess, _ = target_session(conv)
+        s_start, s_end = session_bounds(sess, conv)
+        # The previous close prints at the target session's start. Before that
+        # moment the last bar on disk is a session still in progress, and using
+        # it would quote a truncated previous session as if it had closed.
+        if s_start > dt.datetime.now(JST):
+            print(f"[skip] {broker}: session starts {s_start:%m/%d %H:%M} JST, "
+                  "previous close not printed yet", file=sys.stderr)
+            continue
         comp = d_all[(d_all.bars >= 20) & (d_all.date.dt.date < sess)].reset_index(drop=True)
         prev = comp.iloc[-1]
         f = fc.build(prev["date"], conv)
-        s_start, s_end = session_bounds(sess, conv)
 
         for b in f["boxes"]:
             rows_fc.append({"broker": broker, "coverage": int(b["target"] * 100),
