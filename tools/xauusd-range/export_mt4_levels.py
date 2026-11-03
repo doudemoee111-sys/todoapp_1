@@ -31,6 +31,24 @@ PIVOT_ASCII = {"P": "PIVOT", "R1": "R1", "R2": "R2", "R3": "R3",
                "S1": "S1", "S2": "S2", "S3": "S3"}
 
 
+def carry_over(conv: str) -> list[str]:
+    """Previous records for a convention this run cannot refresh.
+
+    The 07:38 JST run cannot quote the utc set, whose previous close prints at
+    09:00. Dropping it would leave an Exness terminal with nothing to draw, so
+    the last good records are carried over; their INFO session and data_end
+    show the reader how old they are.
+    """
+    if not OUT.exists():
+        return []
+    keep = [ln for ln in OUT.read_text().splitlines()
+            if len(ln.split("|")) >= 3 and ln.split("|")[1] == conv]
+    if keep:
+        print(f"[carry] {conv}: reusing {len(keep)} records from the previous run",
+              file=sys.stderr)
+    return keep
+
+
 def main() -> int:
     now = dt.datetime.now(dt.timezone.utc)
     lines = ["V2", f"META|generated_at|{now:%Y-%m-%dT%H:%M:%SZ}", "META|symbol|XAUUSD"]
@@ -45,10 +63,13 @@ def main() -> int:
         if s_start > dt.datetime.now(JST):
             print(f"[skip] {conv}: session starts {s_start:%m/%d %H:%M} JST, "
                   "previous close not printed yet", file=sys.stderr)
+            lines += carry_over(conv)
             continue
         comp = d_all[(d_all.bars >= 20) & (d_all.date.dt.date < sess)].reset_index(drop=True)
         if comp.empty:
-            print(f"[skip] {conv}: no closed session", file=sys.stderr); continue
+            print(f"[skip] {conv}: no closed session", file=sys.stderr)
+            lines += carry_over(conv)
+            continue
         prev = comp.iloc[-1]
         f = fc.build(prev["date"], conv)
 

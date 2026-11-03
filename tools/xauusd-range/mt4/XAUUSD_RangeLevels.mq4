@@ -65,6 +65,7 @@ input color  InpColClose         = clrGray;         // Previous close
 input color  InpColPivot         = clrSeaGreen;     // Pivot / R / S
 input color  InpColSwing         = clrSlateGray;    // 20-day high/low
 input int    InpLabelShiftBars   = 2;          // Label offset to the right (bars)
+input int    InpLabelColumnBars  = 9;          // Extra offset for a crowded label (bars)
 input int    InpFontSize         = 8;          // Label font size
 input bool   InpShowStatus       = true;       // Show status in the chart comment
 
@@ -75,6 +76,14 @@ string g_status    = "";
 string g_info_keys[];
 string g_info_vals[];
 datetime g_last_ok = 0;
+
+// levels gathered during a parse, drawn after, so labels can be laid out
+string g_lv_id[];
+string g_lv_label[];
+double g_lv_price[];
+color  g_lv_col[];
+int    g_lv_style[];
+int    g_lv_width[];
 
 //+------------------------------------------------------------------+
 int OnInit()
@@ -160,6 +169,12 @@ void Refresh()
    ObjectsDeleteAll(0, PREFIX, -1, -1);
    ArrayResize(g_info_keys, 0);
    ArrayResize(g_info_vals, 0);
+   ArrayResize(g_lv_price, 0);
+   ArrayResize(g_lv_id, 0);
+   ArrayResize(g_lv_label, 0);
+   ArrayResize(g_lv_col, 0);
+   ArrayResize(g_lv_style, 0);
+   ArrayResize(g_lv_width, 0);
    int drawn = Parse(body);
    g_last_ok = TimeCurrent();
    g_status  = "OK - " + IntegerToString(drawn) + " lines";
@@ -242,9 +257,80 @@ int Parse(const string body)
          int    width = 1;
          if(!Wanted(kind, cov, clr, style, width))
             continue;
-         if(DrawLevel(kind + "_" + IntegerToString(cov), label, price, clr, style, width))
-            drawn++;
+         Collect(kind + "_" + IntegerToString(cov), label, price, clr, style, width);
         }
+     }
+   return(DrawCollected());
+  }
+
+//+------------------------------------------------------------------+
+void Collect(const string id, const string label, const double price,
+             const color clr, const int style, const int width)
+  {
+   // Pivot rows share one kind, so the inner/outer split is decided here.
+   if(StringFind(id, "pivot_") == 0)
+     {
+      bool inner = (label == "PIVOT" || label == "R1" || label == "S1");
+      if(inner && !InpShowPivot)
+         return;
+      if(!inner && !InpShowPivotOuter)
+         return;
+     }
+   int k = ArraySize(g_lv_price);
+   ArrayResize(g_lv_id, k + 1);
+   ArrayResize(g_lv_label, k + 1);
+   ArrayResize(g_lv_price, k + 1);
+   ArrayResize(g_lv_col, k + 1);
+   ArrayResize(g_lv_style, k + 1);
+   ArrayResize(g_lv_width, k + 1);
+   g_lv_id[k] = id;
+   g_lv_label[k] = label;
+   g_lv_price[k] = price;
+   g_lv_col[k] = clr;
+   g_lv_style[k] = style;
+   g_lv_width[k] = width;
+  }
+
+//+------------------------------------------------------------------+
+//| Draw highest first and step a label into a second column when it  |
+//| sits too close to the one above, so neighbouring prices stay      |
+//| readable. MT4 objects do not move out of each other's way.        |
+//+------------------------------------------------------------------+
+int DrawCollected()
+  {
+   int n = ArraySize(g_lv_price);
+   if(n == 0)
+      return(0);
+
+   int idx[];
+   ArrayResize(idx, n);
+   for(int i = 0; i < n; i++)
+      idx[i] = i;
+   for(int a = 0; a < n - 1; a++)          // descending by price
+      for(int b = a + 1; b < n; b++)
+         if(g_lv_price[idx[b]] > g_lv_price[idx[a]])
+           {
+            int t = idx[a];
+            idx[a] = idx[b];
+            idx[b] = t;
+           }
+
+   double span = g_lv_price[idx[0]] - g_lv_price[idx[n - 1]];
+   double near = (span > 0.0) ? span * 0.028 : 0.0;
+
+   int drawn = 0, col = 0;
+   double prev = 0.0;
+   for(int i = 0; i < n; i++)
+     {
+      int j = idx[i];
+      if(i > 0 && near > 0.0 && (prev - g_lv_price[j]) < near)
+         col = 1 - col;                    // step aside from the line above
+      else
+         col = 0;
+      prev = g_lv_price[j];
+      if(DrawLevel(g_lv_id[j], g_lv_label[j], g_lv_price[j],
+                   g_lv_col[j], g_lv_style[j], g_lv_width[j], col))
+         drawn++;
      }
    return(drawn);
   }
@@ -314,20 +400,10 @@ bool Wanted(const string kind, const int cov, color &clr, int &style, int &width
 
 //+------------------------------------------------------------------+
 bool DrawLevel(const string id, const string label, const double price,
-               const color clr, const int style, const int width)
+               const color clr, const int style, const int width, const int column)
   {
-   // Pivot rows share one kind, so the inner/outer split is decided here.
-   if(StringFind(id, "pivot_") == 0)
-     {
-      bool inner = (label == "PIVOT" || label == "R1" || label == "S1");
-      if(inner && !InpShowPivot)
-         return(false);
-      if(!inner && !InpShowPivotOuter)
-         return(false);
-     }
-
    string lname = PREFIX + "L_" + id + "_" + label;
-   string tname = PREFIX + "T_" + id + "_" + label;
+   string tname = PREFIX + "T_" + id + "_" + label + (column == 1 ? "#1" : "#0");
 
    if(!ObjectCreate(0, lname, OBJ_HLINE, 0, 0, price))
       return(false);
@@ -340,13 +416,15 @@ bool DrawLevel(const string id, const string label, const double price,
    ObjectSetString(0, lname, OBJPROP_TEXT, label);
 
    string text = label + "  " + DoubleToString(price, Digits);
-   if(ObjectCreate(0, tname, OBJ_TEXT, 0, LabelTime(), price))
+   if(ObjectCreate(0, tname, OBJ_TEXT, 0, LabelTime(column), price))
      {
       ObjectSetString(0, tname, OBJPROP_TEXT, text);
       ObjectSetString(0, tname, OBJPROP_FONT, "Arial");
       ObjectSetInteger(0, tname, OBJPROP_FONTSIZE, InpFontSize);
       ObjectSetInteger(0, tname, OBJPROP_COLOR, clr);
-      ObjectSetInteger(0, tname, OBJPROP_ANCHOR, ANCHOR_LEFT);
+      // sit the text just above the line rather than across it
+      ObjectSetInteger(0, tname, OBJPROP_ANCHOR, ANCHOR_LEFT_LOWER);
+      ObjectSetInteger(0, tname, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
       ObjectSetInteger(0, tname, OBJPROP_SELECTABLE, false);
       ObjectSetInteger(0, tname, OBJPROP_HIDDEN, true);
      }
@@ -354,11 +432,12 @@ bool DrawLevel(const string id, const string label, const double price,
   }
 
 //+------------------------------------------------------------------+
-datetime LabelTime()
+datetime LabelTime(const int column = 0)
   {
    int shift = InpLabelShiftBars;
    if(shift < 0)
       shift = 0;
+   shift += column * InpLabelColumnBars;
    return(Time[0] + (datetime)(shift * PeriodSeconds()));
   }
 
@@ -367,14 +446,15 @@ datetime LabelTime()
 //+------------------------------------------------------------------+
 void ShiftLabels()
   {
-   datetime t = LabelTime();
+   datetime t0 = LabelTime(0), t1 = LabelTime(1);
    int total = ObjectsTotal(0, -1, OBJ_TEXT);
    for(int i = total - 1; i >= 0; i--)
      {
       string name = ObjectName(0, i, -1, OBJ_TEXT);
       if(StringFind(name, PREFIX + "T_") != 0)
          continue;
-      ObjectSetInteger(0, name, OBJPROP_TIME, 0, t);
+      bool second = (StringFind(name, "#1") == StringLen(name) - 2);
+      ObjectSetInteger(0, name, OBJPROP_TIME, 0, second ? t1 : t0);
      }
    ChartRedraw();
   }

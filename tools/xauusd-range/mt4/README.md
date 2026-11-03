@@ -39,6 +39,12 @@ LEVEL|<conv>|<kind>|<coverage>|<ASCII label>|<price>
 
 Labels are ASCII so no codepage can mangle an object's text.
 
+A run that cannot quote one convention carries that convention's previous
+records over rather than dropping them: the 07:38 JST run cannot quote the
+`utc` set, whose previous close prints at 09:00, and an Exness terminal would
+otherwise have nothing to draw. The carried records keep their own `session`
+and `data_end_jst`, so the EA's comment shows how old they are.
+
 ## Why two number sets
 
 The daily high and low depend on where the broker's server clock puts the day
@@ -67,6 +73,9 @@ forces either set.
   pivot/R1/S1. The 70% and 90% boxes, R2/R3/S2/S3 and the 20-day high/low are
   off until switched on.
 - `InpLabelShiftBars` — how far right of the newest bar the labels sit.
+- `InpLabelColumnBars` — extra offset for a label that would collide with the
+  one above it. MT4 objects do not move out of each other's way, so levels
+  within 2.8% of the drawn span step into a second column.
 
 `WebRequest` is synchronous, so each refresh blocks the terminal's EA thread
 for up to `InpTimeoutMs`. The default 5 s timeout every 15 minutes is not
