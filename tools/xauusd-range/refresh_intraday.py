@@ -94,10 +94,19 @@ def main() -> int:
 
     print(f"      pushed. generated_at {stamp_of(after)}")
     for conv in ("nyclose", "utc"):
+        sess = sessions.get(conv, "?")
+        # A convention whose boundary has not been crossed yet carries its
+        # previous records forward. Saying so here keeps a two-day-old band
+        # from reading as this session's.
+        tag = "" if sess == today else f"  [CARRIED from {sess} - not this session]"
         band = re.findall(rf"^LEVEL\|{conv}\|cond_(high|low)\|80\|[^|]+\|(.+)$", after, re.M)
         if len(band) == 2:
             v = sorted(float(x[1]) for x in band)
-            print(f"      {conv:8} conditional 80%: {v[0]:.2f} - {v[1]:.2f}  (${v[1]-v[0]:.0f} wide)")
+            print(f"      {conv:8} session {sess}  conditional 80%: "
+                  f"{v[0]:.2f} - {v[1]:.2f}  (${v[1]-v[0]:.0f} wide){tag}")
+        else:
+            print(f"      {conv:8} session {sess}  conditional 80%: not yet "
+                  f"(under 2h elapsed){tag}")
     return 0
 
 
