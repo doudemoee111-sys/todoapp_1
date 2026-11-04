@@ -46,8 +46,24 @@ def _decode(blob: bytes | None, base: dt.datetime) -> list[tuple]:
     return out
 
 
+def fetch_months(months: list[tuple[int, int]], workers: int = 3) -> pd.DataFrame:
+    """Fetch exactly these (year, month) pairs. One request each; month is
+    0-indexed in the URL."""
+    def job(ym):
+        y, m = ym
+        url = f"{BASE}/{y}/{m-1:02d}/BID_candles_hour_1.bi5"
+        return _decode(_get(url), dt.datetime(y, m, 1, tzinfo=UTC))
+
+    rows = []
+    with ThreadPoolExecutor(workers) as ex:
+        for r in ex.map(job, months):
+            rows += r
+    df = pd.DataFrame(rows, columns=["ts", "open", "high", "low", "close", "vol"])
+    return df.drop_duplicates("ts").sort_values("ts").reset_index(drop=True)
+
+
 def fetch_hourly(start: dt.date, end: dt.date, workers: int = 3) -> pd.DataFrame:
-    """One request per calendar month. URL month is 0-indexed."""
+    """One request per calendar month over a contiguous range."""
     months, y, m = [], start.year, start.month
     while (y, m) <= (end.year, end.month):
         months.append((y, m)); m += 1

@@ -123,13 +123,34 @@ python3 calibrate_broker.py exness_xauusd_d1.csv --name Exness
 ## 使い方
 
 ```bash
-pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 python3 daily_report.py              # データ更新してレポート生成
 python3 daily_report.py --no-update  # ディスク上のデータを再利用
 ```
 
-初回は10年分（約120リクエスト、数分）。以降は差分のみ。
-出力は `reports/XAUUSD_<YYYYMMDD>.md`。
+出力は `reports/XAUUSD_<YYYYMMDD>_<方式>.md`。
+
+## データの持ち方（毎回10年分を取り直さないための設計）
+
+価格履歴は **`data_archive/hourly_<YYYY>.csv.gz` としてリポジトリにコミット**してある
+（合計約1.6MB、1年あたり約150KB）。まっさらなコンテナでも10年分が最初から手元にあり、
+取りに行くのは差分だけになる。
+
+| 対象 | 取得するもの | 実測 |
+|---|---|---|
+| 完了済みの月 | アーカイブから復元。**ネットワーク取得ゼロ** | 87,648本を2.8秒 |
+| 月が閉じた直後 | その1か月分の月次ファイルのみ（1リクエスト） | — |
+| 当月 | 前回実行以降の時間分のティックのみ（`data_archive/hourly_recent.csv` から再開） | — |
+
+当初は `data/` をまるごとgitignoreしていたため、自動実行のたびに120ファイルを
+取り直して**10分以上**かかっていた。
+
+`write_archive()` は `mtime=0` で圧縮し、内容が変わらない年のファイルは書き換えない。
+そのためアーカイブの読み書きは冪等で、月が閉じた年のファイル以外はgitの差分に出ない。
+当月分 `hourly_recent.csv` は先月初から保持する（Dukascopyが月次ファイルを公開するまでの
+数日間に穴が空かないようにするため）。
+
+`data/` はこのアーカイブから再構成される作業用コピーなのでgitignoreしている。
 
 ## モジュール
 
