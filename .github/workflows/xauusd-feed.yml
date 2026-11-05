@@ -1,0 +1,59 @@
+name: XAUUSD level feed
+
+# Publishes the MT4 level feed on a schedule.
+#
+# This used to run as a Claude scheduled session, which could not push: a
+# fired session has neither the repository in its authorized sources nor the
+# add_repo tool to attach it, so every run ended in a 403 while still
+# recording as succeeded. The terminals showed two-day-old numbers and nothing
+# reported a failure. GitHub Actions writes to its own repository with the
+# built-in token, so that whole class of failure is gone, and a failed run
+# shows red here instead of passing silently.
+#
+# Times are UTC. JST is UTC+9.
+on:
+  schedule:
+    - cron: '38 22 * * 0-4'   # 07:38 JST Mon-Fri  (Axiory bar turnover + 38m)
+    - cron: '8 0 * * 1-5'     # 09:08 JST Mon-Fri  (Exness bar turnover + 8m)
+    - cron: '8 6 * * 1-5'     # 15:08 JST Mon-Fri
+    - cron: '8 10 * * 1-5'    # 19:08 JST Mon-Fri
+    - cron: '8 13 * * 1-5'    # 22:08 JST Mon-Fri  (before the NY session)
+  workflow_dispatch:
+
+concurrency:
+  group: xauusd-feed
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/funny-mayer-vcwsjx
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: python3 -m pip install -r tools/xauusd-range/requirements.txt
+
+      - name: Identify the committer
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Refresh and publish the feed
+        working-directory: tools/xauusd-range
+        run: python3 refresh_intraday.py
+
+      - name: Show what the terminals will now read
+        if: always()
+        run: |
+          echo "--- mt4/latest.txt ---"
+          grep -E 'generated_at|INFO\|(nyclose|utc)\|(session|prev_close)\|' \
+            tools/xauusd-range/mt4/latest.txt || true
