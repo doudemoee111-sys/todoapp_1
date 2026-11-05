@@ -51,6 +51,36 @@ jobs:
         working-directory: tools/xauusd-range
         run: python3 refresh_intraday.py
 
+      # The markdown report is the archive that lets the forecasts be audited
+      # later. It is written at the two bar turnovers only; the intraday runs
+      # move the feed, not the report. A Claude scheduled session cannot push
+      # it -- mcp__claude-code-remote__* is not passed to a fired session and
+      # the connectors parameter is unavailable on this organization -- so it
+      # is committed here instead, and the Claude side only reads and relays.
+      - name: Write the daily report
+        if: github.event.schedule == '38 22 * * 0-4' || github.event.schedule == '8 0 * * 1-5' || github.event_name == 'workflow_dispatch'
+        working-directory: tools/xauusd-range
+        run: |
+          if [ "${{ github.event.schedule }}" = "8 0 * * 1-5" ]; then
+            CONV=utc
+          else
+            CONV=nyclose
+          fi
+          echo "convention: $CONV"
+          python3 daily_report.py --no-update --convention "$CONV"
+
+      - name: Commit the report
+        if: github.event.schedule == '38 22 * * 0-4' || github.event.schedule == '8 0 * * 1-5' || github.event_name == 'workflow_dispatch'
+        run: |
+          git add tools/xauusd-range/reports
+          if git diff --cached --quiet; then
+            echo "no new report to commit"
+          else
+            git commit -m "Add XAU/USD range report for $(TZ=Asia/Tokyo date +%F)"
+            git pull --rebase origin claude/funny-mayer-vcwsjx
+            git push origin HEAD:claude/funny-mayer-vcwsjx
+          fi
+
       - name: Show what the terminals will now read
         if: always()
         run: |
