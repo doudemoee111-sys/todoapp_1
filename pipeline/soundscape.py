@@ -29,6 +29,7 @@ import argparse
 import json
 import os
 import random
+import re
 import shutil
 import subprocess
 import time
@@ -251,6 +252,26 @@ def make_still(theme: dict, out_path: Path, rng: random.Random) -> Path:
     return out_path
 
 
+def darken_still(src: Path, dst: Path, amount: float = 0.82) -> Path:
+    """The frame people fall asleep in front of: dark, but not a dead black.
+
+    Keeping a little of the picture means the video still looks like something
+    rather than a broken upload, while being dim enough to leave running in a
+    dark room. Falls back to the original image if Pillow cannot do it, since a
+    bright video is worse than no video only in theory — losing the whole run is
+    worse in practice.
+    """
+    try:
+        from PIL import Image
+        img = Image.open(src).convert("RGB")
+        Image.blend(img, Image.new("RGB", img.size, (0, 0, 0)), amount).save(dst)
+        print(f"  [video] 本編の静止画を暗転しました（{int(amount * 100)}%）")
+        return dst
+    except Exception as e:  # noqa: BLE001
+        print(f"  [video] 暗転に失敗したので元画像を使います: {e}")
+        return src
+
+
 _THUMB_FONTS = [
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
     "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc",
@@ -280,7 +301,8 @@ def make_thumbnail(theme: dict, seconds: int, out_path: Path, bg_still: Path | N
     if bg_still and bg_still.exists():
         try:
             base = Image.open(bg_still).convert("RGB").resize((W, H), Image.LANCZOS)
-            base = Image.blend(base, Image.new("RGB", (W, H), (0, 0, 0)), 0.45)
+            # 文字を最優先にするため、写真は下敷きとして強めに沈める(0.45→0.62)。
+            base = Image.blend(base, Image.new("RGB", (W, H), (0, 0, 0)), 0.62)
         except Exception:  # noqa: BLE001
             base = _vgradient((W, H), top, bottom)
     else:
@@ -296,21 +318,38 @@ def make_thumbnail(theme: dict, seconds: int, out_path: Path, bg_still: Path | N
         d.text(((W - (bb[2] - bb[0])) / 2 - bb[0], y), text, font=font, fill=fill,
                stroke_width=stroke, stroke_fill=(0, 0, 0))
 
-    # サブコピーは毎回振る＝同じテーマが再登場しても一覧で見分けがつく(重複感の緩和)。
-    subtitle = random.choice([
-        "作業用BGM・環境音", "集中・リラックス・睡眠", "勉強・作業のお供に",
-        "ノンストップで癒し", "睡眠導入・安眠に"])
-    # 尺バッジ(上部・差し色)
-    _centered(f"— {dur} —", _font(60), 70, accent, stroke=5)
-    # テーマ語(中央・特大・白)
-    _centered(word, _font(150), 250, (255, 255, 255), stroke=8)
-    # 用途サブ(下・毎回変化)
-    _centered(subtitle, _font(60), 505, (235, 235, 235), stroke=6)
-    # チャンネル識別(最下部・差し色)
-    _centered("世界の雑学王", _font(40), 628, accent, stroke=4)
+    # 2026/11/07 の作り直し。旧版は尺が60px・用途語が小さく、スマホの一覧では
+    # 何の動画か判別できなかった(インプレッション2.8万に対しCTR 1.0%)。
+    # 8時間という尺はこのニッチ最大の差別化要因なのに、最も小さく出ていた。
+    # 判断基準は「携帯の一覧サイズに縮めて読めるか」の一点に置く。
+
+    # 尺バッジ: 差し色の帯に極大の数字。サムネで最初に目に入るものにする。
+    # 帯は枠の内側に収める（外まで引くと枠が途切れてシリーズの識別が崩れる）。
+    band_h = 148
+    d.rectangle([14, 36, W - 15, 36 + band_h], fill=accent)
+    bb = d.textbbox((0, 0), dur, font=_font(118))
+    d.text(((W - (bb[2] - bb[0])) / 2 - bb[0], 36 + (band_h - (bb[3] - bb[1])) / 2 - bb[1]),
+           dur, font=_font(118), fill=(10, 10, 10))
+
+    # テーマ語: 中央・特大・白。何の音かを一語で。
+    _centered(word, _font(188), 248, (255, 255, 255), stroke=10)
+
+    # 用途語: 検索された言葉をそのまま見せる(タイトルと一致させる)。
+    _centered("睡眠用BGM・作業用BGM" if theme_key_is_sleep(theme) else "作業用BGM・勉強",
+              _font(76), 546, (255, 255, 255), stroke=8)
+
+    # シリーズ枠は最後に描く（帯の上に重ねて途切れさせない）。
+    # ※一覧サイズに縮めると読めない小さな行は、情報ではなく濁りになるので置かない。
+    d.rectangle([6, 6, W - 7, H - 7], outline=accent, width=8)
 
     base.save(out_path)
     return out_path
+
+
+def theme_key_is_sleep(theme: dict) -> bool:
+    """Sleep-leaning themes say 睡眠用BGM first; noise themes lead with 作業用."""
+    return theme.get("title_core", "") not in (
+        "ホワイトノイズ（集中・睡眠）", "ピンクノイズ（睡眠・集中）", "ブラウンノイズ（集中）")
 
 
 # --------------------------------------------------------------------------- #
@@ -444,23 +483,73 @@ def _hours_label(seconds: int) -> str:
     return f"{m}分" if m >= 1 else f"{seconds}秒"
 
 
+# 集中寄りのテーマ（ノイズ系）と睡眠寄りのテーマで、先に置く検索語を変える。
+_FOCUS_THEMES = {"white", "pink", "brown"}
+
+
+def use_terms(theme_key: str) -> str:
+    """Put the words people actually type at the front of the title.
+
+    2026/11/07 に検索上位122本を実測した結果、10万再生以上の100本に含まれる語は
+    勉強30% / 睡眠用BGM29% / 雨29% / 作業用BGM24% / 環境音20% だった。こちらの
+    旧タイトルは「癒し・睡眠導入に（オリジナル環境音）」で、意味は同じでも
+    **誰も検索しない言い回し**であり、最大の検索語2つがどちらも入っていなかった。
+    検索語に一致すれば表示も増え、視聴者は自分が打った言葉を見つけてクリックする。
+    """
+    if theme_key in _FOCUS_THEMES:
+        return "作業用BGM・勉強用BGM・睡眠用BGM"
+    return "睡眠用BGM・作業用BGM"
+
+
 def build_metadata(theme_key: str, theme: dict, seconds: int) -> dict:
     dur = _hours_label(seconds)
     core = theme["title_core"]
-    # 用途違いのサブコピーを乱数で振ってタイトルの重複(量産判定)を避ける。
-    uses = random.choice([
-        "勉強・作業・集中に", "リラックス・安眠に", "集中力アップ・作業用に",
-        "癒し・睡眠導入に", "在宅ワーク・読書のお供に"])
-    title = f"【{dur}】{core}｜{uses}（オリジナル環境音）"
+    uses = use_terms(theme_key)
+    # 「黒画面」「途中広告なし」は実測の上位勢が使う機能訴求（黒画面5%・広告なし11%）。
+    # ★どちらも事実でなければならない: 映像は暗転した静止画で、このチャンネルは
+    #   未収益化のため中間広告が無い。収益化後も環境音には中間広告を入れないこと。
+    title = f"【{dur}】{core}｜{uses}【黒画面・途中広告なし】"
     desc = (
-        f"{core}の{dur}の環境音です。{uses}どうぞ。\n\n"
-        "再生しっぱなしでお使いいただけるよう、途切れのない1本の長尺にしています。"
+        f"{core}の{dur}の環境音です。{uses}としてどうぞ。\n\n"
+        "・目にまぶしくない黒画面です。つけたまま眠れます。\n"
+        "・途切れのない1本の長尺で、途中広告は入れていません。\n"
+        "・音はすべて自作の合成音です。\n\n"
         "作業・勉強・在宅ワーク・就寝前のリラックスに。\n"
         + _DISCLOSURE +
         "\n\nチャンネル登録しておくと、新しい環境音をすぐに見つけられます。"
     )
     tags = list(dict.fromkeys((theme.get("tags") or []) + SOUNDSCAPE_COMMON_TAGS))[:30]
     return {"title": title[:100], "description": desc, "tags": tags}
+
+
+def threads_draft(theme: dict, theme_key: str, seconds: int, url: str) -> str:
+    """The post レイさん pastes into Threads once the video is public.
+
+    soundscape never emitted one, so every run fell back to the routine's
+    three-line default. The draft is written here, next to the metadata it
+    describes, so the wording and the link always match what was uploaded.
+    """
+    dur = _hours_label(seconds)
+    # title_core の「（集中・睡眠）」は検索用の補足で、文章に混ぜると
+    # 「ブラウンノイズ（集中）を8時間」と読みにくくなるので投稿文では外す。
+    core = re.sub(r"（[^）]*）", "", theme["title_core"]).strip()
+    hook = ("勉強や作業の音にどうぞ。" if theme_key in _FOCUS_THEMES
+            else "眠れない夜の音にどうぞ。")
+    lines = [
+        "=========== THREADS 下書き ===========",
+        "--- ここからコピー ---",
+        f"{core}を{dur}、途切れなく流しています。",
+        "",
+        f"{hook}",
+        "画面は黒いまま、途中広告も入れていません。つけっぱなしで大丈夫です。",
+        "",
+        url,
+        "",
+        "#作業用BGM #環境音 #睡眠用BGM",
+        "--- ここまで ---",
+        "======================================",
+    ]
+    return "\n".join(lines)
 
 
 # --------------------------------------------------------------------------- #
@@ -530,8 +619,13 @@ def run(theme_key: str | None, seconds: int, do_upload: bool,
     still = make_still(theme, work / "still.png", rng)
     thumb = make_thumbnail(theme, seconds, work / "thumbnail.png", bg_still=still)
     print(f"  [thumb] テーマ別サムネ生成: {thumb.name}")
+    # 本編は暗転した静止画にする。サムネには明るい元画像を使うので、一覧では目を引き、
+    # 再生中はまぶしくない。実測(2026/11/07・検索上位122本)で、登録1.87万人ながら
+    # 652万回を取っている2位の動画はタイトルに「黒画面でまぶしくない」と書いていた。
+    # 8時間つけっぱなしにされる用途で、明るい映像は邪魔でしかない。
+    dark = darken_still(still, work / "still_dark.png")
     audio = synth_audio(theme_key, seconds, work / "audio.wav", rng)
-    video = render_video(still, audio, seconds, work / "video.mp4")
+    video = render_video(dark, audio, seconds, work / "video.mp4")
     audio.unlink(missing_ok=True)  # 大きい中間ファイルは即削除(ディスク節約)
     size_mb = video.stat().st_size / 1e6
     print(f"  [video] 完成: {video} ({size_mb:.0f} MB)")
@@ -566,6 +660,14 @@ def run(theme_key: str | None, seconds: int, do_upload: bool,
                 result["playlist"] = SOUNDSCAPE_PLAYLIST_TITLE
         except Exception as e:  # noqa: BLE001
             print(f"  [playlist] スキップ: {e}")
+
+        # Threads の下書きは、アップロードが終わって URL が確定してから書く。
+        # ここで出さないとログに下書きブロックが無く、毎回ルーティン側の既定3行に
+        # 落ちていた（レイさんが公開後に手でコピーするもの。自動投稿はしない）。
+        draft = threads_draft(theme, theme_key, seconds, f"https://youtu.be/{vid}")
+        result["threads_draft"] = draft
+        (work / "threads_draft.txt").write_text(draft + "\n", encoding="utf-8")
+        print("\n" + draft + "\n")
 
         # 送客ショート（縦型の予告→その日の長尺フルへ誘導）。失敗しても本編は投稿済みなので
         # 握りつぶして続行（発見性の補助であり、本編の成否をブロックしない）。
