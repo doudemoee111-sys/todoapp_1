@@ -1,48 +1,35 @@
 V2
-META|generated_at|2026-11-09T06:02:39Z
+META|generated_at|2026-11-09T23:07:56Z
 META|symbol|XAUUSD
 INFO|nyclose|broker|Axiory
-INFO|nyclose|session|2026-11-09
-INFO|nyclose|session_jst|11/09 07:00 - 11/10 07:00 JST
-INFO|nyclose|prev_close|4069.55
-INFO|nyclose|sigma|87.07
-INFO|nyclose|atr14|84.60
-INFO|nyclose|elapsed_hours|8
-INFO|nyclose|data_end_jst|11/09 15:00
-INFO|nyclose|range_median|79.16
-LEVEL|nyclose|box_high|50|50% HIGH|4134.24
-LEVEL|nyclose|box_low|50|50% LOW|4013.48
-LEVEL|nyclose|box_high|70|70% HIGH|4152.99
-LEVEL|nyclose|box_low|70|70% LOW|3994.42
-LEVEL|nyclose|box_high|80|80% HIGH|4169.53
-LEVEL|nyclose|box_low|80|80% LOW|3978.24
-LEVEL|nyclose|box_high|90|90% HIGH|4193.27
-LEVEL|nyclose|box_low|90|90% LOW|3949.00
-LEVEL|nyclose|prev_high|0|PREV HIGH|4106.66
-LEVEL|nyclose|prev_low|0|PREV LOW|4027.18
-LEVEL|nyclose|prev_close|0|PREV CLOSE|4069.55
-LEVEL|nyclose|pivot|0|PIVOT|4067.79
-LEVEL|nyclose|pivot|0|R1|4108.41
-LEVEL|nyclose|pivot|0|S1|4028.93
-LEVEL|nyclose|pivot|0|R2|4147.28
-LEVEL|nyclose|pivot|0|S2|3988.31
-LEVEL|nyclose|pivot|0|R3|4187.90
-LEVEL|nyclose|pivot|0|S3|3949.44
-LEVEL|nyclose|swing_high|0|20D HIGH|4216.89
+INFO|nyclose|session|2026-11-10
+INFO|nyclose|session_jst|11/10 07:00 - 11/11 07:00 JST
+INFO|nyclose|prev_close|4140.07
+INFO|nyclose|sigma|87.32
+INFO|nyclose|atr14|85.31
+INFO|nyclose|elapsed_hours|0
+INFO|nyclose|data_end_jst|11/10 07:00
+INFO|nyclose|range_median|79.40
+LEVEL|nyclose|box_high|50|50% HIGH|4205.12
+LEVEL|nyclose|box_low|50|50% LOW|4083.90
+LEVEL|nyclose|box_high|70|70% HIGH|4223.72
+LEVEL|nyclose|box_low|70|70% LOW|4064.74
+LEVEL|nyclose|box_high|80|80% HIGH|4240.30
+LEVEL|nyclose|box_low|80|80% LOW|4048.58
+LEVEL|nyclose|box_high|90|90% HIGH|4264.15
+LEVEL|nyclose|box_low|90|90% LOW|4019.17
+LEVEL|nyclose|prev_high|0|PREV HIGH|4148.58
+LEVEL|nyclose|prev_low|0|PREV LOW|4054.11
+LEVEL|nyclose|prev_close|0|PREV CLOSE|4140.07
+LEVEL|nyclose|pivot|0|PIVOT|4114.25
+LEVEL|nyclose|pivot|0|R1|4174.39
+LEVEL|nyclose|pivot|0|S1|4079.93
+LEVEL|nyclose|pivot|0|R2|4208.72
+LEVEL|nyclose|pivot|0|S2|4019.79
+LEVEL|nyclose|pivot|0|R3|4268.85
+LEVEL|nyclose|pivot|0|S3|3985.47
+LEVEL|nyclose|swing_high|0|20D HIGH|4200.23
 LEVEL|nyclose|swing_low|0|20D LOW|3869.05
-INFO|nyclose|realized_high|4133.88
-INFO|nyclose|realized_low|4054.11
-INFO|nyclose|realized_range|79.76
-INFO|nyclose|p_high_set|30.8
-INFO|nyclose|p_low_set|36.8
-LEVEL|nyclose|cond_high|50|COND 50% HIGH|4169.74
-LEVEL|nyclose|cond_low|50|COND 50% LOW|4019.66
-LEVEL|nyclose|cond_high|70|COND 70% HIGH|4185.48
-LEVEL|nyclose|cond_low|70|COND 70% LOW|4002.88
-LEVEL|nyclose|cond_high|80|COND 80% HIGH|4196.14
-LEVEL|nyclose|cond_low|80|COND 80% LOW|3990.93
-LEVEL|nyclose|cond_high|90|COND 90% HIGH|4215.63
-LEVEL|nyclose|cond_low|90|COND 90% LOW|3965.50
 INFO|utc|broker|Exness
 INFO|utc|session|2026-11-09
 INFO|utc|session_jst|11/09 09:00 - 11/10 09:00 JST
