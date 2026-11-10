@@ -154,9 +154,17 @@ string ResolveConvention()
    if(InpConv == CONV_UTC)
       return("utc");
    int off = ServerGmtOffsetHours();
-   if(off >= 1)
-      return("nyclose");   // GMT+2 winter / GMT+3 summer
-   return("utc");          // GMT+0 fixed
+   // GMT+2 in winter and GMT+3 in summer is the Axiory-style clock, whose
+   // midnight is the NY close. GMT+0 is the Exness-style fixed clock. The
+   // split sits at 2 and not at 1 so that a server on GMT+1 -- which a fixed
+   // GMT+0 broker would show if it ever followed European DST -- still reads
+   // as the utc set rather than silently drawing the other broker's numbers.
+   if(off >= 2)
+      return("nyclose");
+   if(off > 3 || off < 0)
+      Print("XRL: server GMT offset ", off, "h is outside the expected "
+            "0..3 range; using the \"utc\" set. Set InpConv if that is wrong.");
+   return("utc");
   }
 
 //+------------------------------------------------------------------+

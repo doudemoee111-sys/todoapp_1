@@ -112,9 +112,7 @@ def main() -> int:
             I("realized_high", f"{c0.high:.2f}")
             I("realized_low", f"{c0.low:.2f}")
             I("realized_range", f"{c0.high - c0.low:.2f}")
-            cd = conditional(comp, hourly, set(comp.date.dt.date),
-                             sorted({(s_start + dt.timedelta(hours=i)).hour
-                                     for i in range(elapsed)}),
+            cd = conditional(comp, hourly, set(comp.date.dt.date), elapsed,
                              c0.high, c0.low, f["sigma"])
             if cd:
                 I("p_high_set", f"{cd['p_high_set'] * 100:.1f}")

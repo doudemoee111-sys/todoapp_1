@@ -75,8 +75,7 @@ def main():
             rows_lv.append({"broker": broker, "label": k, "price": round(float(v), 2), "kind": kind})
 
         if len(cur) and elapsed >= 2:
-            cd = conditional(comp, hourly, set(comp.date.dt.date),
-                             sorted({(s_start + dt.timedelta(hours=i)).hour for i in range(elapsed)}),
+            cd = conditional(comp, hourly, set(comp.date.dt.date), elapsed,
                              cur.iloc[0].high, cur.iloc[0].low, f["sigma"])
             if cd:
                 for b in cd["boxes"]:

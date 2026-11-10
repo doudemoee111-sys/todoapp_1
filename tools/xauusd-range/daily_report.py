@@ -63,12 +63,22 @@ def target_session(convention: str, now=None):
     return sess, False
 
 
-def conditional(d_hist, hourly, full_days, elapsed_hours, ph, pl, sigma):
-    """Distribution of the final extremes given the session so far."""
-    hh = hourly[hourly["day"].isin(full_days)]
-    part = (hh[hh.jst.isin(elapsed_hours)].groupby("day")
+def conditional(d_hist, hourly, full_days, elapsed, ph, pl, sigma):
+    """Distribution of the final extremes given the session so far.
+
+    `elapsed` counts hours from the session's own start, not clock hours. The
+    session starts at 07:00 JST in winter and 06:00 in summer, so matching on
+    absolute JST hours pulls the wrong bars once DST moves: in summer a window
+    of {06:00, 07:00} also selects, on every winter session, the hour that
+    CLOSES it -- the partial high and low would then contain the end of the
+    day they are meant to predict.
+    """
+    hh = hourly[hourly["day"].isin(full_days)].copy()
+    hh = hh[hh["vol"] > 0].sort_values("ts")
+    hh["pos"] = hh.groupby("day").cumcount()
+    part = (hh[hh["pos"] < elapsed].groupby("day")
               .agg(ph=("high", "max"), pl=("low", "min"), n=("high", "size")))
-    part = part[part.n >= len(elapsed_hours) - 1]
+    part = part[part.n >= elapsed - 1]
     comp = d_hist.copy(); comp["dk"] = comp["date"].dt.date
     j = part.join(comp.set_index("dk")[["high", "low"]], how="inner")
     dd = rm.prepare(d_hist); dd["dk"] = dd["date"].dt.date
@@ -166,8 +176,7 @@ def render(convention: str, lines: list) -> dict | None:
         inside = [b["target"] for b in f["boxes"] if c.high <= b["high"] and c.low >= b["low"]]
         P(f"判定：{f'最小 {min(inside)*100:.0f}%箱の内側' if inside else '90%箱を逸脱'}\n")
         full_days = set(comp["date"].dt.date)
-        hrs = sorted({(s_start + dt.timedelta(hours=i)).hour for i in range(elapsed)})
-        cd = conditional(comp, hourly, full_days, hrs, c.high, c.low, f["sigma"])
+        cd = conditional(comp, hourly, full_days, elapsed, c.high, c.low, f["sigma"])
         if cd:
             P("### 残りセッションの条件付き予測\n")
             P(f"- 高値がすでに確定している確率 **{cd['p_high_set']*100:.1f}%**")
