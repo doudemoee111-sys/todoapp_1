@@ -157,6 +157,26 @@ JSON: {{"title":str,"chapters":[{{"heading":str,"summary":str}}],
     data = json.loads(_chat(
         [{"role": "system", "content": "構成作家。出力はJSONのみ。"},
          {"role": "user", "content": user}], json_mode=True))
+
+    # オムニバスは「章＝1話」なので、章数が足りないと話数そのものが減る。
+    # 2026/11/10 は9章を頼んで4章しか返らず、66分を4話で割って1話16分になった
+    # （尺は足りるので従来は気づけず、タイトルの話数を実数に直して初めて見えた）。
+    # 尺は _plan_length が回数で埋めるが、話数だけは章数でしか決まらないので、
+    # 大きく下回ったときだけ一度だけ作り直す。2回目も足りなければそのまま進める
+    # ——1話あたりが長い回は設計からは外れるが、動画として壊れてはいない。
+    if genre.get("chapters_are_standalone"):
+        got = len(data.get("chapters", []))
+        if got < max(6, int(n_ch * 0.7)):
+            print(f"  [outline] {got}章しか返らなかったので作り直します（{n_ch}話のオムニバスが目標）")
+            retry = user + (f"\n\n★厳守: chapters はちょうど{n_ch}個にしてください。"
+                            f"さきほどの出力は{got}個で、1話あたりが長くなりすぎました。"
+                            "各話は独立した短い怪談で、長さは揃えてください。")
+            data2 = json.loads(_chat(
+                [{"role": "system", "content": "構成作家。出力はJSONのみ。"},
+                 {"role": "user", "content": retry}], json_mode=True))
+            if len(data2.get("chapters", [])) > got:
+                data = data2
+            print(f"  [outline] 作り直し後: {len(data.get('chapters', []))}章")
     return data
 
 
