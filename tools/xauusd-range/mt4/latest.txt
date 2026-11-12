@@ -1,87 +1,87 @@
 V2
-META|generated_at|2026-11-11T14:11:04Z
+META|generated_at|2026-11-12T03:26:55Z
 META|symbol|XAUUSD
 INFO|nyclose|broker|Axiory
-INFO|nyclose|session|2026-11-11
-INFO|nyclose|session_jst|11/11 07:00 - 11/12 07:00 JST
-INFO|nyclose|prev_close|4031.91
-INFO|nyclose|sigma|88.88
-INFO|nyclose|atr14|88.72
-INFO|nyclose|elapsed_hours|16
-INFO|nyclose|data_end_jst|11/11 23:00
-INFO|nyclose|range_median|80.86
-LEVEL|nyclose|box_high|50|50% HIGH|4098.05
-LEVEL|nyclose|box_low|50|50% LOW|3974.44
-LEVEL|nyclose|box_high|70|70% HIGH|4117.07
-LEVEL|nyclose|box_low|70|70% LOW|3954.88
-LEVEL|nyclose|box_high|80|80% HIGH|4133.92
-LEVEL|nyclose|box_low|80|80% LOW|3937.65
-LEVEL|nyclose|box_high|90|90% HIGH|4158.20
-LEVEL|nyclose|box_low|90|90% LOW|3908.15
-LEVEL|nyclose|prev_high|0|PREV HIGH|4146.45
-LEVEL|nyclose|prev_low|0|PREV LOW|4013.36
-LEVEL|nyclose|prev_close|0|PREV CLOSE|4031.91
-LEVEL|nyclose|pivot|0|PIVOT|4063.91
-LEVEL|nyclose|pivot|0|R1|4114.45
-LEVEL|nyclose|pivot|0|S1|3981.36
-LEVEL|nyclose|pivot|0|R2|4196.99
-LEVEL|nyclose|pivot|0|S2|3930.82
-LEVEL|nyclose|pivot|0|R3|4247.53
-LEVEL|nyclose|pivot|0|S3|3848.28
+INFO|nyclose|session|2026-11-12
+INFO|nyclose|session_jst|11/12 07:00 - 11/13 07:00 JST
+INFO|nyclose|prev_close|3987.24
+INFO|nyclose|sigma|88.72
+INFO|nyclose|atr14|88.41
+INFO|nyclose|elapsed_hours|5
+INFO|nyclose|data_end_jst|11/12 12:00
+INFO|nyclose|range_median|80.73
+LEVEL|nyclose|box_high|50|50% HIGH|4053.23
+LEVEL|nyclose|box_low|50|50% LOW|3930.05
+LEVEL|nyclose|box_high|70|70% HIGH|4072.23
+LEVEL|nyclose|box_low|70|70% LOW|3910.58
+LEVEL|nyclose|box_high|80|80% HIGH|4089.06
+LEVEL|nyclose|box_low|80|80% LOW|3893.25
+LEVEL|nyclose|box_high|90|90% HIGH|4113.32
+LEVEL|nyclose|box_low|90|90% LOW|3863.70
+LEVEL|nyclose|prev_high|0|PREV HIGH|4066.79
+LEVEL|nyclose|prev_low|0|PREV LOW|3982.41
+LEVEL|nyclose|prev_close|0|PREV CLOSE|3987.24
+LEVEL|nyclose|pivot|0|PIVOT|4012.15
+LEVEL|nyclose|pivot|0|R1|4041.88
+LEVEL|nyclose|pivot|0|S1|3957.51
+LEVEL|nyclose|pivot|0|R2|4096.52
+LEVEL|nyclose|pivot|0|S2|3927.78
+LEVEL|nyclose|pivot|0|R3|4126.25
+LEVEL|nyclose|pivot|0|S3|3873.14
 LEVEL|nyclose|swing_high|0|20D HIGH|4198.82
 LEVEL|nyclose|swing_low|0|20D LOW|3869.05
-INFO|nyclose|realized_high|4066.79
-INFO|nyclose|realized_low|4026.41
-INFO|nyclose|realized_range|40.37
-INFO|nyclose|p_high_set|60.3
-INFO|nyclose|p_low_set|64.7
-LEVEL|nyclose|cond_high|50|COND 50% HIGH|4076.61
-LEVEL|nyclose|cond_low|50|COND 50% LOW|4019.57
-LEVEL|nyclose|cond_high|70|COND 70% HIGH|4086.34
-LEVEL|nyclose|cond_low|70|COND 70% LOW|4008.15
-LEVEL|nyclose|cond_high|80|COND 80% HIGH|4095.04
-LEVEL|nyclose|cond_low|80|COND 80% LOW|3997.33
-LEVEL|nyclose|cond_high|90|COND 90% HIGH|4112.65
-LEVEL|nyclose|cond_low|90|COND 90% LOW|3980.17
+INFO|nyclose|realized_high|4000.33
+INFO|nyclose|realized_low|3968.55
+INFO|nyclose|realized_range|31.78
+INFO|nyclose|p_high_set|26.6
+INFO|nyclose|p_low_set|30.0
+LEVEL|nyclose|cond_high|50|COND 50% HIGH|4040.53
+LEVEL|nyclose|cond_low|50|COND 50% LOW|3928.30
+LEVEL|nyclose|cond_high|70|COND 70% HIGH|4057.65
+LEVEL|nyclose|cond_low|70|COND 70% LOW|3909.39
+LEVEL|nyclose|cond_high|80|COND 80% HIGH|4070.09
+LEVEL|nyclose|cond_low|80|COND 80% LOW|3896.71
+LEVEL|nyclose|cond_high|90|COND 90% HIGH|4092.28
+LEVEL|nyclose|cond_low|90|COND 90% LOW|3872.51
 INFO|utc|broker|Exness
-INFO|utc|session|2026-11-11
-INFO|utc|session_jst|11/11 09:00 - 11/12 09:00 JST
-INFO|utc|prev_close|4038.72
-INFO|utc|sigma|87.49
-INFO|utc|atr14|86.83
-INFO|utc|elapsed_hours|14
-INFO|utc|data_end_jst|11/11 23:00
-INFO|utc|range_median|79.06
-LEVEL|utc|box_high|50|50% HIGH|4102.41
-LEVEL|utc|box_low|50|50% LOW|3978.98
-LEVEL|utc|box_high|70|70% HIGH|4120.71
-LEVEL|utc|box_low|70|70% LOW|3959.51
-LEVEL|utc|box_high|80|80% HIGH|4134.76
-LEVEL|utc|box_low|80|80% LOW|3942.92
-LEVEL|utc|box_high|90|90% HIGH|4165.30
-LEVEL|utc|box_low|90|90% LOW|3917.93
-LEVEL|utc|prev_high|0|PREV HIGH|4141.15
-LEVEL|utc|prev_low|0|PREV LOW|4013.36
-LEVEL|utc|prev_close|0|PREV CLOSE|4038.72
-LEVEL|utc|pivot|0|PIVOT|4064.41
-LEVEL|utc|pivot|0|R1|4115.45
-LEVEL|utc|pivot|0|S1|3987.67
-LEVEL|utc|pivot|0|R2|4192.19
-LEVEL|utc|pivot|0|S2|3936.63
-LEVEL|utc|pivot|0|R3|4243.23
-LEVEL|utc|pivot|0|S3|3859.89
+INFO|utc|session|2026-11-12
+INFO|utc|session_jst|11/12 09:00 - 11/13 09:00 JST
+INFO|utc|prev_close|3978.51
+INFO|utc|sigma|87.54
+INFO|utc|atr14|86.97
+INFO|utc|elapsed_hours|3
+INFO|utc|data_end_jst|11/12 12:00
+INFO|utc|range_median|79.13
+LEVEL|utc|box_high|50|50% HIGH|4042.24
+LEVEL|utc|box_low|50|50% LOW|3918.56
+LEVEL|utc|box_high|70|70% HIGH|4060.55
+LEVEL|utc|box_low|70|70% LOW|3899.27
+LEVEL|utc|box_high|80|80% HIGH|4074.60
+LEVEL|utc|box_low|80|80% LOW|3882.66
+LEVEL|utc|box_high|90|90% HIGH|4105.16
+LEVEL|utc|box_low|90|90% LOW|3857.66
+LEVEL|utc|prev_high|0|PREV HIGH|4066.79
+LEVEL|utc|prev_low|0|PREV LOW|3977.99
+LEVEL|utc|prev_close|0|PREV CLOSE|3978.51
+LEVEL|utc|pivot|0|PIVOT|4007.76
+LEVEL|utc|pivot|0|R1|4037.53
+LEVEL|utc|pivot|0|S1|3948.74
+LEVEL|utc|pivot|0|R2|4096.56
+LEVEL|utc|pivot|0|S2|3918.97
+LEVEL|utc|pivot|0|R3|4126.33
+LEVEL|utc|pivot|0|S3|3859.95
 LEVEL|utc|swing_high|0|20D HIGH|4198.82
 LEVEL|utc|swing_low|0|20D LOW|3869.98
-INFO|utc|realized_high|4066.79
-INFO|utc|realized_low|4026.41
-INFO|utc|realized_range|40.37
-INFO|utc|p_high_set|57.2
-INFO|utc|p_low_set|62.7
-LEVEL|utc|cond_high|50|COND 50% HIGH|4080.15
-LEVEL|utc|cond_low|50|COND 50% LOW|4016.64
-LEVEL|utc|cond_high|70|COND 70% HIGH|4091.68
-LEVEL|utc|cond_low|70|COND 70% LOW|4003.42
-LEVEL|utc|cond_high|80|COND 80% HIGH|4102.59
-LEVEL|utc|cond_low|80|COND 80% LOW|3991.67
-LEVEL|utc|cond_high|90|COND 90% HIGH|4120.96
-LEVEL|utc|cond_low|90|COND 90% LOW|3975.55
+INFO|utc|realized_high|4000.33
+INFO|utc|realized_low|3968.55
+INFO|utc|realized_range|31.78
+INFO|utc|p_high_set|23.4
+INFO|utc|p_low_set|28.0
+LEVEL|utc|cond_high|50|COND 50% HIGH|4044.00
+LEVEL|utc|cond_low|50|COND 50% LOW|3924.89
+LEVEL|utc|cond_high|70|COND 70% HIGH|4060.23
+LEVEL|utc|cond_low|70|COND 70% LOW|3907.52
+LEVEL|utc|cond_high|80|COND 80% HIGH|4074.07
+LEVEL|utc|cond_low|80|COND 80% LOW|3894.38
+LEVEL|utc|cond_high|90|COND 90% HIGH|4097.32
+LEVEL|utc|cond_low|90|COND 90% LOW|3870.57
