@@ -55,21 +55,33 @@ def main() -> int:
     print("[2/4] feed")
     if export_mt4_levels.main() != 0:
         print("FAIL: the feed could not be written"); return 1
+    refreshed = list(export_mt4_levels.REFRESHED)
 
     print("[3/4] checks")
+    from daily_report import target_session
     after = FEED.read_text()
-    today = dt.datetime.now(JST).date().isoformat()
     counts = {c: after.count(f"|{c}|") for c in ("nyclose", "utc")}
     sessions = dict(re.findall(r"^INFO\|(\w+)\|session\|(.+)$", after, re.M))
-    print(f"      records {counts}   sessions {sessions}")
+    # The session that is live right now, per convention. NOT the JST calendar
+    # date: the nyclose session labelled D runs 07:00 JST on D to 07:00 on D+1,
+    # so between midnight and 07:00 the live session is yesterday's label and
+    # comparing against today's date rejects a perfectly good feed. That is
+    # what failed 27 of the last 30 scheduled runs.
+    live = {c: str(target_session(c)[0]) for c in ("nyclose", "utc")}
+    print(f"      records {counts}   sessions {sessions}   live {live}")
+    print(f"      refreshed this run: {refreshed or 'none'}")
 
     for c in ("nyclose", "utc"):
         if counts[c] == 0:
             print(f"FAIL: no {c} records -- that broker's terminal would draw "
                   f"nothing. Not publishing."); return 1
-    if today not in sessions.values():
-        print(f"FAIL: no convention is on today's session ({today}); "
-              f"got {sessions}. Not publishing."); return 1
+    if not refreshed:
+        # In the last hours before a boundary both conventions roll to a
+        # session that has not opened, so neither can be rebuilt and the feed
+        # on disk is already the right one. Nothing to do is not a failure.
+        print("      no convention could be rebuilt in this window "
+              "(each one's next session has not opened yet); feed left as is")
+        return 0
     if stamp_of(after) == stamp_of(before):
         print("FAIL: the feed did not change. Not publishing."); return 1
 
@@ -98,7 +110,7 @@ def main() -> int:
         # A convention whose boundary has not been crossed yet carries its
         # previous records forward. Saying so here keeps a two-day-old band
         # from reading as this session's.
-        tag = "" if sess == today else f"  [CARRIED from {sess} - not this session]"
+        tag = "" if sess == live.get(conv) else f"  [CARRIED from {sess} - live session is {live.get(conv)}]"
         band = re.findall(rf"^LEVEL\|{conv}\|cond_(high|low)\|80\|[^|]+\|(.+)$", after, re.M)
         if len(band) == 2:
             v = sorted(float(x[1]) for x in band)

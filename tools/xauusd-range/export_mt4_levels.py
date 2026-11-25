@@ -26,6 +26,8 @@ from build_daily import build
 from daily_report import session_bounds, target_session, conditional, BROKERS
 
 OUT = Path(__file__).parent / "mt4" / "latest.txt"
+#: conventions main() rebuilt on its last call, as opposed to carried forward.
+REFRESHED: list[str] = []
 CONVS = ["nyclose", "utc"]
 PIVOT_ASCII = {"P": "PIVOT", "R1": "R1", "R2": "R2", "R3": "R3",
                "S1": "S1", "S2": "S2", "S3": "S3"}
@@ -53,6 +55,7 @@ def main() -> int:
     now = dt.datetime.now(dt.timezone.utc)
     lines = ["V2", f"META|generated_at|{now:%Y-%m-%dT%H:%M:%SZ}", "META|symbol|XAUUSD"]
     wrote = 0
+    REFRESHED.clear()
 
     for conv in CONVS:
         broker = BROKERS[conv][0].replace(" 方式", "")
@@ -122,6 +125,7 @@ def main() -> int:
                     L("cond_high", c, f"COND {c}% HIGH", b["high"])
                     L("cond_low", c, f"COND {c}% LOW", b["low"])
         wrote += 1
+        REFRESHED.append(conv)
 
     if not wrote:
         print("[error] no convention could be written", file=sys.stderr)
