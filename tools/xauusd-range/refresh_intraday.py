@@ -81,6 +81,17 @@ def main() -> int:
         # on disk is already the right one. Nothing to do is not a failure.
         print("      no convention could be rebuilt in this window "
               "(each one's next session has not opened yet); feed left as is")
+        # Still save the hours just fetched, or the next run pays for them again.
+        sh("git", "add", "tools/xauusd-range/data_archive/hourly_recent.csv")
+        c = sh("git", "commit", "-q", "-m",
+               f"Cache XAU/USD bars fetched at {dt.datetime.now(JST):%Y-%m-%d %H:%M} JST\n\n"
+               "No feed change: in this window neither convention's next\n"
+               "session has opened, so there was nothing to rebuild.\n\n"
+               "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>")
+        if c.returncode == 0:
+            sh("git", "fetch", "-q", "origin", "claude/funny-mayer-vcwsjx")
+            sh("git", "rebase", "-q", "origin/claude/funny-mayer-vcwsjx")
+            sh("git", "push", "-q", "origin", "claude/funny-mayer-vcwsjx")
         return 0
     if stamp_of(after) == stamp_of(before):
         print("FAIL: the feed did not change. Not publishing."); return 1

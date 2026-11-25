@@ -128,7 +128,17 @@ def main() -> int:
         REFRESHED.append(conv)
 
     if not wrote:
-        print("[error] no convention could be written", file=sys.stderr)
+        # Every convention was carried: in the hours before a boundary the
+        # next session has not opened, so there is nothing new to compute.
+        # Leave the file alone rather than stamp a fresh generated_at on
+        # unchanged numbers -- that timestamp is how the EA and the reader
+        # judge whether the feed is current.
+        if len(lines) > 3:
+            print("[hold] nothing to rebuild in this window; feed left "
+                  "untouched so its generated_at stays honest", file=sys.stderr)
+            return 0
+        print("[error] no convention could be written and nothing to carry",
+              file=sys.stderr)
         return 1
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text("\n".join(lines) + "\n", encoding="ascii")
