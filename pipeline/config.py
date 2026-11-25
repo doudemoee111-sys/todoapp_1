@@ -210,6 +210,20 @@ GENRES = {
         #   視聴時間だけが尺に比例して増える。視聴時間が唯一の関門なのでこれが最大の乗数。
         # 校正値: 7,600字 → 音声20.3分（374字/分）。60分 ≒ 22,000字。
         "narration_target": 22000,     # ~59 min（射程圏の競合は中央57.4分）
+        # ★2026/11/25 承認（コスト削減）。情景画像は1枚だけ生成し、暗転させて全尺ループ。
+        #   根拠: 60分に30枚では1枚2分しか映らず、作業用/睡眠用の視聴者は画面を見ていない。
+        #   環境音は11/07から同じ黒画面設計で動いている。効果は3つ:
+        #   (1) Stability 93→6 credits/本（30枚＝90 + サムネ3 → 1枚＝3 + サムネ3）
+        #   (2) 画像プロンプト用の gpt-4o 呼び出しが消える
+        #   (3) 30セグメントのKen-Burns＋60分の字幕焼き込み（最も重い工程）が
+        #       20秒クリップのstream-loopに変わり、所要時間が66〜75分から大幅に短縮。
+        #   ※サムネイルだけは専用のStability画像を維持する（CTRが最大のボトルネックなので、
+        #     暗い情景画像を流用して見栄えを落とすのは$0.03のために割に合わない）。
+        "num_images": 1,
+        "black_screen": True,          # 暗転した静止画をループ。字幕は焼かない
+        # 1枚だけの情景（image_style が後ろに連結される）。人物を出さない。
+        "still_prompt": ("a single still wide shot of a deserted night corridor in an old "
+                         "Japanese apartment block, one dim light at the far end, no people"),
         "image_style": (
             "dark eerie Japanese night scene, desaturated muted tones, fog, dim "
             "streetlight, empty corridor or old apartment, unsettling stillness, "

@@ -235,8 +235,30 @@ def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
     return out.strip()
 
 
+def _n_images(genre: dict) -> int:
+    """このジャンルが必要とする情景画像の枚数。
+
+    黒画面ジャンル（怪談・2026/11/25 承認）は1枚だけ使い、暗転させて全尺ループする。
+    60分の動画に30枚を並べても1枚あたり2分しか映らず、「ながら聴き」の視聴者は
+    画面を見ていない。1枚にすると Stability が 93→6 credits/本、
+    さらにこの関数の gpt-4o 呼び出し自体も不要になる。
+    """
+    return max(1, int(genre.get("num_images", NUM_IMAGES)))
+
+
+def _still_prompt(genre: dict) -> str:
+    """黒画面ジャンルで使う1枚だけの情景プロンプト（image_style は呼び出し側で連結）。"""
+    return genre.get("still_prompt",
+                     "a single still establishing shot of the setting, wide, empty, no people")
+
+
 def _image_prompts(genre: dict, title: str, headings: list[str]) -> list[str]:
-    user = f"""動画「{title}」({genre['label']})のための画像生成プロンプトを英語でちょうど{NUM_IMAGES}個、JSON配列で作成。
+    n_img = _n_images(genre)
+    if n_img == 1:
+        # 1枚だけなら構図を相談する意味がない＝LLM呼び出しを丸ごと省く。
+        # generate_images が image_style を後ろに連結するので、ここは情景だけを書く。
+        return [_still_prompt(genre)]
+    user = f"""動画「{title}」({genre['label']})のための画像生成プロンプトを英語でちょうど{n_img}個、JSON配列で作成。
 
 章の流れ: {' / '.join(headings)}
 
@@ -244,32 +266,35 @@ def _image_prompts(genre: dict, title: str, headings: list[str]) -> list[str]:
 - 動画の流れ順に、情景・被写体・構図を1文で具体的に描く英語プロンプト。
 - 実在人物の顔のクローズアップや特定人物の再現は避け、象徴的・情景的に。
 - テキストやロゴを含めない。
-JSON: {{"prompts":[str, ...]}}（要素数はちょうど{NUM_IMAGES}）"""
+JSON: {{"prompts":[str, ...]}}（要素数はちょうど{n_img}）"""
     data = json.loads(_chat([{"role": "system", "content": "アートディレクター。JSONのみ。"},
                              {"role": "user", "content": user}], json_mode=True))
     prompts = data.get("prompts", [])
-    if len(prompts) > NUM_IMAGES:
-        prompts = prompts[:NUM_IMAGES]
-    while 0 < len(prompts) < NUM_IMAGES:
+    if len(prompts) > n_img:
+        prompts = prompts[:n_img]
+    while 0 < len(prompts) < n_img:
         prompts.append(prompts[len(prompts) % len(prompts) if prompts else 0])
-    return prompts or [genre["image_style"]] * NUM_IMAGES
+    return prompts or [genre["image_style"]] * n_img
 
 
 def _image_prompts_from_narration(genre: dict, title: str, narration: str) -> list[str]:
     """Image prompts for a video whose narration is supplied (not LLM-outlined)."""
-    user = f"""次のナレーション本文をもとに、動画「{title}」({genre['label']})用の画像生成プロンプトを英語でちょうど{NUM_IMAGES}個、JSON配列で作成。
+    n_img = _n_images(genre)
+    if n_img == 1:
+        return [_still_prompt(genre)]
+    user = f"""次のナレーション本文をもとに、動画「{title}」({genre['label']})用の画像生成プロンプトを英語でちょうど{n_img}個、JSON配列で作成。
 本文の流れ順に、各場面の情景・被写体・構図を1文の具体的な英語で描く。実在人物の顔のクローズアップや特定人物の再現は避け、象徴的・情景的に。テキストやロゴは含めない。
 本文:
 {narration[:6000]}
-JSON: {{"prompts":[str, ...]}}（要素数はちょうど{NUM_IMAGES}）"""
+JSON: {{"prompts":[str, ...]}}（要素数はちょうど{n_img}）"""
     data = json.loads(_chat([{"role": "system", "content": "アートディレクター。JSONのみ。"},
                              {"role": "user", "content": user}], json_mode=True))
     prompts = data.get("prompts", [])
-    if len(prompts) > NUM_IMAGES:
-        prompts = prompts[:NUM_IMAGES]
-    while 0 < len(prompts) < NUM_IMAGES:
+    if len(prompts) > n_img:
+        prompts = prompts[:n_img]
+    while 0 < len(prompts) < n_img:
         prompts.append(prompts[len(prompts) % len(prompts)])
-    return prompts or [genre["image_style"]] * NUM_IMAGES
+    return prompts or [genre["image_style"]] * n_img
 
 
 def _desc_and_tags(genre: dict, title: str, narration: str) -> tuple[str, list[str]]:

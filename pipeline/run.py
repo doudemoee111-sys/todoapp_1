@@ -207,10 +207,23 @@ def run(genre_key: str, topic: str | None, do_upload: bool, subtitles: bool,
     imgs = generate_images(pkg["image_prompts"], genre["image_style"], work / "img")
 
     # 4. Assemble
-    print("[4/6] assemble video (ffmpeg)…")
     video = work / "video.mp4"
-    assemble(imgs, audio, video, narration=pkg["narration"], subtitles=subtitles,
-             sub_segments=sub_segments)
+    if genre.get("black_screen"):
+        # 黒画面ジャンル（怪談）: 1枚の静止画を暗転させ、20秒の低速ズームクリップを
+        # stream-loop(コピー)で全尺に伸ばす。環境音と同じ方式で、30セグメントの
+        # Ken-Burns と 60分ぶんの字幕焼き込み（従来いちばん重かった工程）を省く。
+        # 字幕は焼かない: ①コピーでループするため全尺の再エンコードが必要になる
+        # ②「ながら聴き」前提の黒画面に文字を出す意味がない。
+        # 戻す場合は config の "black_screen" を外すだけでよい。
+        import math
+        from soundscape import darken_still, render_video
+        print("[4/6] assemble video (黒画面・静止画ループ)…")
+        dark = darken_still(imgs[0], work / "still_dark.png")
+        render_video(dark, audio, math.ceil(dur), video)
+    else:
+        print("[4/6] assemble video (ffmpeg)…")
+        assemble(imgs, audio, video, narration=pkg["narration"], subtitles=subtitles,
+                 sub_segments=sub_segments)
     print(f"      video: {video}")
 
     # 5. Thumbnail
