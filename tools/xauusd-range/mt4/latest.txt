@@ -1,5 +1,5 @@
 V2
-META|generated_at|2026-11-27T16:35:44Z
+META|generated_at|2026-11-27T19:35:27Z
 META|symbol|XAUUSD
 INFO|nyclose|broker|Axiory
 INFO|nyclose|session|2026-11-27
@@ -49,8 +49,8 @@ INFO|utc|session_jst|11/27 09:00 - 11/28 09:00 JST
 INFO|utc|prev_close|3567.80
 INFO|utc|sigma|96.18
 INFO|utc|atr14|103.06
-INFO|utc|elapsed_hours|16
-INFO|utc|data_end_jst|11/28 01:00
+INFO|utc|elapsed_hours|19
+INFO|utc|data_end_jst|11/28 04:00
 INFO|utc|range_median|87.12
 LEVEL|utc|box_high|50|50% HIGH|3637.60
 LEVEL|utc|box_low|50|50% LOW|3501.11
@@ -75,13 +75,13 @@ LEVEL|utc|swing_low|0|20D LOW|3426.41
 INFO|utc|realized_high|3685.20
 INFO|utc|realized_low|3557.41
 INFO|utc|realized_range|127.79
-INFO|utc|p_high_set|72.1
-INFO|utc|p_low_set|77.4
+INFO|utc|p_high_set|83.9
+INFO|utc|p_low_set|88.2
 LEVEL|utc|cond_high|50|COND 50% HIGH|3685.20
 LEVEL|utc|cond_low|50|COND 50% LOW|3557.41
-LEVEL|utc|cond_high|70|COND 70% HIGH|3697.33
-LEVEL|utc|cond_low|70|COND 70% LOW|3548.35
-LEVEL|utc|cond_high|80|COND 80% HIGH|3704.71
-LEVEL|utc|cond_low|80|COND 80% LOW|3539.47
-LEVEL|utc|cond_high|90|COND 90% HIGH|3717.73
-LEVEL|utc|cond_low|90|COND 90% LOW|3524.65
+LEVEL|utc|cond_high|70|COND 70% HIGH|3685.20
+LEVEL|utc|cond_low|70|COND 70% LOW|3557.41
+LEVEL|utc|cond_high|80|COND 80% HIGH|3691.39
+LEVEL|utc|cond_low|80|COND 80% LOW|3554.73
+LEVEL|utc|cond_high|90|COND 90% HIGH|3702.01
+LEVEL|utc|cond_low|90|COND 90% LOW|3545.33
