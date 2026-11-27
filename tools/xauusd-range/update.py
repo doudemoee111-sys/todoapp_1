@@ -44,14 +44,25 @@ def read_archive() -> pd.DataFrame:
               .drop_duplicates("ts").sort_values("ts").reset_index(drop=True))
 
 
+#: Pandas renders floats differently between major versions, so an archive
+#: written on one machine is rewritten byte-for-byte on another. That left the
+#: CI runner with a dirty tree on every run, which blocked `git pull --rebase`
+#: and silently lost the report commit. An explicit format pins the bytes.
+#: Prices carry three decimals (they are integers scaled by 1e3), so %.4f is
+#: lossless for them.
+FLOAT_FMT = "%.4f"
+
+
 def write_archive(df: pd.DataFrame) -> list[str]:
-    """One gzip per year. mtime=0 keeps an unchanged year byte-identical, so
-    git sees no change and the repository does not grow for nothing."""
+    """One gzip per year. mtime=0 and a fixed float format keep an unchanged
+    year byte-identical on any machine, so git sees no change and the
+    repository does not grow for nothing."""
     touched = []
     for y, g in df.groupby(df["ts"].dt.year):
         p = ARCHIVE / f"hourly_{int(y)}.csv.gz"
-        blob = gzip.compress(g.sort_values("ts").to_csv(index=False).encode(),
-                             compresslevel=9, mtime=0)
+        blob = gzip.compress(
+            g.sort_values("ts").to_csv(index=False, float_format=FLOAT_FMT).encode(),
+            compresslevel=9, mtime=0)
         if not p.exists() or p.read_bytes() != blob:
             p.write_bytes(blob)
             touched.append(p.name)
@@ -112,8 +123,8 @@ def update_recent() -> pd.DataFrame:
         return pd.DataFrame(columns=COLS)
     m = (pd.concat(frames, ignore_index=True)
            .drop_duplicates("ts", keep="last").sort_values("ts").reset_index(drop=True))
-    m.to_csv(RECENT, index=False)
-    m.to_csv(OUT / "hourly_recent.csv", index=False)
+    m.to_csv(RECENT, index=False, float_format=FLOAT_FMT)
+    m.to_csv(OUT / "hourly_recent.csv", index=False, float_format=FLOAT_FMT)
     return m
 
 

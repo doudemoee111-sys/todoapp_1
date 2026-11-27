@@ -77,7 +77,10 @@ jobs:
             echo "no new report to commit"
           else
             git commit -m "Add XAU/USD range report for $(TZ=Asia/Tokyo date +%F)"
-            git pull --rebase origin claude/funny-mayer-vcwsjx
+            # --autostash, because the run regenerates files it does not
+            # commit; without it the rebase refuses and the report is never
+            # pushed. That lost every archived report from 2026-11-05 on.
+            git pull --rebase --autostash origin claude/funny-mayer-vcwsjx
             git push origin HEAD:claude/funny-mayer-vcwsjx
           fi
 

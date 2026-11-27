@@ -90,7 +90,7 @@ def main() -> int:
                "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>")
         if c.returncode == 0:
             sh("git", "fetch", "-q", "origin", "claude/funny-mayer-vcwsjx")
-            sh("git", "rebase", "-q", "origin/claude/funny-mayer-vcwsjx")
+            sh("git", "rebase", "-q", "--autostash", "origin/claude/funny-mayer-vcwsjx")
             sh("git", "push", "-q", "origin", "claude/funny-mayer-vcwsjx")
         return 0
     if stamp_of(after) == stamp_of(before):
@@ -109,7 +109,9 @@ def main() -> int:
         print(f"FAIL: commit\n{c.stdout}{c.stderr}"); return 1
 
     sh("git", "fetch", "-q", "origin", "claude/funny-mayer-vcwsjx")
-    sh("git", "rebase", "-q", "origin/claude/funny-mayer-vcwsjx")
+    # --autostash: a rebase refuses outright on a dirty tree, and anything the
+    # run regenerated but does not commit would otherwise block the push.
+    sh("git", "rebase", "-q", "--autostash", "origin/claude/funny-mayer-vcwsjx")
     p = sh("git", "push", "-q", "origin", "claude/funny-mayer-vcwsjx")
     if p.returncode != 0:
         print(f"FAIL: push refused -- the EA keeps showing the previous "
