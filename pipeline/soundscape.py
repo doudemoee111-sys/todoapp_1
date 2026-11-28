@@ -1,0 +1,747 @@
+"""Long-session soundscape / 作業用BGM generator for 「世界の雑学王」.
+
+戦略シフト(視聴時間効率)の本体。watch hours = 再生数 × 平均視聴時間。1〜3時間の
+環境音は 1 再生あたりの視聴“時間”が短尺雑学の 20〜40 倍、言語の壁がなく evergreen。
+収益化の核心:
+
+  * 音源は 100% 自作合成（ffmpeg の anoisesrc ノイズ + sine トーンパッド）。既存曲の
+    Content-ID フィンガープリントに一致しようがない＝著作権クレームを構造的に回避。
+  * 作業用 / 集中 / リラックス / 睡眠という実需の付加価値があり、毎回ミックスを乱数で
+    振るので、YouTube 2025「量産型(mass-produced)」ポリシーの“独自性のない複製”にも
+    当たりにくい。
+  * ナレーション台本・TTS・30 枚スライドショーは使わない。静止画 1 枚（Stability、失敗
+    時は ffmpeg グラデにフォールバック）に超低速ズームをかけた短いクリップを stream-loop
+    でコピーし、全尺の合成音をかぶせるだけ＝生成が安価で速い。
+
+アップロードは youtube_upload をそのまま再利用するため、チャンネルガード
+(EXPECTED_CHANNEL_TITLE=「世界の雑学王」)が効き、別チャンネルへは絶対に投稿しない。
+
+使い方:
+  python3 soundscape.py --theme rain                 # 3h 雨音を生成＋予約投稿
+  python3 soundscape.py                               # テーマを自動選定(直近と重複回避)
+  python3 soundscape.py --theme brown --seconds 600   # 10 分だけ(動作確認用)
+  python3 soundscape.py --theme waves --no-upload     # ビルドのみ(投稿しない)
+  python3 soundscape.py --theme fire --publish-now    # 予約せず即時公開
+  python3 soundscape.py --check-auth                  # 認証とチャンネル名だけ確認
+"""
+from __future__ import annotations
+import argparse
+import json
+import os
+import random
+import re
+import shutil
+import subprocess
+import time
+from datetime import datetime
+from pathlib import Path
+
+import config
+from config import (OUTPUT_DIR, VIDEO_W, VIDEO_H, FPS, SHORT_W, SHORT_H, SOUNDSCAPE_THEMES,
+                    SOUNDSCAPE_CATEGORY_ID, SOUNDSCAPE_PUBLISH_HOUR_JST,
+                    SOUNDSCAPE_DEFAULT_SECONDS, SOUNDSCAPE_COMMON_TAGS,
+                    SOUNDSCAPE_PLAYLIST_TITLE, STABILITY_ENDPOINT, UPLOAD_PRIVACY)
+
+# 送客ショートの尺（縦型・予告）。45〜60秒だと最後まで見られやすく、CTAも効く。
+SHORT_SECONDS = 50
+
+# 音源が自作(非著作権)であることとAI画像利用を明記する開示文(収益化ポリシー対応)。
+_DISCLOSURE = (
+    "\n\n──────────\n"
+    "※この動画の音は、著作権フリーの楽曲ではなく、当チャンネルがシンセサイザー/ノイズ合成で"
+    "一から生成したオリジナルの環境音です（既存曲は一切使用していません）。背景画像の生成に"
+    "AIを利用しています。安心して作業・勉強・就寝のお供にお使いください。"
+)
+
+
+class SoundscapePreflightError(RuntimeError):
+    """前提条件が欠けていて、作業を始める前に確実に失敗すると分かる状態。"""
+
+
+def _run(cmd: list[str]) -> None:
+    subprocess.run(cmd, check=True)
+
+
+# --------------------------------------------------------------------------- #
+# 1. 音の合成（ffmpeg フィルタグラフ）                                          #
+# --------------------------------------------------------------------------- #
+def _audio_filtergraph(theme_key: str, seconds: int, rng: random.Random) -> str:
+    """テーマごとに ffmpeg の filter_complex 文字列を組む。
+
+    すべて自作音源。ノイズ(anoisesrc)を帯域整形した「ベッド」に、テーマによっては
+    かすかな detuned なトーンパッド(sine×3=和音)を薄く重ね、ゆっくりした揺れ(tremolo)と
+    フェードを付ける。カットオフ周波数・パッドの音程・揺れの速さを毎回乱数で振ることで、
+    テンプレ複製化を避ける(量産判定対策)。"""
+    fade_out_st = max(1, seconds - 6)
+
+    # --- ベッド(ノイズ)のテーマ別パラメータ --------------------------------
+    if theme_key == "brown":
+        color, hp, lp = "brown", 40, rng.randint(900, 1300)
+        trem_f, trem_d = 0.0, 0.0        # 集中用は揺れなしのフラットなブラウンノイズ
+        pad = False
+    elif theme_key == "white":
+        # 「ホワイトノイズ」は検索語として独立した需要がある（ブラウンノイズが
+        # 当チャンネル最大の視聴時間源＝推定44.6h だったのと同じ理由で追加）。
+        color, hp, lp = "white", 60, rng.randint(7000, 11000)
+        trem_f, trem_d = 0.0, 0.0
+        pad = False
+    elif theme_key == "pink":
+        color, hp, lp = "pink", 50, rng.randint(3000, 6000)
+        trem_f, trem_d = 0.0, 0.0
+        pad = False
+    elif theme_key == "rain":
+        color, hp, lp = "pink", rng.randint(300, 460), rng.randint(5500, 7500)
+        trem_f, trem_d = round(rng.uniform(0.18, 0.28), 3), 0.25
+        pad = True
+    elif theme_key == "waves":
+        color, hp, lp = "brown", 90, rng.randint(1400, 2000)
+        # ffmpeg tremolo の下限は 0.1Hz。0.07〜0.11 だと 0.1 未満に落ちて生成が失敗していた
+        # （実例 10/09 f=0.086 でエラー）。0.1〜0.13(周期 7.7〜10秒)の“ゆっくりした寄せ波”に是正。
+        trem_f, trem_d = round(rng.uniform(0.1, 0.13), 3), 0.6
+        pad = True
+    elif theme_key == "fire":
+        color, hp, lp = "brown", 70, rng.randint(1700, 2400)
+        trem_f, trem_d = round(rng.uniform(0.9, 1.6), 3), 0.35     # パチパチに近い細かな揺れ
+        pad = True
+    elif theme_key == "forest":
+        color, hp, lp = "pink", rng.randint(200, 320), rng.randint(3800, 5200)
+        trem_f, trem_d = round(rng.uniform(0.12, 0.2), 3), 0.3
+        pad = True
+    elif theme_key == "wind":
+        color, hp, lp = "pink", rng.randint(120, 220), rng.randint(1800, 2600)
+        trem_f, trem_d = round(rng.uniform(0.1, 0.16), 3), 0.5     # 吹き寄せる風のうねり
+        pad = True
+    elif theme_key == "river":
+        color, hp, lp = "pink", rng.randint(500, 700), rng.randint(6000, 8000)
+        trem_f, trem_d = 0.0, 0.0                                  # 渓流は定常の明るい水音
+        pad = True
+    elif theme_key == "thunder":
+        color, hp, lp = "pink", rng.randint(260, 420), rng.randint(4800, 6800)
+        trem_f, trem_d = round(rng.uniform(0.12, 0.2), 3), 0.3     # 雨＋ゆっくりした遠雷のうねり
+        pad = True
+    elif theme_key == "snow":
+        color, hp, lp = "pink", rng.randint(80, 160), rng.randint(1200, 1800)
+        trem_f, trem_d = round(rng.uniform(0.1, 0.14), 3), 0.2     # 雪の夜の静かなうねり
+        pad = True
+    else:  # night ほか
+        color, hp, lp = "pink", rng.randint(150, 260), rng.randint(2600, 3600)
+        trem_f, trem_d = round(rng.uniform(0.1, 0.16), 3), 0.3
+        pad = True
+
+    parts = [
+        f"anoisesrc=color={color}:sample_rate=44100:amplitude=0.9,"
+        f"highpass=f={hp},lowpass=f={lp},aformat=channel_layouts=stereo[bed]"
+    ]
+
+    if pad:
+        # ルート音を乱数で選び(G3〜C4)、短三度/五度を重ねた和音パッドをごく小音量で。
+        root = rng.choice([196.0, 207.65, 220.0, 233.08, 246.94, 261.63])
+        third = root * (6 / 5 if rng.random() < 0.5 else 5 / 4)  # 短三度/長三度
+        fifth = root * 3 / 2
+        pad_vol = round(rng.uniform(0.05, 0.09), 3)
+        parts += [
+            f"sine=frequency={root:.2f}:sample_rate=44100[p1]",
+            f"sine=frequency={third:.2f}:sample_rate=44100[p2]",
+            f"sine=frequency={fifth:.2f}:sample_rate=44100[p3]",
+            f"[p1][p2][p3]amix=inputs=3:normalize=1,volume={pad_vol},"
+            f"aecho=0.8:0.88:900:0.4,aformat=channel_layouts=stereo[pad]",
+        ]
+        mix = "[bed][pad]amix=inputs=2:duration=longest:normalize=0"
+    else:
+        mix = "[bed]anull"
+
+    tail = mix
+    if trem_f > 0:
+        # 安全ガード: ffmpeg tremolo の有効範囲は 0.1〜20000Hz。どのテーマの乱数でも
+        # 0.1 を下回らないようクランプして、生成が落ちないようにする。
+        tail += f",tremolo=f={max(0.1, trem_f):.3f}:d={trem_d}"
+    tail += (f",afade=t=in:d=4,afade=t=out:st={fade_out_st}:d=6,"
+             f"loudnorm=I=-22:TP=-2:LRA=7[out]")
+    parts.append(tail)
+    return "; ".join(parts)
+
+
+def synth_audio(theme_key: str, seconds: int, out_path: Path, rng: random.Random) -> Path:
+    """Synthesize the bed. Long beds are written compressed, not as WAV.
+
+    PCM costs 176 kB/s: fine for a 50-second short, but 8 hours of it is 5.1 GB
+    of intermediate on a container whose writable space is a fixed allowance,
+    and the final upload is AAC anyway. So anything past a few minutes goes
+    straight to AAC (the source is synthesized noise — there is no generation
+    loss worth protecting here).
+    """
+    graph = _audio_filtergraph(theme_key, seconds, rng)
+    print(f"  [audio] 合成中… theme={theme_key} 尺={seconds}s ({seconds/3600:.2f}h)")
+    if seconds > 300:
+        # 最終出力と同じ 160k で書き、mux 側は再エンコードせず copy する
+        # （同じビットレートへの二重エンコードは時間を使うだけで何も買わない）。
+        out_path = out_path.with_suffix(".m4a")
+        codec = ["-c:a", "aac", "-b:a", "160k"]
+    else:
+        codec = ["-c:a", "pcm_s16le"]
+    _run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+          "-filter_complex", graph, "-map", "[out]",
+          "-t", str(seconds), "-ar", "44100", "-ac", "2",
+          *codec, str(out_path)])
+    print(f"  [audio] 完成 {out_path.name} {out_path.stat().st_size/1e6:.0f} MB")
+    return out_path
+
+
+# --------------------------------------------------------------------------- #
+# 2. 静止画(Stability、失敗時は ffmpeg グラデにフォールバック)                  #
+# --------------------------------------------------------------------------- #
+def _stability_still(prompt: str, out_path: Path) -> bool:
+    api_key = os.environ.get("STABILITY_API_KEY")
+    if not api_key:
+        return False
+    try:
+        from http_retry import request_with_retry
+        full = (f"{prompt}. serene, cinematic, high detail, soft depth, calming, "
+                "8k, no text, no words, no watermark, no logo")
+        resp = request_with_retry(
+            "POST", STABILITY_ENDPOINT,
+            headers={"Authorization": f"Bearer {api_key}", "Accept": "image/*"},
+            files={"none": ""},
+            data={"prompt": full, "aspect_ratio": "16:9", "output_format": "png"},
+            timeout=120)
+        if resp.status_code == 200:
+            out_path.write_bytes(resp.content)
+            return True
+        print(f"  [image] Stability {resp.status_code}: {resp.text[:140]}")
+    except Exception as e:  # noqa: BLE001
+        print(f"  [image] Stability 失敗、グラデにフォールバック: {e}")
+    return False
+
+
+def _hex(c: str) -> tuple[int, int, int]:
+    c = c.removeprefix("#").removeprefix("0x")
+    return (int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16))
+
+
+def _vgradient(size: tuple[int, int], top: str, bottom: str):
+    """縦方向の2色グラデを PIL で描く(テーマ別配色。ffmpeg の gradients に依存しない)。"""
+    from PIL import Image
+    w, h = size
+    r0, g0, b0 = _hex(top)
+    r1, g1, b1 = _hex(bottom)
+    img = Image.new("RGB", (w, h))
+    px = img.load()
+    row = []
+    for y in range(h):
+        t = y / max(1, h - 1)
+        row.append((round(r0 + (r1 - r0) * t),
+                    round(g0 + (g1 - g0) * t),
+                    round(b0 + (b1 - b0) * t)))
+    for y in range(h):
+        c = row[y]
+        for x in range(w):
+            px[x, y] = c
+    return img
+
+
+def _gradient_still(theme: dict, out_path: Path) -> None:
+    """テーマ別配色の2色グラデ静止画(動画の背景。テキストは載せない=長時間視聴で邪魔に
+    ならない)。Stability残高切れでもテーマごとに色が変わる。"""
+    top, bottom = theme.get("bg", ("#0b1a2a", "#244b6b"))
+    _vgradient((VIDEO_W, VIDEO_H), top, bottom).save(out_path)
+
+
+def make_still(theme: dict, out_path: Path, rng: random.Random) -> Path:
+    if not _stability_still(theme["image_prompt"], out_path):
+        _gradient_still(theme, out_path)
+    return out_path
+
+
+def darken_still(src: Path, dst: Path, amount: float = 0.82) -> Path:
+    """The frame people fall asleep in front of: dark, but not a dead black.
+
+    Keeping a little of the picture means the video still looks like something
+    rather than a broken upload, while being dim enough to leave running in a
+    dark room. Falls back to the original image if Pillow cannot do it, since a
+    bright video is worse than no video only in theory — losing the whole run is
+    worse in practice.
+    """
+    try:
+        from PIL import Image
+        img = Image.open(src).convert("RGB")
+        Image.blend(img, Image.new("RGB", img.size, (0, 0, 0)), amount).save(dst)
+        print(f"  [video] 本編の静止画を暗転しました（{int(amount * 100)}%）")
+        return dst
+    except Exception as e:  # noqa: BLE001
+        print(f"  [video] 暗転に失敗したので元画像を使います: {e}")
+        return src
+
+
+_THUMB_FONTS = [
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+    "/usr/share/fonts/opentype/ipafont-gothic/ipagp.ttf",
+]
+
+
+def _font(size: int):
+    from PIL import ImageFont
+    for p in _THUMB_FONTS:
+        if os.path.exists(p):
+            try:
+                return ImageFont.truetype(p, size)
+            except Exception:  # noqa: BLE001
+                continue
+    return ImageFont.load_default()
+
+
+def make_thumbnail(theme: dict, seconds: int, out_path: Path, bg_still: Path | None = None) -> Path:
+    """クリックされるサムネ(1280x720)。テーマ別配色＋日本語テキスト(テーマ語/尺/作業用BGM)＋
+    チャンネル識別。Stability があればその写真を暗転して下敷きに、無ければテーマ別グラデ。
+    これで『画像が毎回同じ』を解消し、一覧でテーマが一目で分かる。"""
+    from PIL import Image, ImageDraw
+    W, H = 1280, 720
+    top, bottom = theme.get("bg", ("#0b1a2a", "#244b6b"))
+    if bg_still and bg_still.exists():
+        try:
+            base = Image.open(bg_still).convert("RGB").resize((W, H), Image.LANCZOS)
+            # 文字を最優先にするため、写真は下敷きとして強めに沈める(0.45→0.62)。
+            base = Image.blend(base, Image.new("RGB", (W, H), (0, 0, 0)), 0.62)
+        except Exception:  # noqa: BLE001
+            base = _vgradient((W, H), top, bottom)
+    else:
+        base = _vgradient((W, H), top, bottom)
+    d = ImageDraw.Draw(base)
+
+    accent = _hex(theme.get("accent", "#ffffff"))
+    dur = _hours_label(seconds)
+    word = theme.get("word", theme.get("label", ""))
+
+    def _centered(text, font, y, fill, stroke=6):
+        bb = d.textbbox((0, 0), text, font=font, stroke_width=stroke)
+        d.text(((W - (bb[2] - bb[0])) / 2 - bb[0], y), text, font=font, fill=fill,
+               stroke_width=stroke, stroke_fill=(0, 0, 0))
+
+    # 2026/11/07 の作り直し。旧版は尺が60px・用途語が小さく、スマホの一覧では
+    # 何の動画か判別できなかった(インプレッション2.8万に対しCTR 1.0%)。
+    # 8時間という尺はこのニッチ最大の差別化要因なのに、最も小さく出ていた。
+    # 判断基準は「携帯の一覧サイズに縮めて読めるか」の一点に置く。
+
+    # 尺バッジ: 差し色の帯に極大の数字。サムネで最初に目に入るものにする。
+    # 帯は枠の内側に収める（外まで引くと枠が途切れてシリーズの識別が崩れる）。
+    band_h = 148
+    d.rectangle([14, 36, W - 15, 36 + band_h], fill=accent)
+    bb = d.textbbox((0, 0), dur, font=_font(118))
+    d.text(((W - (bb[2] - bb[0])) / 2 - bb[0], 36 + (band_h - (bb[3] - bb[1])) / 2 - bb[1]),
+           dur, font=_font(118), fill=(10, 10, 10))
+
+    # テーマ語: 中央・特大・白。何の音かを一語で。
+    _centered(word, _font(188), 248, (255, 255, 255), stroke=10)
+
+    # 用途語: 検索された言葉をそのまま見せる(タイトルと一致させる)。
+    _centered("睡眠用BGM・作業用BGM" if theme_key_is_sleep(theme) else "作業用BGM・勉強",
+              _font(76), 546, (255, 255, 255), stroke=8)
+
+    # シリーズ枠は最後に描く（帯の上に重ねて途切れさせない）。
+    # ※一覧サイズに縮めると読めない小さな行は、情報ではなく濁りになるので置かない。
+    d.rectangle([6, 6, W - 7, H - 7], outline=accent, width=8)
+
+    base.save(out_path)
+    return out_path
+
+
+def theme_key_is_sleep(theme: dict) -> bool:
+    """Sleep-leaning themes say 睡眠用BGM first; noise themes lead with 作業用."""
+    return theme.get("title_core", "") not in (
+        "ホワイトノイズ（集中・睡眠）", "ピンクノイズ（睡眠・集中）", "ブラウンノイズ（集中）")
+
+
+# --------------------------------------------------------------------------- #
+# 3. 短い超低速ズームのクリップ → stream-loop で全尺に                          #
+# --------------------------------------------------------------------------- #
+def _kenburns_clip(still: Path, out: Path, clip_sec: int = 20,
+                   w: int = VIDEO_W, h: int = VIDEO_H,
+                   crf: int = 28, fps: int = FPS,
+                   maxrate_k: int | None = None) -> None:
+    frames = fps * clip_sec
+    vf = (f"scale={w*2}:{h*2}:force_original_aspect_ratio=increase,"
+          f"crop={w*2}:{h*2},"
+          f"zoompan=z='min(zoom+0.0004,1.12)':d={frames}:"
+          f"x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':s={w}x{h}:fps={fps},"
+          f"setsar=1,format=yuv420p")
+    # 視聴時間が目的で視聴者は「聴く」ので、映像ビットレートは絞ってよい。
+    # ループ全体のサイズ = クリップbytes × ループ回数 なので、クリップの圧縮が
+    # そのまま8時間ぶんに掛かる（crf28/30fpsでは2.19GBになり、実測の2,195MBと一致）。
+    # crf だけだと絵柄次第でサイズが数倍ぶれる。実測: 同じ crf32/12fps で
+    # ブラウンノイズの静止画は約24kbps(映像85MB)、焚き火の写真は約197kbps(映像711MB)
+    # ＝完成1,292MBでアップロードが落ちた。VBVで上限を与えて最悪値を抑える。
+    cap = (["-maxrate", f"{maxrate_k}k", "-bufsize", f"{maxrate_k * 2}k"]
+           if maxrate_k else [])
+    _run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-loop", "1",
+          "-i", str(still), "-t", str(clip_sec), "-vf", vf,
+          "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf), *cap,
+          "-r", str(fps), str(out)])
+
+
+def render_video(still: Path, audio: Path, seconds: int, out_path: Path) -> Path:
+    """静止画の短いズームクリップを stream-loop(コピー)で全尺に伸ばし、全尺の合成音を
+    かぶせる。-t で出力長を音に合わせて明示的に打ち切る(-shortest は stream_loop と
+    組み合わせると停止しないことがあるため使わない)。動画は再エンコードしない＝安価。"""
+    clip = out_path.with_name("_loop_clip.mp4")
+    print("  [video] 低速ズームのループ素材を作成…")
+    # 8時間の長尺は crf32 / 12fps。ほぼ静止のゆっくりズームなので体感差はなく、
+    # 完成ファイルが2.19GB→1.11GBに半減する（0.68GBという当初の見積りは平坦な
+    # グラデーションで測ったもので、Stabilityの写真的な静止画では16倍重かった）。
+    # 上限110kbps＝8時間で映像396MBまで。通常の絵柄は24kbps前後なので影響せず、
+    # 写真的で細かい絵柄（焚き火・木の葉）だけが上限に当たって抑えられる。
+    _kenburns_clip(still, clip, crf=32, fps=12, maxrate_k=110)
+    print(f"  [video] stream-loop で {seconds}s に伸ばして音声をミックス…")
+    # 合成音が既に AAC 160k なら再エンコードせず copy（8時間だと差が大きい）。
+    acodec = (["-c:a", "copy"] if audio.suffix == ".m4a"
+              else ["-c:a", "aac", "-b:a", "160k", "-ar", "44100"])
+    _run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+          "-stream_loop", "-1", "-i", str(clip), "-i", str(audio),
+          "-map", "0:v", "-map", "1:a", "-c:v", "copy", *acodec,
+          "-t", str(seconds), "-movflags", "+faststart", str(out_path)])
+    clip.unlink(missing_ok=True)
+    return out_path
+
+
+# --------------------------------------------------------------------------- #
+# 3b. 送客ショート（縦型の予告→その日の長尺フルへ誘導）                        #
+# --------------------------------------------------------------------------- #
+def make_short_visual(theme: dict, dur_label: str, out_path: Path) -> Path:
+    """縦型(1080x1920)の予告ビジュアル。テーマ別配色＋焼き込みテキスト(テーマ語／用途／
+    『フルは概要欄』CTA／チャンネル名)。ショートはスクロールされるのでテキストを焼き込む。
+    音と同じく著作権クリア(自前生成)。"""
+    from PIL import ImageDraw
+    W, H = SHORT_W, SHORT_H
+    top, bottom = theme.get("bg", ("#0b1a2a", "#244b6b"))
+    base = _vgradient((W, H), top, bottom)
+    d = ImageDraw.Draw(base)
+    accent = _hex(theme.get("accent", "#ffffff"))
+    word = theme.get("word", theme.get("label", ""))
+
+    def _centered(text, font, y, fill, stroke=7):
+        bb = d.textbbox((0, 0), text, font=font, stroke_width=stroke)
+        d.text(((W - (bb[2] - bb[0])) / 2 - bb[0], y), text, font=font, fill=fill,
+               stroke_width=stroke, stroke_fill=(0, 0, 0))
+
+    _centered(word, _font(150), 430, (255, 255, 255), 10)        # テーマ語(特大)
+    _centered("作業用BGM・環境音", _font(70), 660, (235, 235, 235), 6)
+    _centered(f"▶ {dur_label}フルは", _font(72), 1180, accent, 7)  # CTA
+    _centered("概要欄・固定コメント", _font(66), 1290, accent, 7)
+    _centered("世界の雑学王", _font(50), 1760, accent, 5)         # チャンネル識別
+    base.save(out_path)
+    return out_path
+
+
+def _build_and_upload_short(theme_key: str, theme: dict, dur_label: str,
+                            long_video_id: str, publish_at, work: Path,
+                            publish_now: bool, rng: random.Random) -> dict:
+    """その日の長尺(long_video_id)への予告ショートを縦型で生成・投稿し、概要欄＋固定コメントで
+    フルへ送客する。音は自作環境音の抜粋(著作権クリア)、画像はテーマ別の縦型グラデ＋テキスト。"""
+    from youtube_upload import upload_video, post_comment
+    long_url = f"https://youtu.be/{long_video_id}"
+    sdir = work / "short"
+    sdir.mkdir(exist_ok=True)
+
+    audio = synth_audio(theme_key, SHORT_SECONDS, sdir / "audio.wav", rng)
+    still = make_short_visual(theme, dur_label, sdir / "still.png")
+    clip = sdir / "clip.mp4"
+    _kenburns_clip(still, clip, clip_sec=SHORT_SECONDS, w=SHORT_W, h=SHORT_H)
+    video = sdir / "short.mp4"
+    _run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+          "-i", str(clip), "-i", str(audio), "-map", "0:v", "-map", "1:a",
+          "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-ar", "44100",
+          "-t", str(SHORT_SECONDS), "-movflags", "+faststart", str(video)])
+    audio.unlink(missing_ok=True)
+    clip.unlink(missing_ok=True)
+
+    word = theme.get("word", theme.get("label", "")).replace(" ", "")
+    title = f"{word}で集中｜{dur_label}作業用BGM #Shorts"[:100]
+    desc = (f"{theme['title_core']}で作業・勉強・リラックス。\n\n"
+            f"▼ {dur_label}のフル版（途切れなし）はこちら\n{long_url}\n\n"
+            f"#Shorts #作業用BGM #環境音 #{theme.get('label','')}")
+    tags = list(dict.fromkeys(["Shorts", "作業用BGM", "環境音"] + (theme.get("tags") or [])[:4]))
+
+    if publish_now:
+        vid = upload_video(video, title, desc, tags, SOUNDSCAPE_CATEGORY_ID, None, None, "public")
+    else:
+        vid = upload_video(video, title, desc, tags, SOUNDSCAPE_CATEGORY_ID,
+                           publish_at, None, UPLOAD_PRIVACY)
+    post_comment(vid, f"▶ {dur_label}のフル版（作業用BGM・途切れなし）はこちら\n{long_url}")
+    url = f"https://youtu.be/{vid}"
+    print(f"  [short] 送客ショート {url} -> {long_url}")
+    return {"video_id": vid, "url": url, "title": title, "links_to": long_url}
+
+
+# --------------------------------------------------------------------------- #
+# 4. メタデータ                                                                 #
+# --------------------------------------------------------------------------- #
+def _hours_label(seconds: int) -> str:
+    h = seconds / 3600
+    if abs(h - round(h)) < 0.05 and h >= 1:
+        return f"{round(h)}時間"
+    m = round(seconds / 60)
+    return f"{m}分" if m >= 1 else f"{seconds}秒"
+
+
+# 集中寄りのテーマ（ノイズ系）と睡眠寄りのテーマで、先に置く検索語を変える。
+_FOCUS_THEMES = {"white", "pink", "brown"}
+
+
+def use_terms(theme_key: str) -> str:
+    """Put the words people actually type at the front of the title.
+
+    2026/11/07 に検索上位122本を実測した結果、10万再生以上の100本に含まれる語は
+    勉強30% / 睡眠用BGM29% / 雨29% / 作業用BGM24% / 環境音20% だった。こちらの
+    旧タイトルは「癒し・睡眠導入に（オリジナル環境音）」で、意味は同じでも
+    **誰も検索しない言い回し**であり、最大の検索語2つがどちらも入っていなかった。
+    検索語に一致すれば表示も増え、視聴者は自分が打った言葉を見つけてクリックする。
+    """
+    if theme_key in _FOCUS_THEMES:
+        return "作業用BGM・勉強用BGM・睡眠用BGM"
+    return "睡眠用BGM・作業用BGM"
+
+
+def build_metadata(theme_key: str, theme: dict, seconds: int) -> dict:
+    dur = _hours_label(seconds)
+    core = theme["title_core"]
+    uses = use_terms(theme_key)
+    # 「黒画面」「途中広告なし」は実測の上位勢が使う機能訴求（黒画面5%・広告なし11%）。
+    # ★どちらも事実でなければならない: 映像は暗転した静止画で、このチャンネルは
+    #   未収益化のため中間広告が無い。収益化後も環境音には中間広告を入れないこと。
+    title = f"【{dur}】{core}｜{uses}【黒画面・途中広告なし】"
+    desc = (
+        f"{core}の{dur}の環境音です。{uses}としてどうぞ。\n\n"
+        "・目にまぶしくない黒画面です。つけたまま眠れます。\n"
+        "・途切れのない1本の長尺で、途中広告は入れていません。\n"
+        "・音はすべて自作の合成音です。\n\n"
+        "作業・勉強・在宅ワーク・就寝前のリラックスに。\n"
+        + _DISCLOSURE +
+        "\n\nチャンネル登録しておくと、新しい環境音をすぐに見つけられます。"
+    )
+    tags = list(dict.fromkeys((theme.get("tags") or []) + SOUNDSCAPE_COMMON_TAGS))[:30]
+    return {"title": title[:100], "description": desc, "tags": tags}
+
+
+def threads_draft(theme: dict, theme_key: str, seconds: int, url: str) -> str:
+    """The post レイさん pastes into Threads once the video is public.
+
+    soundscape never emitted one, so every run fell back to the routine's
+    three-line default. The draft is written here, next to the metadata it
+    describes, so the wording and the link always match what was uploaded.
+    """
+    dur = _hours_label(seconds)
+    # title_core の「（集中・睡眠）」は検索用の補足で、文章に混ぜると
+    # 「ブラウンノイズ（集中）を8時間」と読みにくくなるので投稿文では外す。
+    core = re.sub(r"（[^）]*）", "", theme["title_core"]).strip()
+    hook = ("勉強や作業の音にどうぞ。" if theme_key in _FOCUS_THEMES
+            else "眠れない夜の音にどうぞ。")
+    lines = [
+        "=========== THREADS 下書き ===========",
+        "--- ここからコピー ---",
+        f"{core}を{dur}、途切れなく流しています。",
+        "",
+        f"{hook}",
+        "画面は黒いまま、途中広告も入れていません。つけっぱなしで大丈夫です。",
+        "",
+        url,
+        "",
+        "#作業用BGM #環境音 #睡眠用BGM",
+        "--- ここまで ---",
+        "======================================",
+    ]
+    return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------- #
+# 5. オーケストレーション                                                       #
+# --------------------------------------------------------------------------- #
+def _preflight(do_upload: bool) -> None:
+    problems: list[str] = []
+    for tool in ("ffmpeg", "ffprobe"):
+        if not shutil.which(tool):
+            problems.append(f"{tool} が PATH にない → `bash pipeline/setup.sh` を先に実行")
+    if do_upload:
+        for k in ("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"):
+            if not os.environ.get(k):
+                problems.append(f"{k} 未設定 → YouTube アップロードに必須")
+    # STABILITY は任意(無ければグラデ静止画にフォールバックするのでブロックしない)。
+    if problems:
+        raise SoundscapePreflightError(
+            "事前チェックに失敗しました。以下を解消してから再実行してください:\n  - "
+            + "\n  - ".join(problems))
+
+
+def _pick_theme(avoid_titles: list[str]) -> str:
+    """最も長く使っていないテーマ(LRU)を選ぶ＝全テーマを一巡してから再登場させる。
+
+    旧実装は「直近タイトルに無いテーマ」を探すだけで、カタログが直近N件に出揃うと
+    どれも“直近扱い”になり keys[0](実質ランダム)へ退化していた。その結果、同じテーマが
+    数日で重複し、グリッドで同じサムネが並ぶ原因になっていた。ここでは各テーマが直近
+    タイトル(新しい順)のどれだけ前に最後に出たかを見て、最も昔／未使用のものを選ぶ。
+    """
+    def recency(k: str) -> int:
+        core = SOUNDSCAPE_THEMES[k]["title_core"]
+        word = (SOUNDSCAPE_THEMES[k].get("word") or "").replace(" ", "")
+        for i, t in enumerate(avoid_titles):           # avoid_titles は新しい順
+            if core[:3] in t or (word and word[:3] in t):
+                return i                               # 小さいほど最近使った
+        return len(avoid_titles) + 1                   # 一度も出ていない＝最優先
+    keys = list(SOUNDSCAPE_THEMES.keys())
+    random.shuffle(keys)                               # 同点(未使用同士)はランダムに
+    return max(keys, key=recency)
+
+
+def run(theme_key: str | None, seconds: int, do_upload: bool,
+        publish_now: bool = False, make_short: bool = True) -> dict:
+    rng = random.Random()
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    avoid = []
+    if do_upload:
+        try:
+            from youtube_upload import fetch_recent_titles
+            avoid = fetch_recent_titles()
+        except Exception as e:  # noqa: BLE001
+            print(f"  [dedup] 直近タイトル取得に失敗(重複回避スキップ): {e}")
+    if not theme_key:
+        theme_key = _pick_theme(avoid)
+    if theme_key not in SOUNDSCAPE_THEMES:
+        raise SystemExit(f"未知のテーマ「{theme_key}」(利用可能: {', '.join(SOUNDSCAPE_THEMES)})")
+    theme = SOUNDSCAPE_THEMES[theme_key]
+
+    work = OUTPUT_DIR / f"soundscape_{theme_key}_{stamp}"
+    work.mkdir(parents=True, exist_ok=True)
+    print(f"== 作業用BGM/環境音: {theme['label']} == work: {work}")
+
+    # 画像を先に作る。8時間の音声合成は約28分かかるので、その後ろで画像工程が
+    # こけると（10/20: Pillowの壊れた混在インストールで ImportError: _imaging）
+    # 合成した582MBをまるごと捨てることになる。安い工程で落ちるものは先に落とす。
+    still = make_still(theme, work / "still.png", rng)
+    thumb = make_thumbnail(theme, seconds, work / "thumbnail.png", bg_still=still)
+    print(f"  [thumb] テーマ別サムネ生成: {thumb.name}")
+    # 本編は暗転した静止画にする。サムネには明るい元画像を使うので、一覧では目を引き、
+    # 再生中はまぶしくない。実測(2026/11/07・検索上位122本)で、登録1.87万人ながら
+    # 652万回を取っている2位の動画はタイトルに「黒画面でまぶしくない」と書いていた。
+    # 8時間つけっぱなしにされる用途で、明るい映像は邪魔でしかない。
+    dark = darken_still(still, work / "still_dark.png")
+    audio = synth_audio(theme_key, seconds, work / "audio.wav", rng)
+    video = render_video(dark, audio, seconds, work / "video.mp4")
+    audio.unlink(missing_ok=True)  # 大きい中間ファイルは即削除(ディスク節約)
+    size_mb = video.stat().st_size / 1e6
+    print(f"  [video] 完成: {video} ({size_mb:.0f} MB)")
+
+    meta = build_metadata(theme_key, theme, seconds)
+    print(f"  [meta] title: {meta['title']}")
+
+    result = {"theme": theme_key, "seconds": seconds, "work_dir": str(work),
+              "video": str(video), "title": meta["title"], "size_mb": round(size_mb)}
+
+    if do_upload:
+        from youtube_upload import (upload_video, next_publish_at,
+                                    ensure_playlist, add_to_playlist)
+        pub = None
+        if publish_now:
+            vid = upload_video(video, meta["title"], meta["description"], meta["tags"],
+                               SOUNDSCAPE_CATEGORY_ID, None, str(thumb), "public")
+            result["video_id"] = vid
+            result["published"] = "public (即時公開)"
+            print(f"  published NOW  https://youtu.be/{vid}")
+        else:
+            pub = next_publish_at(SOUNDSCAPE_PUBLISH_HOUR_JST)
+            vid = upload_video(video, meta["title"], meta["description"], meta["tags"],
+                               SOUNDSCAPE_CATEGORY_ID, pub, str(thumb), UPLOAD_PRIVACY)
+            result["video_id"] = vid
+            result["publish_at_jst"] = pub.isoformat()
+            print(f"  scheduled: {pub.isoformat()} (JST)  https://youtu.be/{vid}")
+        try:
+            pl = ensure_playlist(SOUNDSCAPE_PLAYLIST_TITLE,
+                                 "作業・勉強・睡眠に。オリジナル環境音の長尺まとめ。")
+            if pl and add_to_playlist(vid, pl):
+                result["playlist"] = SOUNDSCAPE_PLAYLIST_TITLE
+        except Exception as e:  # noqa: BLE001
+            print(f"  [playlist] スキップ: {e}")
+
+        # Threads の下書きは、アップロードが終わって URL が確定してから書く。
+        # ここで出さないとログに下書きブロックが無く、毎回ルーティン側の既定3行に
+        # 落ちていた（レイさんが公開後に手でコピーするもの。自動投稿はしない）。
+        draft = threads_draft(theme, theme_key, seconds, f"https://youtu.be/{vid}")
+        result["threads_draft"] = draft
+        (work / "threads_draft.txt").write_text(draft + "\n", encoding="utf-8")
+        print("\n" + draft + "\n")
+
+        # 送客ショート（縦型の予告→その日の長尺フルへ誘導）。失敗しても本編は投稿済みなので
+        # 握りつぶして続行（発見性の補助であり、本編の成否をブロックしない）。
+        if make_short:
+            try:
+                short = _build_and_upload_short(
+                    theme_key, theme, _hours_label(seconds), vid, pub, work,
+                    publish_now, rng)
+                result["short"] = short
+            except Exception as e:  # noqa: BLE001
+                print(f"  [short] 送客ショートの生成に失敗（本編は投稿済み）: {e}")
+
+    (work / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
+    return result
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--theme", default=None,
+                    help=f"テーマ ({', '.join(SOUNDSCAPE_THEMES)})。省略で自動選定")
+    ap.add_argument("--seconds", type=int, default=SOUNDSCAPE_DEFAULT_SECONDS,
+                    help="尺(秒)。既定は config の 3h。動作確認は 300〜600 を推奨")
+    ap.add_argument("--no-upload", action="store_true")
+    ap.add_argument("--publish-now", action="store_true",
+                    help="予約せず即時 public で公開(evergreen を早く稼働させる場合)")
+    # 送客ショートは 2026/10/18 に廃止（ユーザー承認済み）。実測の転換率は3〜8%、
+    # 睡眠/作業用BGMと怪談のニッチ30chのショート比率は中央値0%、ショート比率と長尺
+    # 再生の相関は r=+0.07、そしてショート視聴は収益化の4,000h/8,000hに算入されない。
+    # 既定をオフにする。--short を明示した時だけ作る（10/21の環境音は既定オンのまま
+    # だったため、廃止したはずのショートが1本出てしまった）。
+    ap.add_argument("--short", action="store_true",
+                    help="送客ショートも作る（既定は作らない。廃止済みの導線）")
+    ap.add_argument("--no-short", action="store_true",
+                    help="（廃止済みの既定を明示するための後方互換フラグ。既定でオフ）")
+    ap.add_argument("--check-auth", action="store_true")
+    ap.add_argument("--rethumb", default=None,
+                    help="既存動画のサムネだけ差し替える（新規動画は作らない）。"
+                         "書式: 'VIDEOID:theme,VIDEOID:theme'（例 O9EroeX-SsE:waves,JymAdr2dcmc:forest）")
+    args = ap.parse_args()
+
+    if args.check_auth:
+        from youtube_upload import check_auth
+        print(f"[check-auth] OK — 投稿先チャンネル: 「{check_auth()}」")
+        return
+
+    if args.rethumb:
+        from youtube_upload import set_thumbnail, check_auth
+        print(f"[rethumb] 認証チャンネル確認: 「{check_auth()}」（世界の雑学王でなければ上で停止済み）")
+        done, failed = [], []
+        for item in [x.strip() for x in args.rethumb.split(",") if x.strip()]:
+            try:
+                vid, theme_key = item.split(":")
+            except ValueError:
+                print(f"[rethumb] 書式エラー: '{item}'（VIDEOID:theme 形式で）"); failed.append(item); continue
+            theme = SOUNDSCAPE_THEMES.get(theme_key.strip())
+            if not theme:
+                print(f"[rethumb] 未知テーマ: {theme_key}"); failed.append(item); continue
+            thumb = make_thumbnail(theme, args.seconds, OUTPUT_DIR / f"_rethumb_{vid.strip()}.png")
+            try:
+                set_thumbnail(vid.strip(), thumb)
+                print(f"[rethumb] ✅ {vid.strip()} ← {theme_key}（{theme.get('label')}）")
+                done.append(f"{vid.strip()}({theme_key})")
+            except Exception as e:  # noqa: BLE001
+                print(f"[rethumb] ❌ {vid.strip()}: {e}"); failed.append(item)
+        print(f"\n[rethumb] 完了: 成功 {len(done)}（{', '.join(done)}） / 失敗 {len(failed)}（{', '.join(failed)}）")
+        return
+
+    do_upload = not args.no_upload
+    _preflight(do_upload)
+    t0 = time.time()
+    result = run(args.theme, args.seconds, do_upload=do_upload, publish_now=args.publish_now,
+                 make_short=args.short and not args.no_short)
+    print(f"\nDONE in {time.time()-t0:.0f}s -> {result.get('video_id', '(not uploaded)')}")
+
+
+if __name__ == "__main__":
+    main()

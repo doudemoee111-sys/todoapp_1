@@ -4,3 +4,8 @@ out
 .vercel
 *.log
 .env*.local
+
+# pipeline runtime artifacts
+pipeline/output/
+pipeline/state.json
+pipeline/**/__pycache__/

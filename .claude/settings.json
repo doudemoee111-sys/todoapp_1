@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "permissions": {
+    "allow": [
+      "Bash(git fetch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(git clone:*)",
+      "Bash(git log:*)",
+      "Bash(git status:*)",
+      "Bash(command -v ffmpeg)",
+      "Bash(bash pipeline/setup.sh)",
+      "Bash(bash factspark/setup.sh)",
+      "Bash(python3 run.py:*)",
+      "Bash(python3 soundscape.py:*)",
+      "Bash(python3 report.py:*)",
+      "Bash(python3 audit_published.py:*)",
+      "Bash(python3 daily_routine.py:*)",
+      "Bash(nohup python3 run.py:*)",
+      "Bash(nohup python3 soundscape.py:*)",
+      "Bash(nohup python3 daily_routine.py:*)",
+      "Bash(tail:*)",
+      "Bash(pip install:*)",
+      "mcp__Claude_Code_Remote__read_documentation",
+      "mcp__Claude_Code_Remote__register_repo_root"
+    ]
+  }
+}

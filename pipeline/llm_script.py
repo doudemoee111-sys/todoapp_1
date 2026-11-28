@@ -1,0 +1,741 @@
+"""Generate a full long-form video script package with OpenAI.
+
+Length is the hard part of long-form: a single "write ~3200 chars" request is
+unreliable, so we build the script in stages —
+  1. outline: title, 7-9 chapter headings+summaries, thumbnail, description, tags
+  2. per-chapter expansion: each chapter narration to ~500-600 JP chars
+  3. image prompts: exactly NUM_IMAGES English prompts aligned to the narrative
+This reliably yields 3500-5000 narration chars (~9-13 min of speech).
+
+Returns a dict:
+{ "topic","title","chapters":[{"heading","narration"}],"narration",
+  "image_prompts":[...],"thumbnail_text","thumbnail_prompt","description","tags" }
+"""
+from __future__ import annotations
+import json
+import os
+import random
+import re
+from openai import OpenAI
+
+from config import (SCRIPT_MODEL, NUM_IMAGES, NARRATION_TARGET_CHARS, GENRES,
+                    SHORT_NUM_IMAGES, TEASER_TARGET_CHARS)
+
+_client = None
+
+# AI利用の開示（2025/7 ポリシー対応の一助）。概要欄に付ける。※Studioの「変更/合成コンテンツ」
+# フラグは別途手動設定が必要（APIでは確実に付与できないため）。
+_AI_DISCLOSURE = "\n\n※本動画はAI（音声合成・画像生成等）を活用して制作し、独自の解説・構成を加えています。"
+
+
+def _c() -> OpenAI:
+    global _client
+    if _client is None:
+        _client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    return _client
+
+
+def _chat(messages, temperature=0.85, json_mode=False):
+    kw = {"model": SCRIPT_MODEL, "temperature": temperature, "messages": messages}
+    if json_mode:
+        kw["response_format"] = {"type": "json_object"}
+    return _c().chat.completions.create(**kw).choices[0].message.content
+
+
+def _avoid_block(avoid_titles: list[str] | None) -> str:
+    if not avoid_titles:
+        return ""
+    joined = "\n".join(f"- {t}" for t in avoid_titles[:40])
+    return ("\n\n【重要・重複回避】次は最近このチャンネルで既に扱ったテーマ/タイトルです。"
+            "これらと『同じ具体的な事件・現象・題材の焼き直し』は避けてください。"
+            "ただし同じ系統（例: 未解決の失踪事件、宇宙の謎）でも、"
+            "扱う事件・場所・人物・結末が明確に異なる“別の話”ならOKです。全系統を避ける必要はありません:\n"
+            + joined)
+
+
+def _pick_topic(genre: dict, avoid_titles: list[str] | None = None) -> str:
+    out = _chat(
+        [{"role": "system", "content": "あなたは日本のYouTubeで大人気の動画作家です。"},
+         {"role": "user", "content": genre["topic_seed_prompt"] + _avoid_block(avoid_titles)
+          + "\nテーマ名だけを1行で出力。"}],
+        temperature=1.0)
+    return out.strip().splitlines()[0].strip("　 「」\"'")
+
+
+def _is_duplicate(topic: str, avoid_titles: list[str]) -> bool:
+    """Ask the model whether `topic` is essentially the same subject as any
+    recent title — catches paraphrases and re-skins, not just exact matches."""
+    if not avoid_titles:
+        return False
+    joined = "\n".join(f"- {t}" for t in avoid_titles[:40])
+    user = (f"新しい動画テーマ案: 「{topic}」\n\n最近の動画タイトル:\n{joined}\n\n"
+            "このテーマ案は、上のいずれかと『同じ具体的な事件・現象の焼き直し』ですか？\n"
+            "判定基準:\n"
+            "- 同じ事件・同じ場所・同じ人物・同じ現象を、言い回しだけ変えて再度扱う → duplicate: true\n"
+            "- 同じ系統・ジャンル（例: 村の失踪、宇宙の謎、都市伝説）でも、"
+            "扱う事件・場所・人物・結末が明確に異なる“別の話” → duplicate: false（重複ではない）\n"
+            "『系統が同じ』というだけでは duplicate にしないこと。あくまで“同じ話の焼き直し”だけを重複とみなす。\n"
+            'JSONで {"duplicate": true または false} のみ出力。')
+    try:
+        data = json.loads(_chat(
+            [{"role": "system", "content": "重複判定器。出力はJSONのみ。"},
+             {"role": "user", "content": user}], temperature=0.0, json_mode=True))
+        return bool(data.get("duplicate", False))
+    except Exception:  # noqa: BLE001
+        return False  # 判定に失敗したら重複扱いにせず続行(生成を止めない)
+
+
+# 量産テンプレ判定(2025/7 "inauthentic content" ポリシー)を避けるため、動画ごとに
+# 全体構成の"型"を変える。維持率が出る流れの候補群からランダムに選ぶ（ジャンルが
+# structure_hint を持てばそれを優先＝ジャンル固有の勝ち構成）。
+_STRUCTURE_VARIANTS = [
+    "結論先出し→根拠を一つずつ検証→意外な転換→独自の考察→まとめ",
+    "最大の謎の提示→時系列で追う→通説への反証→残る謎と独自見解→まとめ",
+    "象徴的な一場面→背景と歴史→複数の具体例を対比→なぜそうなるかの分析→まとめ",
+    "問いを立てる→具体例を順に提示→各例の“なぜ”を独自に解説→全体の結論→まとめ",
+]
+
+# ジャンルが title_style を持たない場合の既定タイトル仕様。
+_DEFAULT_TITLE_STYLE = (
+    "28文字以内の「単一テーマ深掘り」型。最重要ワード（事件名・場所・固有名詞・数字・謎の核心）を"
+    "前半20文字以内に置く。フック語は内容に即して1つだけ（なぜ／未だに／その真相／判明した／"
+    "衝撃の結末／消えた／説明できない 等）。先頭に【解説】等の形式タグ可。内容と乖離した過度な釣り・"
+    "虚偽は禁止（クリック後に離脱＝維持率で負け逆効果）。「○選」は使わない。スマホで途切れないよう長くしすぎない。"
+)
+
+
+CHARS_PER_CALL = 850      # 1回の生成でモデルが安定して書ける日本語の量
+_MAX_OUTLINE_CH = 12      # 構成案で安定して返ってくる章数の上限
+
+
+def _plan_length(genre: dict) -> tuple[int, int]:
+    """(chapters, parts-per-chapter) that multiply out to the narration target.
+
+    Asking one JSON call for 28 chapters is where this broke: the same 22,000
+    target produced 19,908 chars once, then 9,497 and 10,577, because the
+    outline returned far fewer chapters than asked and the length followed. So
+    the chapter count is held at a number the outline honours (<= 12) and the
+    length is made up with repeat calls per chapter, since a single call writes
+    about CHARS_PER_CALL no matter what number it is given.
+
+    Pick the smallest `parts` whose chapter count fits under the cap, so a
+    60-minute script is 9 chapters x 3 calls rather than 26 chapters x 1.
+    """
+    target = genre.get("narration_target", NARRATION_TARGET_CHARS)
+    for parts in range(1, 9):
+        chapters = -(-target // (parts * CHARS_PER_CALL))   # ceil
+        if chapters <= _MAX_OUTLINE_CH:
+            return max(8, chapters), parts
+    return _MAX_OUTLINE_CH, 8
+
+
+def _chapter_count(genre: dict) -> int:
+    return _plan_length(genre)[0]
+
+
+def _outline(genre: dict, topic: str) -> dict:
+    n_ch = _chapter_count(genre)
+    title_spec = genre.get("title_style", _DEFAULT_TITLE_STYLE)
+    structure = genre.get("structure_hint") or random.choice(_STRUCTURE_VARIANTS)
+    user = f"""日本のYouTube長尺解説動画の構成案をJSONで作成してください。
+
+テーマ: {topic}
+ジャンル: {genre['label']}
+トーン: {genre['narration_style']}
+
+要件:
+- chapters は{n_ch}個。全体構成の"型"は【{structure}】に沿わせる。第1章＝強いフック、最終章＝まとめ＋登録誘導。
+- 各chapterは heading(短い見出し) と summary(その章で語る要点、2〜3文) を持つ。中盤の各章のsummaryは、単なる事実の要約でなく『具体例＋なぜそうなるか/どこが意外かの独自解説』を必ず含める（視聴維持と独自性のため）。
+- title: {title_spec}
+- thumbnail_text: サムネ用の特大テロップ。3〜4語・最大9文字程度に絞る（改行\\n可）。タイトル全文の縮小ではなく、最も引きの強い『一撃のワード』だけを置く。
+- thumbnail_prompt: サムネ背景の英語画像プロンプト。
+- description: 日本語200〜400文字（要約＋登録誘導）。
+- tags: 日本語中心のキーワード10〜15個。
+
+JSON: {{"title":str,"chapters":[{{"heading":str,"summary":str}}],
+"thumbnail_text":str,"thumbnail_prompt":str,"description":str,"tags":[str]}}"""
+    data = json.loads(_chat(
+        [{"role": "system", "content": "構成作家。出力はJSONのみ。"},
+         {"role": "user", "content": user}], json_mode=True))
+
+    # オムニバスは「章＝1話」なので、章数が足りないと話数そのものが減る。
+    # 2026/11/10 は9章を頼んで4章しか返らず、66分を4話で割って1話16分になった
+    # （尺は足りるので従来は気づけず、タイトルの話数を実数に直して初めて見えた）。
+    # 尺は _plan_length が回数で埋めるが、話数だけは章数でしか決まらないので、
+    # 大きく下回ったときだけ一度だけ作り直す。2回目も足りなければそのまま進める
+    # ——1話あたりが長い回は設計からは外れるが、動画として壊れてはいない。
+    if genre.get("chapters_are_standalone"):
+        got = len(data.get("chapters", []))
+        if got < max(6, int(n_ch * 0.7)):
+            print(f"  [outline] {got}章しか返らなかったので作り直します（{n_ch}話のオムニバスが目標）")
+            retry = user + (f"\n\n★厳守: chapters はちょうど{n_ch}個にしてください。"
+                            f"さきほどの出力は{got}個で、1話あたりが長くなりすぎました。"
+                            "各話は独立した短い怪談で、長さは揃えてください。")
+            data2 = json.loads(_chat(
+                [{"role": "system", "content": "構成作家。出力はJSONのみ。"},
+                 {"role": "user", "content": retry}], json_mode=True))
+            if len(data2.get("chapters", [])) > got:
+                data = data2
+            print(f"  [outline] 作り直し後: {len(data.get('chapters', []))}章")
+    return data
+
+
+def _expand_chapter(genre: dict, topic: str, title: str, idx: int, total: int,
+                    heading: str, summary: str, prev_tail: str,
+                    part: int = 1, parts: int = 1) -> str:
+    # 1回の依頼は CHARS_PER_CALL 前後に保つ。これを超える量を1回で頼んでも
+    # モデルは書かない（実測: 950字依頼→820字 / 785字依頼→648字）。足りない分は
+    # 回数で稼ぐ。依頼値自体は2割上乗せして、下回り分を吸収する。
+    per = max(420, int(CHARS_PER_CALL * 1.2))
+    ctx = f"直前の章の終わり: {prev_tail[-120:]}" if prev_tail else "これは最初の章です。"
+    if parts > 1:
+        ctx += (f"\n\n★この章は{parts}回に分けて書いており、今回はその{part}回目です。"
+                f"{'前回の続きから自然につなげ、同じ内容を繰り返さないこと。' if part > 1 else ''}"
+                f"{'この章の締めまで書き切ること。' if part == parts else 'まだ章を締めず、続きがある状態で止めること。'}")
+    role = (("最初の章＝冒頭30秒が動画の生死を分ける。次を厳守する。"
+             "(1)最初の1文で、この動画で最も衝撃的な事実か最大の謎を『結論先出し』で提示する"
+             "（挨拶・自己紹介・『今日は』『皆さんは』『今回は』等の前置きは一切禁止。1文目からいきなり核心に入る）。"
+             "(2)続く2〜3文で、具体的な固有名詞・数字・日付・矛盾点を最低1つ入れて『引っかかり』を作る"
+             "（抽象的な煽りや一般論で埋めない）。"
+             "(3)章の終わりに『そして最後に、〜が明らかになる』の形でオープンループ（最後まで見る理由）を1文張る。") if idx == 0
+            else ("中盤の章＝視聴維持の勝負どころ。次を守る。"
+                  "(1)章の冒頭に『ここでは〜』と一言サインポストを置き、この章で何が分かるかを先に示す。"
+                  "(2)固有名詞・数字・具体例を最低1つ入れる（抽象論・一般論で埋めない）。"
+                  "(3)事実を並べるだけでなく、『なぜそうなるのか／どこが意外か』を書き手独自の視点で1〜2文analysisする"
+                  "（＝人間ならではの独自の付加価値。引用や要約の羅列にしない。これは維持率と、量産テンプレ判定回避の両方に効く）。"
+                  "(4)章末に次章への小さな引き（『では、なぜ〜なのか』等）を一文置く。") if idx < total - 1
+            else "動画のまとめと、チャンネル登録・高評価のお願いで締める。")
+    # オムニバスのジャンル（怪談）は「章」＝独立した1話。上の role は解説動画用で、
+    # 章同士をつなぐ引きを要求するため、9話のはずが1つの話を9章に引き延ばした
+    # 代物になった（10/27 U_lYwMX4roU）。話を跨がせない指示に差し替える。
+    if genre.get("chapters_are_standalone"):
+        last = (idx == total - 1)
+        role = (f"★この章は独立した第{idx+1}話（全{total}話のオムニバス）であり、前の話の続きではない。"
+                "冒頭に『記録番号』と場所・時刻を淡々と置き、この話の中だけで始まり終わらせる。"
+                "前の話の人物・場所・怪異を引き継がない。次の話への引きも作らない。"
+                + ("最後に一言だけ、チャンネル登録の案内を添えて締める。" if last else
+                   "話の結末まで書き切る（説明しきらず、回収されない違和感を残して閉じる）。"))
+
+    user = f"""次の動画の第{idx+1}章のナレーション本文だけを書いてください。
+
+動画タイトル: {title}
+テーマ: {topic}
+この章の見出し: {heading}
+この章で語る要点: {summary}
+{ctx}
+
+条件:
+- 日本語で{per}文字前後（最低{int(per*0.8)}文字）。
+- 話し言葉で、耳で聞いて自然に分かる文体。{genre['narration_style']}
+- 箇条書き記号・見出し・「※」・絵文字は使わない。地の文の連続した語りにする。
+- {role}
+- 見出しや章番号は本文に含めない。ナレーションの読み上げ文だけを出力。"""
+    out = _chat([{"role": "system", "content": "プロのナレーション脚本家。"},
+                 {"role": "user", "content": user}], temperature=0.85)
+    return out.strip()
+
+
+def _n_images(genre: dict) -> int:
+    """このジャンルが必要とする情景画像の枚数。
+
+    黒画面ジャンル（怪談・2026/11/25 承認）は1枚だけ使い、暗転させて全尺ループする。
+    60分の動画に30枚を並べても1枚あたり2分しか映らず、「ながら聴き」の視聴者は
+    画面を見ていない。1枚にすると Stability が 93→6 credits/本、
+    さらにこの関数の gpt-4o 呼び出し自体も不要になる。
+    """
+    return max(1, int(genre.get("num_images", NUM_IMAGES)))
+
+
+def _still_prompt(genre: dict) -> str:
+    """黒画面ジャンルで使う1枚だけの情景プロンプト（image_style は呼び出し側で連結）。"""
+    return genre.get("still_prompt",
+                     "a single still establishing shot of the setting, wide, empty, no people")
+
+
+def _image_prompts(genre: dict, title: str, headings: list[str]) -> list[str]:
+    n_img = _n_images(genre)
+    if n_img == 1:
+        # 1枚だけなら構図を相談する意味がない＝LLM呼び出しを丸ごと省く。
+        # generate_images が image_style を後ろに連結するので、ここは情景だけを書く。
+        return [_still_prompt(genre)]
+    user = f"""動画「{title}」({genre['label']})のための画像生成プロンプトを英語でちょうど{n_img}個、JSON配列で作成。
+
+章の流れ: {' / '.join(headings)}
+
+条件:
+- 動画の流れ順に、情景・被写体・構図を1文で具体的に描く英語プロンプト。
+- 実在人物の顔のクローズアップや特定人物の再現は避け、象徴的・情景的に。
+- テキストやロゴを含めない。
+JSON: {{"prompts":[str, ...]}}（要素数はちょうど{n_img}）"""
+    data = json.loads(_chat([{"role": "system", "content": "アートディレクター。JSONのみ。"},
+                             {"role": "user", "content": user}], json_mode=True))
+    prompts = data.get("prompts", [])
+    if len(prompts) > n_img:
+        prompts = prompts[:n_img]
+    while 0 < len(prompts) < n_img:
+        prompts.append(prompts[len(prompts) % len(prompts) if prompts else 0])
+    return prompts or [genre["image_style"]] * n_img
+
+
+def _image_prompts_from_narration(genre: dict, title: str, narration: str) -> list[str]:
+    """Image prompts for a video whose narration is supplied (not LLM-outlined)."""
+    n_img = _n_images(genre)
+    if n_img == 1:
+        return [_still_prompt(genre)]
+    user = f"""次のナレーション本文をもとに、動画「{title}」({genre['label']})用の画像生成プロンプトを英語でちょうど{n_img}個、JSON配列で作成。
+本文の流れ順に、各場面の情景・被写体・構図を1文の具体的な英語で描く。実在人物の顔のクローズアップや特定人物の再現は避け、象徴的・情景的に。テキストやロゴは含めない。
+本文:
+{narration[:6000]}
+JSON: {{"prompts":[str, ...]}}（要素数はちょうど{n_img}）"""
+    data = json.loads(_chat([{"role": "system", "content": "アートディレクター。JSONのみ。"},
+                             {"role": "user", "content": user}], json_mode=True))
+    prompts = data.get("prompts", [])
+    if len(prompts) > n_img:
+        prompts = prompts[:n_img]
+    while 0 < len(prompts) < n_img:
+        prompts.append(prompts[len(prompts) % len(prompts)])
+    return prompts or [genre["image_style"]] * n_img
+
+
+def _desc_and_tags(genre: dict, title: str, narration: str) -> tuple[str, list[str]]:
+    user = f"""動画「{title}」({genre['label']})のYouTube概要欄(日本語200〜400字、内容要約＋チャンネル登録の誘導)と、日本語中心のタグ10〜15個をJSONで作成。
+本文冒頭: {narration[:800]}
+JSON: {{"description": str, "tags": [str, ...]}}"""
+    try:
+        data = json.loads(_chat([{"role": "system", "content": "YouTube運用のプロ。JSONのみ。"},
+                                 {"role": "user", "content": user}], json_mode=True))
+        return data.get("description", ""), (data.get("tags") or genre["tags"])[:15]
+    except Exception:  # noqa: BLE001
+        return "", genre["tags"]
+
+
+def build_from_narration(genre_key: str, narration: str, title: str | None = None) -> dict:
+    """Build a full script package around a PROVIDED narration text.
+
+    Used when a hand-written script is supplied (e.g. the intro video): the
+    narration is taken as-is, and only the image prompts / description / tags
+    are generated to match it. Same return shape as generate_script().
+    """
+    genre = GENRES[genre_key]
+    narration = narration.strip()
+    if not title:
+        title = narration.split("\n", 1)[0][:60]
+    title = title.strip()
+    image_prompts = _image_prompts_from_narration(genre, title, narration)
+    description, tags = _desc_and_tags(genre, title, narration)
+    return {
+        "topic": title,
+        "title": title[:100],
+        "chapters": [{"heading": "", "narration": narration}],
+        "narration": narration,
+        "image_prompts": image_prompts,
+        "thumbnail_text": title[:24],
+        "thumbnail_prompt": f"{title}. {genre['image_style']}",
+        "description": description,
+        "tags": tags,
+    }
+
+
+def _ensure_teaser_length(narration: str, source_narration: str,
+                          target: int = TEASER_TARGET_CHARS, max_passes: int = 2) -> str:
+    """Grow a too-short teaser to ~target chars by adding concrete episodes from
+    the source, keeping the opening hook and the final CTA. LLMs undershoot JP
+    char counts, so a single generation often lands well short of a ~55s runtime."""
+    floor = int(target * 0.9)
+    passes = 0
+    while len(narration) < floor and passes < max_passes:
+        passes += 1
+        prompt = f"""次の「予告編ショート」のナレーションは尺が短すぎます。今は約{len(narration)}文字ですが、{target}文字前後まで自然に膨らませてください。
+
+現在のナレーション:
+{narration}
+
+本編の内容(抜粋・ここから具体的な事実を足す):
+{source_narration[:2000]}
+
+条件:
+- 冒頭のフック(最初の1〜2文)と、最後の誘導文(概要欄・固定コメントのリンクへのCTA)はそのまま残す。
+- 中盤に、本編から"具体的で興味を引くエピソード・数字・矛盾点"を1〜2個だけ足して厚みを出す。抽象的な煽りや同じ内容の言い換えで水増ししない。
+- 全体で{target}文字前後(最低{floor}文字)。話し言葉で、1文ごとに新情報を足す。
+- 出力はナレーション本文だけ(見出し・記号・注釈なし)。"""
+        grown = _chat([{"role": "system", "content": "予告編の脚本家。具体的な事実で尺を厚くする。出力は本文のみ。"},
+                       {"role": "user", "content": prompt}], temperature=0.8).strip()
+        # 伸ばした結果が短くなった場合は元を維持(退行防止)。
+        if len(grown) > len(narration):
+            narration = grown
+    return narration
+
+
+# 予告編ショートのジャンル別トーン。ミステリー専用だった文言を各ジャンルに合わせて
+# 切り替えるための材料（宇宙は畏敬・スケール、ミステリーは緊張、都市伝説は不気味）。
+_TEASER_FLAVOR = {
+    "space": {
+        "tone": "壮大で映画的、知的な畏敬とスケール感。光と闇のコントラスト",
+        "hook": "最大の謎・スケールの衝撃・意外な事実",
+        "example": "例:「この宇宙の95%は、まだ誰も正体を知りません。」",
+        "loop": "説明のつかない“宇宙最大級の謎”",
+        "cta": "続きと詳しい解説は本編で。",
+        "visual": "壮大で映画的な宇宙・天体・実写アストロ風の情景（惑星/銀河/ブラックホール等）",
+    },
+    "mystery": {
+        "tone": "暗く映画的でミステリアス、静かな緊張感",
+        "hook": "最大の謎・衝撃",
+        "example": "例:「太平洋のど真ん中で、一人の男が風船にぶら下がったまま消えました。」",
+        "loop": "説明がつかない最大の謎",
+        "cta": "結末と真相は本編で。",
+        "visual": "暗く映画的でミステリアスな情景",
+    },
+    "urban": {
+        "tone": "薄暗く不気味で象徴的、都市伝説的な不穏さ",
+        "hook": "最大の謎・ゾッとする一致",
+        "example": "例:「その話には、誰も説明できない“ある一致”がありました。」",
+        "loop": "説明できない不気味な符合",
+        "cta": "真相は本編で。",
+        "visual": "薄暗く象徴的で不穏な、映画的な情景",
+    },
+    "japan": {
+        "tone": "明るく誇らしい、テンポの良い驚きと再発見。温かくポジティブ（暗さ・不穏さは禁止）",
+        "hook": "海外が驚いた意外な事実・日本ならではのスゴさ",
+        "example": "例:「日本の駅の“ある習慣”に、海外から来た人が思わず涙したそうです。」",
+        "loop": "なぜ日本ではそれが“当たり前”なのかという意外な背景",
+        "cta": "続きと詳しい背景は本編で。",
+        "visual": "明るく温かい日本の日常・文化・おもてなしの情景（駅/食/職人/街並み等）",
+    },
+}
+
+
+def generate_teaser(genre_key: str, source_topic: str, source_narration: str) -> dict:
+    """Build a vertical teaser-short script ('CM') for a long-form video.
+
+    The short teases the long-form's biggest hook/mystery, withholds the payoff
+    (寸止め), and drives viewers to the full video — like a trailer before a film.
+    Returns: {narration, title, image_prompts, hashtags, tags}.
+    """
+    genre = GENRES[genre_key]
+    approx_sec = round(TEASER_TARGET_CHARS / 5.3)  # 実測 ≈5.3字/秒
+    fl = _TEASER_FLAVOR.get(genre_key, _TEASER_FLAVOR["mystery"])
+    user = f"""次の長尺『{genre['label']}』動画の「予告編ショート(縦型・約{TEASER_TARGET_CHARS}文字/約{approx_sec}秒)」の台本をJSONで作成してください。映画の予告編のように、"それ自体が面白くて最後まで見てしまう"短編に仕上げるのが目的です。
+
+長尺のテーマ: {source_topic}
+長尺の内容(本編抜粋): {source_narration[:2000]}
+
+【最重要の方針】
+このショートは「ただ本編に誘導するだけの空っぽな予告」にしては絶対にいけません。本編の中から"視聴者が思わず『え、何それ』と引き込まれる具体的な事実・エピソード・数字"を実際に2〜3個抜き出して見せ、単体でも満足感と驚きがある一本にしてください。誘導(CTA)は最後の1文だけ。残りは全部"中身"に使います。全体のトーンは【{fl['tone']}】に合わせること。
+
+【narration の構成(この順序で、合計{TEASER_TARGET_CHARS}文字前後。最低でも{int(TEASER_TARGET_CHARS*0.9)}文字は必ず書き、短くしすぎない)】
+1. フック(最初の3秒/1〜2文): {fl['hook']}を一撃で提示。挨拶・自己紹介・「今日は〜」は禁止。{fl['example']}
+2. 具体的な引き(本文の大半): 本編から具体的な事実・エピソードを2〜3個、順番に見せる。各エピソードは"それだけで興味深い"レベルの具体性(固有名詞・数字・状況・意外性)を必ず含める。視聴者が「続きが気になる」だけでなく「今この話が面白い」と感じるようにする。単なる問いの羅列や抽象的な煽りは禁止。
+3. オープンループの深掘り: 事実を並べるうちに"{fl['loop']}"が立ち上がるように構成し、引きを高める。
+4. 寸止め(1文): 最も気になる核心・結論だけは"あえて見せきらない"。答えを言い切らない。
+5. CTA(最後の1文だけ): 「{fl['cta']}下の概要欄・固定コメントのリンクから今すぐ」。くどくしない。
+
+【文体】
+- 話し言葉。テンポよく、1文ごとに新しい情報か展開を必ず足す(水増し・接続詞での引き延ばし禁止)。
+- 断定できない事柄は「〜と言われている」「記録が残っている」等の表現を使い、捏造しない。
+
+- title: 25文字前後のフックの効いた日本語タイトル。内容の"具体的な引き"が伝わる語を入れる。末尾に半角スペース+『#Shorts』を付ける。
+- image_prompts: 縦型(9:16)用の英語画像プロンプトをちょうど{SHORT_NUM_IMAGES}個。narrationの各場面(フック→各エピソード→謎→余韻)に対応させ、{fl['visual']}を1文で具体的に。実在人物の顔クローズアップは避け象徴的に。テキスト/ロゴは含めない。
+- hashtags: 日本語中心のハッシュタグ5個前後(#Shorts を必ず含む)。
+JSON: {{"narration": str, "title": str, "image_prompts": [str, ...], "hashtags": [str, ...]}}"""
+    data = json.loads(_chat([{"role": "system", "content": "あなたは『続きが見たくてたまらなくなる』YouTube予告編の名手です。ただの誘導ではなく、具体的な事実で引き込む短編を書きます。出力はJSONのみ。"},
+                             {"role": "user", "content": user}], temperature=0.9, json_mode=True))
+    narration = (data.get("narration") or "").strip()
+    # 日本語LLMは文字数指定を大幅に下振れしがち。短すぎる予告は「間延び前の物足りなさ」
+    # ではなく単純に尺不足になるので、下限を割ったら本編抜粋から具体的エピソードを足して
+    # 目標付近まで膨らませる(フックとCTAは維持)。
+    narration = _ensure_teaser_length(narration, source_narration)
+    prompts = (data.get("image_prompts") or [])[:SHORT_NUM_IMAGES]
+    while 0 < len(prompts) < SHORT_NUM_IMAGES:
+        prompts.append(prompts[len(prompts) % len(prompts)])
+    return {
+        "narration": narration,
+        "title": (data.get("title") or source_topic)[:100],
+        "image_prompts": prompts or [genre["image_style"]] * SHORT_NUM_IMAGES,
+        "hashtags": data.get("hashtags") or ["#Shorts"],
+        "tags": (genre["tags"] + ["Shorts", "予告編"])[:15],
+    }
+
+
+def _select_topic(genre: dict, avoid_titles: list[str], max_retries: int = 4) -> str:
+    """Pick a topic, re-picking if it duplicates a recent one (semantic check).
+
+    Continues (does not abort) after max_retries so a run never fails outright —
+    a slightly-close final candidate beats posting nothing for the day.
+    """
+    topic = _pick_topic(genre, avoid_titles)
+    for attempt in range(1, max_retries + 1):
+        if not _is_duplicate(topic, avoid_titles):
+            break
+        print(f"  [dedup] テーマ「{topic}」は最近と重複 → 再選定 ({attempt}/{max_retries})")
+        topic = _pick_topic(genre, avoid_titles)
+    else:
+        print(f"  [dedup] {max_retries}回再選定しても重複を回避しきれず、最後の候補「{topic}」で続行します。")
+    print(f"  [dedup] 採用テーマ: {topic}（回避対象 {len(avoid_titles)} 件）")
+    return topic
+
+
+def _ensure_narration_length(genre: dict, topic: str, title: str,
+                             chapters: list[dict], max_passes: int = 3) -> list[dict]:
+    """Deepen the middle chapters until the whole narration reaches its target.
+
+    Watch time is the monetization gate, so a long-form that lands at 17.8 min
+    against a 20-25 min goal is a direct loss. Chapters are extended rather
+    than added, because the chapter list is already mirrored by the image
+    prompts and the outline's structure. The opening hook and the closing CTA
+    are left alone — those two carry retention and the subscribe ask.
+    """
+    target = genre.get("narration_target", NARRATION_TARGET_CHARS)
+    floor = int(target * 0.92)
+    total = len(chapters)
+    if total < 3:
+        return chapters
+    for _ in range(max_passes):
+        have = sum(len(c["narration"]) for c in chapters)
+        if have >= floor:
+            break
+        # 不足分を中盤の章に均等に割り振る（短い章から順に厚くする）。
+        middle = sorted(range(1, total - 1), key=lambda i: len(chapters[i]["narration"]))
+        if not middle:
+            break
+        # 依頼量は CHARS_PER_CALL で上限を切る。10/20の26分版では不足が1万字あり、
+        # 1章あたり6,400字の増補を頼んで当然1文字も埋まらなかった。1回で書ける量を
+        # 超える依頼は、大きいほど効くのではなく、ただ無視される。
+        add_each = max(150, min(CHARS_PER_CALL,
+                                int(((floor - have) / len(middle) + 1) * 1.2)))
+        print(f"  [len] ナレーション {have}字 < 目標 {target}字 → 中盤{len(middle)}章を各+{add_each}字で増補")
+        for i in middle:
+            cur = chapters[i]["narration"]
+            prompt = f"""次の章のナレーションを、内容を足して約{len(cur) + add_each}文字まで厚くしてください。
+
+動画タイトル: {title}
+テーマ: {topic}
+この章の見出し: {chapters[i].get('heading', '')}
+
+現在の本文:
+{cur}
+
+条件:
+- 既にある内容は削らず、具体的な事実・数字・固有名詞・具体例を足して深掘りする。
+- 同じ内容の言い換え・抽象的な一般論・引き延ばしの相づちで字数を埋めない。1文ごとに新しい情報を足す。
+- {genre['narration_style']}
+- 箇条書き記号・見出し・絵文字は使わない。地の文の連続した語りにする。
+- 出力はナレーション本文だけ。"""
+            grown = _chat([{"role": "system", "content": "プロのナレーション脚本家。具体で厚くする。出力は本文のみ。"},
+                           {"role": "user", "content": prompt}], temperature=0.8).strip()
+            if len(grown) > len(cur):   # 退行防止
+                chapters[i]["narration"] = grown
+            if sum(len(c["narration"]) for c in chapters) >= floor:
+                break
+    final = sum(len(c["narration"]) for c in chapters)
+    print(f"  [len] ナレーション確定: {final}字（目標 {target}字 / 下限 {floor}字）")
+    return chapters
+
+
+class TopicNotVerifiedError(RuntimeError):
+    """A genre that asserts real-world facts was given a topic we cannot confirm."""
+
+
+def _gate_real_world(genre: dict, topic: str, avoid_titles: list[str],
+                     topic_verified: str | None, max_picks: int = 3) -> str:
+    """For genres that state things as fact, refuse to write about what we cannot confirm.
+
+    The pipeline published two fabricated unsolved cases (2026-10-11, 10-12)
+    because nothing stood between "the model named a case" and "we narrate it as
+    real". This is that something. Either the caller supplies evidence it already
+    verified the subject (the routine can search the web; this container's egress
+    may not reach Wikipedia), or we check ja.wikipedia here. If neither confirms
+    it and the topic was auto-picked, pick again; if a topic was passed in
+    explicitly, stop rather than silently substitute a different subject.
+    """
+    import verify_topic
+    if not verify_topic.requires_verification(genre):
+        return topic
+    if topic_verified:
+        print(f"  [verify] 呼び出し側が実在を確認済み: {topic_verified}")
+        return topic
+
+    explicit = bool(topic)
+    for attempt in range(1, max_picks + 1):
+        if not topic:
+            topic = _select_topic(genre, avoid_titles)
+        ok, why = verify_topic.verify(topic)
+        if ok:
+            print(f"  [verify] {topic} -> {why}")
+            return topic
+        print(f"  [verify] 却下({attempt}/{max_picks}) {topic} -> {why}")
+        if explicit:
+            raise TopicNotVerifiedError(
+                f"題材「{topic}」の実在を確認できません。{why}\n"
+                "実在が確認できる著名事件を --topic で指定するか、"
+                "呼び出し側で検証した根拠を --topic-verified で渡してください。")
+        avoid_titles = avoid_titles + [topic]
+        topic = None
+    raise TopicNotVerifiedError(
+        f"実在を確認できる題材を{max_picks}回の試行で選べませんでした。"
+        "捏造した事件を実話として公開しないため、生成を中止します。")
+
+
+_DATE_YMD = re.compile(r"(?:(?:19|20)\d{2}|令和\d{1,2}|平成\d{1,2}|昭和\d{1,2})年\s*(\d{1,2})月\s*(\d{1,2})日")
+_DATE_YM = re.compile(r"(?:(?:19|20)\d{2}|令和\d{1,2}|平成\d{1,2}|昭和\d{1,2})年\s*(\d{1,2})月")
+_DATE_Y = re.compile(r"(?:(?:19|20)\d{2}|令和\d{1,2}|平成\d{1,2}|昭和\d{1,2})年")
+
+
+_PLACEHOLDER = r"(?:〇〇+|○○+|●●+|××+|ＸＸ+|XX+|\*\*+|＊＊+|◯◯+|□□+)"
+_PH_WITH_NOUN = re.compile(_PLACEHOLDER + r"(市立|町立|村立|区立|県立|都立|"
+                                          r"市|町|村|区|県|駅|小学校|中学校|高校|大学|病院|団地|荘|"
+                                          r"マンション|アパート|トンネル|峠|山|川|湖|神社|寺|公園|工場|社宅|寮)")
+# 置換後の継ぎ目を整える。「**市立〇〇小学校」は素朴に置くと
+# 「ある地方都市立ある小学校」になり、読み上げでそのまま不自然に響く。
+_PH_SEAM = ((re.compile(r"ある地方都市立"), "ある市立"),
+            (re.compile(r"(ある(?:市|町|村|区|県|都)立)ある"), r"\1"))
+# 名詞を伴わない裸のプレースホルダ。後続の助詞で人か場所かを見分ける
+# （「そのは何も語らなかった」のような非文を作らないため）。
+_PH_PERSON = re.compile(_PLACEHOLDER + r"(?=[はがもをにとへ])")
+_PH_BARE = re.compile(_PLACEHOLDER)
+
+
+def _scrub_placeholders(text: str) -> str:
+    """Replace literal fill-in blanks before TTS reads them out loud.
+
+    Telling the model to anonymise place names made it emit the blanks instead:
+    the 10/27 kaidan script carried 「〇〇市」 and 「**市」, which the narration
+    then voiced. Anonymising is right; leaving a template marker in the audio is
+    not, and no prompt wording reliably prevents it, so it gets substituted here.
+    """
+    out = _PH_WITH_NOUN.sub(lambda m: ("ある地方都市" if m.group(1) == "市"
+                                       else "ある" + m.group(1)), text)
+    out = _PH_PERSON.sub("その人物", out)
+    out = _PH_BARE.sub("ある場所", out)
+    for pat, repl in _PH_SEAM:
+        out = pat.sub(repl, out)
+    if out != text:
+        print("  [scrub] 台本の穴埋めプレースホルダ（〇〇市 等）を具体語に置換しました")
+    return out
+
+
+_EPISODE_COUNT = re.compile(r"全\s*[0-9０-９]+\s*話")
+
+
+def _fix_episode_count(genre: dict, title: str, total: int) -> str:
+    """Make 「全◯話」 in the title agree with the chapters actually written.
+
+    The model writes the title and the outline in one JSON, so it commits to an
+    episode count before the outline is finished: on 2026/11/03 it shipped
+    「全4話」 over nine stories. The viewer sees that mismatch on the thumbnail,
+    and no prompt wording fixes a number the model guessed too early — the real
+    count is only known here, after the chapters exist.
+    """
+    if not genre.get("chapters_are_standalone"):
+        return title
+    fixed, n = _EPISODE_COUNT.subn(f"全{total}話", title)
+    if n:
+        if fixed != title:
+            print(f"  [title] 話数の表記を実際の章数に合わせました: {title} → {fixed}")
+        return fixed
+    tag = f"【全{total}話】"
+    if len(title) + len(tag) <= 100:
+        print(f"  [title] 話数の表記が無かったので付けました: {tag}")
+        return title + tag
+    return title
+
+
+def _blur_dates_in_fiction(genre: dict, text: str) -> str:
+    """Strip calendar dates out of an invented story, keeping its texture.
+
+    The kaidan scripts keep opening with a real-looking date — 「2023年10月5日、
+    東京都内」, then 「2019年10月1日」 the run after I told the prompt not to. The
+    genre is fiction and the description says so, but a narration that states a
+    date reads as a true account, and the generation prompt is the wrong place to
+    enforce that: the model agreed and did it anyway, twice.
+
+    So the date goes out deterministically. Month and 初旬/中旬/下旬 are kept
+    because the 記録調 lives on that kind of specificity; only the year — the
+    part that pins the story to the real calendar — is dropped.
+    """
+    if not genre.get("blur_real_dates"):
+        return text
+
+    def _ymd(m: re.Match) -> str:
+        day = int(m.group(2))
+        part = "初旬" if day <= 10 else ("中旬" if day <= 20 else "下旬")
+        return f"数年前の{int(m.group(1))}月{part}"
+
+    out = _DATE_YMD.sub(_ymd, text)
+    out = _DATE_YM.sub(lambda m: f"数年前の{int(m.group(1))}月", out)
+    out = _DATE_Y.sub("数年前", out)
+    if out != text:
+        print("  [fiction] 実在風の年月日をぼかしました（創作を実話として読ませないため）")
+    return out
+
+
+def generate_script(genre_key: str, topic: str | None = None,
+                    avoid_titles: list[str] | None = None,
+                    topic_verified: str | None = None) -> dict:
+    genre = GENRES[genre_key]
+    avoid_titles = avoid_titles or []
+    topic = _gate_real_world(genre, topic, avoid_titles, topic_verified)
+    if not topic:
+        topic = _select_topic(genre, avoid_titles)
+
+    outline = _outline(genre, topic)
+    title = outline.get("title", topic)[:100]
+    chapters_meta = outline.get("chapters", [])
+    total = len(chapters_meta)
+    if not total:
+        raise RuntimeError("構成案が0章で返りました。生成を中止します。")
+
+    # 構成案が頼んだ章数を返さないことがある（10/20: 28章を頼んで4話ぶんしか
+    # 返らず、9,497字=26分で着地した）。章数が足りない分は、1章あたりの生成回数を
+    # 増やして埋める。1回の生成量は増やせないが、回数は確実に制御できる。
+    asked, planned_parts = _plan_length(genre)
+    target = genre.get("narration_target", NARRATION_TARGET_CHARS)
+    # 返ってきた章数で割り直す。少なく返ったら回数を増やし、多く返ったら減らす
+    # （planned_parts で下限を切ると、章が多く返った回が80分超に膨らんでしまう）。
+    parts = max(1, round(target / (max(1, total) * CHARS_PER_CALL)))
+    if total < asked:
+        print(f"  [script] 構成案が{total}章（{asked}章を依頼）。1章あたり{parts}回に分けて尺を確保します")
+    print(f"  [script] {total}章 × {parts}回 × 約{CHARS_PER_CALL}字 ≒ {total*parts*CHARS_PER_CALL:,}字 を目標に生成")
+
+    chapters, prev_tail = [], ""
+    for i, cm in enumerate(chapters_meta):
+        pieces = []
+        for p in range(1, parts + 1):
+            piece = _expand_chapter(genre, topic, title, i, total,
+                                    cm.get("heading", ""), cm.get("summary", ""),
+                                    prev_tail, part=p, parts=parts)
+            pieces.append(piece)
+            prev_tail = piece
+        narration = "\n".join(pieces).strip()
+        chapters.append({"heading": cm.get("heading", ""), "narration": narration})
+
+    chapters = _ensure_narration_length(genre, topic, title, chapters)
+    title = _fix_episode_count(genre, title, len(chapters))
+    for c in chapters:
+        c["narration"] = _scrub_placeholders(_blur_dates_in_fiction(genre, c["narration"]))
+    full_narration = "\n".join(c["narration"] for c in chapters).strip()
+    headings = [c["heading"] for c in chapters]
+    image_prompts = _image_prompts(genre, title, headings)
+
+    return {
+        "topic": topic,
+        "title": title,
+        "chapters": chapters,
+        "narration": full_narration,
+        "image_prompts": image_prompts,
+        "thumbnail_text": (outline.get("thumbnail_text") or title)[:24],
+        "thumbnail_prompt": outline.get("thumbnail_prompt", genre["image_style"]),
+        # genre固有の注記（例: 怪談は創作であることを明示し、実話と誤認させない）を先に付す。
+        "description": (outline.get("description", "")
+                        + genre.get("description_note", "") + _AI_DISCLOSURE),
+        "tags": (outline.get("tags") or genre["tags"])[:15],
+    }
+
+
+if __name__ == "__main__":
+    import sys
+    g = sys.argv[1] if len(sys.argv) > 1 else "space"
+    pkg = generate_script(g)
+    print("title:", pkg["title"])
+    print("chapters:", len(pkg["chapters"]))
+    print("narration chars:", len(pkg["narration"]))
+    print("image prompts:", len(pkg["image_prompts"]))

@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+generator/daily_routine_log.txt
+generator/tmp/
+*.mp4
+*.mp3
+*.wav

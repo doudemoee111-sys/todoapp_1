@@ -1,0 +1,130 @@
+name: 雑学王 pipeline
+
+# 環境音（毎日）と怪談（週2）の生成・予約投稿を GitHub Actions で実行する。
+#
+# なぜ Actions なのか（2026/11/25）:
+#   それまでは Claude のスケジュール実行がパイプラインを起動し、完了まで40〜75分、
+#   5分おきにログを tail して待っていた。生成物に寄与しないこの待機だけで
+#   月およそ480ターンを消費していた。さらに 11/14 にアカウントの Claude Code
+#   実行が無効化されると、12日間まるごと1本も公開されなかった（最終公開 11/13）。
+#   Actions に移せば待機のコストはゼロになり、Claude の可否と無関係に動く。
+#
+# ★このファイルは main に置かないとスケジュールが発火しない（GitHubの仕様で、
+#   schedule はデフォルトブランチの最新コミットだけを見る）。コードは
+#   claude/web-automation-setup-ifetgk を checkout して実行する。
+#   同じ構成で tools/xauusd-range が既に稼働している（.github/workflows/xauusd-feed.yml）。
+#
+# 必要な Secrets（Settings > Secrets and variables > Actions で登録）:
+#   OPENAI_API_KEY / STABILITY_API_KEY / GOOGLE_TTS_API_KEY
+#   YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET / YOUTUBE_REFRESH_TOKEN
+#   ★YOUTUBE_REFRESH_TOKEN は「世界の雑学王」のものを入れること。別チャンネルの
+#     トークンだと check-auth 段階で停止する（channelId を照合する安全装置があり、
+#     睡眠チャンネルへの誤投稿は起こらない）。
+
+on:
+  schedule:
+    # 15:11 JST 毎日 → 環境音8時間（20:00 JST公開で予約）
+    - cron: '11 6 * * *'
+    # 13:17 JST 火・土 → 怪談60分級（22:00 JST公開で予約）
+    - cron: '17 4 * * 2,6'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'どちらを生成するか'
+        type: choice
+        default: soundscape
+        options: [soundscape, kaidan]
+
+concurrency:
+  # 同じ種類が二重に走って同日2本公開になるのを防ぐ（10/30に実際に起きた）。
+  group: zatsugaku-${{ github.event.schedule || inputs.target }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      TARGET: ${{ github.event.schedule == '17 4 * * 2,6' && 'kaidan' || (github.event.schedule == '11 6 * * *' && 'soundscape' || inputs.target) }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      STABILITY_API_KEY: ${{ secrets.STABILITY_API_KEY }}
+      GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+    steps:
+      - name: Check out the pipeline branch
+        uses: actions/checkout@v4
+        with:
+          ref: claude/web-automation-setup-ifetgk
+
+      - name: Free up disk for the 8-hour render
+        # 8時間の中間WAVは約2.5GB、完成mp4が0.6〜1.0GB。ランナーの空きは14GB前後なので
+        # 足りるが、「No space left on device」は過去に実際に起きた失敗なので先に空ける。
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc || true
+          df -h / | tail -1
+
+      - name: Install dependencies
+        # ensure_deps.sh は ffmpeg が既にあると apt 全体を飛ばす（それが過去の失敗の
+        # 教訓でそう書いてある）。ランナーに ffmpeg が同梱されていると日本語フォントが
+        # 入らず、サムネイルの文字が全部豆腐になるので、フォントだけ先に入れておく。
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-noto-cjk fontconfig
+          bash pipeline/ensure_deps.sh
+
+      - name: Verify the upload target channel
+        # 鍵が別チャンネルを指していたら、ここで止める（credits を使う前に落とす）。
+        working-directory: pipeline
+        run: |
+          if [ "$TARGET" = "kaidan" ]; then
+            python3 run.py --check-auth | tee auth.txt
+          else
+            python3 soundscape.py --check-auth | tee auth.txt
+          fi
+          grep -q 'UCqAkcXuuw4_aS7WecY64T-w' auth.txt
+
+      - name: Generate and schedule
+        working-directory: pipeline
+        run: |
+          set -o pipefail
+          if [ "$TARGET" = "kaidan" ]; then
+            python3 run.py --genre kaidan 2>&1 | tee run.log
+          else
+            python3 soundscape.py 2>&1 | tee run.log
+          fi
+
+      - name: Summarise the run (Threads draft included)
+        # Gmail が 11/06 から Anthropic のルーティンメール本文を返さないため、
+        # 報告はメールではなくここに出す。実行結果は Actions の画面で読める。
+        if: always()
+        working-directory: pipeline
+        run: |
+          {
+            echo "## $TARGET"
+            echo
+            if [ -f run.log ]; then
+              echo '### 要点'
+              grep -E '検証:|DONE in|title|タイトル|audio duration|音声|予約|サイズ|credits|同じ地点から再開' run.log | tail -30
+              echo
+              echo '### THREADS 下書き'
+              echo '```'
+              sed -n '/THREADS 下書き/,/ここまで/p' run.log
+              echo '```'
+            else
+              echo '生成ログがありません（依存の導入か認証で落ちた可能性）。'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TARGET }}-log
+          path: pipeline/run.log
+          if-no-files-found: warn
+          retention-days: 14
